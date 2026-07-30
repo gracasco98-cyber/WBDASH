@@ -2,6 +2,7 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 import type { PrismaClient, ShopifyOrder, Prisma } from "@prisma/client";
+import { toNum } from "../../utils/decimal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,22 @@ export interface FindOrdersParams {
 
 // ─── Read operations ──────────────────────────────────────────────────────────
 
+/** Same shape as ShopifyOrder but with monetary fields as plain numbers (API/JSON contract). */
+export type ShopifyOrderDTO = Omit<ShopifyOrder, "totalAmount" | "refundedAmount" | "netAmount"> & {
+  totalAmount: number;
+  refundedAmount: number;
+  netAmount: number;
+};
+
+function toOrderDTO(o: ShopifyOrder): ShopifyOrderDTO {
+  return {
+    ...o,
+    totalAmount: toNum(o.totalAmount),
+    refundedAmount: toNum(o.refundedAmount),
+    netAmount: toNum(o.netAmount),
+  };
+}
+
 /**
  * Return orders matching the given date range and optional filters.
  * Ordered by createdAt DESC.
@@ -29,14 +46,15 @@ export interface FindOrdersParams {
 export async function findOrdersByDateRange(
   prisma: PrismaClient,
   params: FindOrdersParams
-): Promise<ShopifyOrder[]> {
+): Promise<ShopifyOrderDTO[]> {
   const where = buildWhere(params);
-  return prisma.shopifyOrder.findMany({
+  const rows = await prisma.shopifyOrder.findMany({
     where,
     orderBy: { createdAt: "desc" },
     skip: params.skip,
     take: params.take,
   });
+  return rows.map(toOrderDTO);
 }
 
 /**
@@ -57,13 +75,14 @@ export async function countOrdersByDateRange(
 export async function findOrdersForTimeseries(
   prisma: PrismaClient,
   params: FindOrdersParams
-): Promise<Pick<ShopifyOrder, "createdAt" | "totalAmount" | "marketplaceDetected">[]> {
+): Promise<{ createdAt: Date; totalAmount: number; marketplaceDetected: string }[]> {
   const where = buildWhere(params);
-  return prisma.shopifyOrder.findMany({
+  const rows = await prisma.shopifyOrder.findMany({
     where,
     select: { createdAt: true, totalAmount: true, marketplaceDetected: true },
     orderBy: { createdAt: "asc" },
   });
+  return rows.map((r) => ({ ...r, totalAmount: toNum(r.totalAmount) }));
 }
 
 /**
@@ -73,10 +92,11 @@ export async function findOrdersForTimeseries(
 export async function findOrderByShopifyId(
   prisma: PrismaClient,
   shopifyOrderId: string
-): Promise<ShopifyOrder | null> {
-  return prisma.shopifyOrder.findUnique({
+): Promise<ShopifyOrderDTO | null> {
+  const row = await prisma.shopifyOrder.findUnique({
     where: { shopifyOrderId },
   });
+  return row ? toOrderDTO(row) : null;
 }
 
 /**
@@ -86,11 +106,13 @@ export async function findOrderByShopifyId(
 export async function findOrderForBroadcast(
   prisma: PrismaClient,
   shopifyOrderId: string
-): Promise<Pick<ShopifyOrder, "orderName" | "totalAmount" | "marketplaceDetected" | "createdAt"> | null> {
-  return prisma.shopifyOrder.findUnique({
+): Promise<{ orderName: string; totalAmount: number; marketplaceDetected: string; createdAt: Date } | null> {
+  const row = await prisma.shopifyOrder.findUnique({
     where: { shopifyOrderId },
     select: { orderName: true, totalAmount: true, marketplaceDetected: true, createdAt: true },
   });
+  if (!row) return null;
+  return { ...row, totalAmount: toNum(row.totalAmount) };
 }
 
 /**

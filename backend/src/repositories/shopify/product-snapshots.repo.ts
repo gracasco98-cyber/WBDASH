@@ -2,8 +2,15 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 import type { PrismaClient, ProductDailySnapshot, Prisma } from "@prisma/client";
+import { toNum } from "../../utils/decimal";
 
 // ─── Read operations ──────────────────────────────────────────────────────────
+
+/** Same shape as ProductDailySnapshot but with monetary fields as plain numbers. */
+export type ProductDailySnapshotDTO = Omit<
+  ProductDailySnapshot,
+  "grossRevenue" | "refundedAmount" | "netRevenue"
+> & { grossRevenue: number; refundedAmount: number; netRevenue: number };
 
 /**
  * Return daily snapshots for a product within a date range.
@@ -16,17 +23,23 @@ export async function findSnapshotsByProductId(
     from: Date;
     marketplace?: string;
   }
-): Promise<ProductDailySnapshot[]> {
+): Promise<ProductDailySnapshotDTO[]> {
   const where: Prisma.ProductDailySnapshotWhereInput = {
     shopifyProductId: params.shopifyProductId,
     snapshotDate: { gte: params.from },
   };
   if (params.marketplace) where.marketplace = params.marketplace;
 
-  return prisma.productDailySnapshot.findMany({
+  const rows = await prisma.productDailySnapshot.findMany({
     where,
     orderBy: { snapshotDate: "asc" },
   });
+  return rows.map((r) => ({
+    ...r,
+    grossRevenue: toNum(r.grossRevenue),
+    refundedAmount: toNum(r.refundedAmount),
+    netRevenue: toNum(r.netRevenue),
+  }));
 }
 
 // ─── Write operations ─────────────────────────────────────────────────────────

@@ -49,7 +49,7 @@ Non introdurre NestJS, Auth.js o un tool di monorepo (Turborepo/pnpm workspaces)
 10. Nessun segreto nel repository. Credenziali Amazon (`AMAZON_EU_REFRESH_TOKEN`) e Shopify (`SHOPIFY_ADMIN_TOKEN`) solo in `.env`, mai committate. `amazon-auth.js` gestisce l'OAuth flow e scrive il refresh token in `.env` in locale.
 11. Nessun dato economico va sovrascritto senza storico. *(Parzialmente rispettato: `AmazonCogsPriceEntry` ha storico temporale; il calcolo di profitto/P&L non ha ancora versionamento esplicito — vedi roadmap)*
 12. Nessun saldo di magazzino va modificato direttamente: `AmazonInventory` oggi è uno snapshot, non un ledger di movimenti — da introdurre quando si affronta la Fase 5 (magazzino).
-13. Tutti gli importi monetari devono usare `Decimal`, mai `float`. *(Gap attuale: lo schema usa `Float` ovunque — vedi roadmap, priorità alta)*
+13. Tutti gli importi monetari devono usare `Decimal`, mai `float`. *(Rispettato dal 2026-07-30 per tutti i campi realmente monetari; ACOS/ROAS/CTR e i coefficienti EWMA di `AmazonForecastCalibration` restano `Float` di proposito, non sono importi — vedi `docs/tech-debt.md` E.2)*
 14. Tutte le date sono salvate in UTC e mostrate nel fuso orario configurato. Attenzione: esiste un bug noto di disallineamento cutoff "last7" tra Shopify e Amazon (`docs/tech-debt.md` A.2) — non introdurne di nuovi, e se tocchi codice date-related usa una funzione condivisa `italyDayStart()`.
 15. Ogni tabella prevede `createdAt`/`updatedAt` quando appropriato — già rispettato nello schema esistente.
 16. Le cancellazioni preferiscono soft delete quando lo storico va conservato.
@@ -118,12 +118,13 @@ I moduli futuri non ancora implementati (magazzino con ledger, fornitori, ordini
 
 Gap noti tra questo codebase e i principi WBDASH, da trattare come task futuri e non come blocco all'uso del sistema oggi:
 
-0. **Nessuno storico di migrazioni**: `backend/prisma/` non contiene una cartella `migrations/` — lo schema è sempre stato applicato con `prisma db push`. Il primo `prisma migrate dev --name init` va eseguito e committato prima di qualsiasi altra modifica allo schema, per stabilire una baseline versionata (principio non negoziabile #6).
-1. **Decimal invece di Float** per tutti gli importi monetari (priorità alta — rischio di errori di arrotondamento su calcoli finanziari reali).
+0. **Nessuno storico di migrazioni**: `backend/prisma/` non contiene una cartella `migrations/` — lo schema è sempre stato applicato con `prisma db push`. Il primo `prisma migrate dev --name init` va eseguito e committato prima di qualsiasi altra modifica allo schema, per stabilire una baseline versionata (principio non negoziabile #6). **Ancora da fare.**
+1. ~~**Decimal invece di Float** per tutti gli importi monetari~~ — **fatto e verificato il 2026-07-30** (database era vuoto, nessun backfill necessario). Vedi `docs/tech-debt.md` sezione E.2 per come è stato implementato (conversione al confine del repository layer + estensione Prisma centralizzata per ogni operazione, non solo le query raw) e sezione E.1 per il debito scoperto nel farlo (repo-layer non rispettato nel dominio Amazon). Verifica end-to-end con Testcontainers eseguita su Postgres reale (Docker Desktop installato appositamente): 250 test passati, 0 fallimenti legati a Decimal.
 2. **Modello Organization + multi seller-account + multi Shopify-store**, oggi single-tenant (era pianificato come "v2.0.0" in `GIT_WORKFLOW.md`, mai iniziato).
 3. **Layer di payload raw** persistito separatamente dai dati normalizzati (oggi `AmazonOrder`/`ShopifyOrder` sono già "normalizzati", il payload originale non viene conservato).
 4. **Marketplace come entità** (oggi è una stringa `IT`/`DE`/`FR`/`ES`/`ALL_EU` su ogni record).
 5. Riconciliazione dei quirk documentati in `docs/tech-debt.md` sezione A (es. A.1 ordini cancellati trattati diversamente tra Shopify e Amazon, A.8 settlement non riconciliato automaticamente).
+6. **Repository layer non rispettato nel dominio Amazon** (`docs/tech-debt.md` E.1): molte route/service in `amazon/**` chiamano Prisma direttamente invece di passare da `repositories/**`, contraddicendo la regola assoluta di `AGENTS.md`/`CONTRIBUTING.md`.
 
 Non affrontare questi gap "di nascosto" dentro un task diverso: ognuno merita una branch e una PR dedicata, discussa prima con l'utente vista la sensibilità economica dei dati coinvolti.
 

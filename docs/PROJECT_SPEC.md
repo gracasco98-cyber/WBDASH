@@ -2,7 +2,7 @@
 
 Piattaforma gestionale e di business intelligence per aziende che vendono su Amazon, Shopify (e in futuro altri marketplace/canali). Questo documento è l'architettura di riferimento. Le regole operative per Claude Code sono in `../CLAUDE.md`; la specifica funzionale della Release 1 è in `phases/PHASE_01_SALES_PROFIT.md`.
 
-> **Nota 2026-07-30**: le sezioni 2 (Stack) e 11 (Struttura repository) di questo documento descrivevano scelte assunte prima di avere codice reale. Il 2026-07-30 è stato importato in questo repository un codebase già funzionante e in produzione, che ha sostituito quelle assunzioni con la realtà (Express invece di NestJS, nessun monorepo tool, auth custom invece di Auth.js). Le sezioni sottostanti sono state aggiornate di conseguenza. La sezione 5 (ERD) descrive ancora l'architettura dati **target**; lo schema **reale** oggi in `backend/prisma/schema.prisma` è più semplice (single-tenant, marketplace come stringa, importi in Float) — vedi §5bis e la roadmap di adeguamento in `../CLAUDE.md`.
+> **Nota 2026-07-30**: le sezioni 2 (Stack) e 11 (Struttura repository) di questo documento descrivevano scelte assunte prima di avere codice reale. Il 2026-07-30 è stato importato in questo repository un codebase già funzionante e in produzione, che ha sostituito quelle assunzioni con la realtà (Express invece di NestJS, nessun monorepo tool, auth custom invece di Auth.js). Le sezioni sottostanti sono state aggiornate di conseguenza. La sezione 5 (ERD) descrive ancora l'architettura dati **target**; lo schema **reale** oggi in `backend/prisma/schema.prisma` è più semplice (single-tenant, marketplace come stringa) ma usa già `Decimal` per gli importi monetari (migrato lo stesso 2026-07-30, database vuoto quindi senza backfill) — vedi §5bis e `docs/tech-debt.md` E.2.
 
 ## 1. Scope confermato
 
@@ -165,7 +165,7 @@ Vincolo univoco critico: `(amazonAccountId, amazonOrderId)` — impedisce duplic
 Differenze principali rispetto al target §5:
 - `marketplace` è una **stringa** (`IT`/`DE`/`FR`/`ES`/`ALL_EU`) su ogni record, non un'entità con valuta/fuso/lingua propri.
 - Nessun `amazon_accounts`/`amazon_credentials`: le credenziali SP-API sono in variabili d'ambiente (`AMAZON_EU_REFRESH_TOKEN`, ecc. — vedi `.env.example`), un solo account gestibile.
-- Importi monetari in `Float` (`amount Float @default(0)`), non `Decimal`.
+- Importi monetari in `Decimal` (migrato 2026-07-30, vedi `docs/tech-debt.md` E.2) — ratios/percentuali (ACOS, ROAS, CTR, coefficienti EWMA) restano `Float` di proposito.
 - Nessuna tabella di payload raw: `AmazonOrder` e `ShopifyOrder` sono già "normalizzati" al momento della sync, il payload originale Amazon/Shopify non viene conservato.
 - `AmazonSyncJob` copre già bene il concetto di job (tipo, stato, date, contatori record, errore) — buona base per evolvere verso `sync_jobs`/`sync_cursors` del target.
 - `AmazonSettlement`/`AmazonSettlementTransaction` implementano già la distinzione fatturato-vs-incassato (vedi `docs/tech-debt.md` A.8 per il gap di riconciliazione automatica).

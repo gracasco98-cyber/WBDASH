@@ -2,6 +2,7 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 import type { PrismaClient, OrderLineItem, Prisma } from "@prisma/client";
+import { toNum } from "../../utils/decimal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,13 +39,25 @@ export async function groupLineItemsByProduct(
   const where = buildLineItemWhere(params);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (prisma.orderLineItem.groupBy as any)({
+  const rows = (await (prisma.orderLineItem.groupBy as any)({
     by: ["shopifyProductId", "marketplace"],
     where,
     _sum: { quantity: true, lineTotal: true, refundedAmount: true, totalDiscount: true },
     _count: { id: true },
     _avg: { unitPrice: true },
-  }) as Promise<LineItemGroupRow[]>;
+  })) as any[];
+  return rows.map((r) => ({
+    shopifyProductId: r.shopifyProductId,
+    marketplace: r.marketplace,
+    _sum: {
+      quantity: r._sum.quantity,
+      lineTotal: toNum(r._sum.lineTotal),
+      refundedAmount: toNum(r._sum.refundedAmount),
+      totalDiscount: toNum(r._sum.totalDiscount),
+    },
+    _count: r._count,
+    _avg: { unitPrice: toNum(r._avg.unitPrice) },
+  }));
 }
 
 /**
@@ -62,7 +75,8 @@ export async function groupLineItemsForSnapshot(
     _count: { id: number };
   }>
 > {
-  return prisma.orderLineItem.groupBy({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = (await (prisma.orderLineItem.groupBy as any)({
     by: ["shopifyProductId", "marketplace"],
     where: {
       orderDate: { gte: params.from, lte: params.to },
@@ -73,7 +87,17 @@ export async function groupLineItemsForSnapshot(
       refundedAmount: true,
     },
     _count: { id: true },
-  }) as Promise<any>;
+  })) as any[];
+  return rows.map((r) => ({
+    shopifyProductId: r.shopifyProductId,
+    marketplace: r.marketplace,
+    _sum: {
+      quantity: r._sum.quantity,
+      lineTotal: toNum(r._sum.lineTotal),
+      refundedAmount: toNum(r._sum.refundedAmount),
+    },
+    _count: r._count,
+  }));
 }
 
 /**

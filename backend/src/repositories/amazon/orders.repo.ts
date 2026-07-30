@@ -2,6 +2,7 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 import type { PrismaClient, AmazonOrder, AmazonOrderItem, Prisma } from "@prisma/client";
+import { toNum } from "../../utils/decimal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -108,7 +109,8 @@ export async function groupAmazonItemsForSnapshot(
   _sum: { quantityOrdered: number | null; itemPrice: number | null };
   _count: { id: number };
 }>> {
-  return prisma.amazonOrderItem.groupBy({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = (await (prisma.amazonOrderItem.groupBy as any)({
     by: ["asin", "marketplace"],
     where: {
       purchaseDate: { gte: params.from, lte: params.to },
@@ -119,7 +121,13 @@ export async function groupAmazonItemsForSnapshot(
       itemPrice: true,
     },
     _count: { id: true },
-  }) as any;
+  })) as any[];
+  return rows.map((r) => ({
+    asin: r.asin,
+    marketplace: r.marketplace,
+    _sum: { quantityOrdered: r._sum.quantityOrdered, itemPrice: toNum(r._sum.itemPrice) },
+    _count: r._count,
+  }));
 }
 
 /**
@@ -172,12 +180,22 @@ export async function groupAmazonItemsByAsin(
       { productTitle: { contains: params.search, mode: "insensitive" } },
     ];
   }
-  return prisma.amazonOrderItem.groupBy({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = (await (prisma.amazonOrderItem.groupBy as any)({
     by: ["asin"],
     where,
     _sum: { quantityOrdered: true, itemPrice: true, promotionDiscount: true },
     _count: { id: true },
-  }) as any;
+  })) as any[];
+  return rows.map((r) => ({
+    asin: r.asin,
+    _sum: {
+      quantityOrdered: r._sum.quantityOrdered,
+      itemPrice: toNum(r._sum.itemPrice),
+      promotionDiscount: toNum(r._sum.promotionDiscount),
+    },
+    _count: r._count,
+  }));
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
