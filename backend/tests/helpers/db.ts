@@ -1,6 +1,7 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { PrismaClient } from '@prisma/client';
 import { execSync } from 'node:child_process';
+import { convertDecimalsDeep } from '../../src/utils/decimal';
 
 export interface TestDb {
   prisma: PrismaClient;
@@ -35,9 +36,20 @@ export async function setupTestDb(): Promise<TestDb> {
     stdio: process.env.TEST_VERBOSE ? 'inherit' : 'ignore',
   });
 
+  // Same Decimal→number conversion as backend/src/db.ts (see comment there):
+  // without it, every monetary field read through this client comes back as
+  // Prisma.Decimal, and `expect(row.totalAmount).toBe(450)` fails even when
+  // the value is numerically correct (Decimal fails strict/Object.is
+  // equality against a plain number).
   const prisma = new PrismaClient({
     datasources: { db: { url: databaseUrl } },
-  });
+  }).$extends({
+    query: {
+      $allOperations({ args, query }) {
+        return query(args).then((result) => convertDecimalsDeep(result));
+      },
+    },
+  }) as unknown as PrismaClient;
 
   await prisma.$connect();
 

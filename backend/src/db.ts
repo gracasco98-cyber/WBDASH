@@ -9,22 +9,24 @@ import { PrismaClient } from "@prisma/client";
 import pg from "pg";
 import { convertDecimalsDeep } from "./utils/decimal";
 
-// Raw queries ($queryRaw/$queryRawUnsafe) return Prisma.Decimal for NUMERIC/
-// DECIMAL columns, same as regular model queries — but most raw-SQL call
-// sites across the codebase were written when every monetary column was
-// Float and expect plain JS numbers back. Converting centrally here (instead
-// of at each of the ~50 raw-query call sites) keeps that assumption true
-// without touching business logic. Model queries (findMany, groupBy, ...)
-// are NOT covered by this — those are converted explicitly at the
-// repository boundary (see repositories/**), which is where new code should
-// keep doing it, for symmetry with the repo-layer-only convention.
+// Every monetary column is Prisma.Decimal (see schema.prisma) — for NUMERIC/
+// DECIMAL columns Prisma returns Decimal instances from every operation
+// (findMany, groupBy, $queryRaw, ...), not just raw queries. Most of the
+// codebase was written when those columns were Float and expects plain JS
+// numbers back: `+=` on a Decimal silently concatenates strings instead of
+// adding, and strict-equality test assertions (`.toBe(450)`) fail against a
+// Decimal instance even when the value is numerically identical. Converting
+// centrally here — for every operation, not just raw queries — keeps that
+// assumption true everywhere this shared client is used, on top of (not
+// instead of) the explicit conversions already done at the repository
+// boundary (see repositories/**), which remain the right place for *new*
+// code to do it explicitly, for symmetry with the repo-layer-only
+// convention. tests/helpers/db.ts applies the same extension to the
+// Testcontainers client used in integration/repository tests.
 export const prisma = new PrismaClient().$extends({
   query: {
-    $allOperations({ operation, args, query }) {
-      if (operation === "queryRaw" || operation === "queryRawUnsafe") {
-        return query(args).then((result) => convertDecimalsDeep(result));
-      }
-      return query(args);
+    $allOperations({ args, query }) {
+      return query(args).then((result) => convertDecimalsDeep(result));
     },
   },
 }) as unknown as PrismaClient;
