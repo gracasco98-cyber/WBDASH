@@ -2,6 +2,13 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 import type { PrismaClient, AmazonProductSnapshot, Prisma } from "@prisma/client";
+import { toNum } from "../../utils/decimal";
+
+/** Same shape as AmazonProductSnapshot but with monetary fields as plain numbers. */
+export type AmazonProductSnapshotDTO = Omit<
+  AmazonProductSnapshot,
+  "grossRevenue" | "refundedAmount" | "netRevenue" | "adSpend"
+> & { grossRevenue: number; refundedAmount: number; netRevenue: number; adSpend: number };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,7 +33,7 @@ export interface UpsertSnapshotParams {
 export async function findProductSnapshotHistory(
   prisma: PrismaClient,
   params: { asin: string; from: Date; marketplace?: string }
-): Promise<AmazonProductSnapshot[]> {
+): Promise<AmazonProductSnapshotDTO[]> {
   const where: Prisma.AmazonProductSnapshotWhereInput = {
     asin: params.asin,
     snapshotDate: { gte: params.from },
@@ -34,10 +41,17 @@ export async function findProductSnapshotHistory(
   if (params.marketplace && params.marketplace !== "all") {
     where.marketplace = params.marketplace;
   }
-  return prisma.amazonProductSnapshot.findMany({
+  const rows = await prisma.amazonProductSnapshot.findMany({
     where,
     orderBy: { snapshotDate: "asc" },
   });
+  return rows.map((r) => ({
+    ...r,
+    grossRevenue: toNum(r.grossRevenue),
+    refundedAmount: toNum(r.refundedAmount),
+    netRevenue: toNum(r.netRevenue),
+    adSpend: toNum(r.adSpend),
+  }));
 }
 
 /**

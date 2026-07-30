@@ -16,7 +16,7 @@ model ShopifyOrder {
   processedAt               DateTime?
   cancelledAt               DateTime?
   closedAt                  DateTime?
-  totalAmount               Float
+  totalAmount               Decimal  @db.Decimal(14, 4)
   currency                  String   @default("EUR")
   financialStatus           String
   fulfillmentStatus         String?
@@ -29,8 +29,8 @@ model ShopifyOrder {
   marketplaceDetected       String   @default("UNCLASSIFIED")
   marketplaceDetectionReason String?
   isRefunded                Boolean  @default(false)
-  refundedAmount            Float    @default(0)
-  netAmount                 Float
+  refundedAmount            Decimal  @default(0) @db.Decimal(14, 4)
+  netAmount                 Decimal  @db.Decimal(14, 4)
   isCancelled               Boolean  @default(false)
   isTest                    Boolean  @default(false)
   lineItemsCount            Int      @default(0)
@@ -106,15 +106,15 @@ model OrderLineItem {
   variantTitle      String?
   sku               String?
   quantity          Int          @default(1)
-  unitPrice         Float
-  originalUnitPrice Float
-  totalDiscount     Float        @default(0)
-  lineTotal         Float
+  unitPrice         Decimal      @db.Decimal(14, 4)
+  originalUnitPrice Decimal      @db.Decimal(14, 4)
+  totalDiscount     Decimal      @default(0) @db.Decimal(14, 4)
+  lineTotal         Decimal      @db.Decimal(14, 4)
   currency          String       @default("EUR")
   imageUrl          String?
   marketplace       String       @default("UNCLASSIFIED")
   orderDate         DateTime
-  refundedAmount    Float        @default(0)
+  refundedAmount    Decimal      @default(0) @db.Decimal(14, 4)
 
   @@index([shopifyProductId])
   @@index([marketplace])
@@ -131,10 +131,10 @@ model ProductDailySnapshot {
   marketplace      String   @default("UNCLASSIFIED")
   imageUrl         String?
   unitsSold        Int      @default(0)
-  grossRevenue     Float    @default(0)
+  grossRevenue     Decimal  @default(0) @db.Decimal(14, 4)
   refundedUnits    Int      @default(0)
-  refundedAmount   Float    @default(0)
-  netRevenue       Float    @default(0)
+  refundedAmount   Decimal  @default(0) @db.Decimal(14, 4)
+  netRevenue       Decimal  @default(0) @db.Decimal(14, 4)
   orderCount       Int      @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -180,7 +180,7 @@ model AmazonOrder {
   fulfillmentChannel String           @default("AFN")
   shipCountry        String?
   currency           String           @default("EUR")
-  itemTotal          Float            @default(0)
+  itemTotal          Decimal          @default(0) @db.Decimal(14, 4)
   isBusinessOrder    Boolean          @default(false)
   syncedAt           DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
@@ -202,9 +202,9 @@ model AmazonOrderItem {
   productTitle      String
   quantityOrdered   Int         @default(1)
   quantityShipped   Int         @default(0)
-  itemPrice         Float       @default(0)
-  itemTax           Float       @default(0)
-  promotionDiscount Float       @default(0)
+  itemPrice         Decimal     @default(0) @db.Decimal(14, 4)
+  itemTax           Decimal     @default(0) @db.Decimal(14, 4)
+  promotionDiscount Decimal     @default(0) @db.Decimal(14, 4)
   currency          String      @default("EUR")
   marketplace       String
   purchaseDate      DateTime
@@ -223,11 +223,11 @@ model AmazonProductSnapshot {
   productTitle   String
   marketplace    String
   unitsSold      Int      @default(0)
-  grossRevenue   Float    @default(0)
-  refundedAmount Float    @default(0)
-  netRevenue     Float    @default(0)
+  grossRevenue   Decimal  @default(0) @db.Decimal(14, 4)
+  refundedAmount Decimal  @default(0) @db.Decimal(14, 4)
+  netRevenue     Decimal  @default(0) @db.Decimal(14, 4)
   orderCount     Int      @default(0)
-  adSpend        Float    @default(0)
+  adSpend        Decimal  @default(0) @db.Decimal(14, 4)
   bsr            Int?                       // Best Seller Rank (lower is better, null if unavailable)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -248,7 +248,7 @@ model AmazonSettlement {
   startDate     DateTime
   endDate       DateTime
   depositDate   DateTime?
-  totalAmount   Float     @default(0) // actual bank transfer amount from Amazon
+  totalAmount   Decimal   @default(0) @db.Decimal(14, 4) // actual bank transfer amount from Amazon
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -266,7 +266,7 @@ model AmazonSettlementTransaction {
   sku               String?
   marketplace       String
   amountType        String   // Principal | Commission | FBAPerUnitFulfillmentFee | Cost Per Click Advertising Fees | etc.
-  amount            Float    @default(0)
+  amount            Decimal  @default(0) @db.Decimal(14, 4)
   currency          String   @default("EUR")
   postedDate        DateTime
   quantityPurchased Int?
@@ -288,9 +288,9 @@ model AmazonProductCogs {
   sku              String?
   marketplace      String   @default("ALL")
   productTitle     String?
-  cogsPerUnit      Float    @default(0)
-  shippingCost     Float    @default(0)  // costo spedizione inbound per unità
-  vatRate          Float    @default(0)  // aliquota IVA %
+  cogsPerUnit      Decimal  @default(0) @db.Decimal(14, 4)
+  shippingCost     Decimal  @default(0) @db.Decimal(14, 4)  // costo spedizione inbound per unità
+  vatRate          Float    @default(0)  // aliquota IVA % — rapporto, non importo: resta Float
   vatCategory      String?              // categoria IVA Amazon
   currency         String   @default("EUR")
   imageUrl         String?              // URL immagine prodotto
@@ -315,8 +315,8 @@ model AmazonCogsPriceEntry {
   marketplace  String   @default("ALL")
   supplier     String?
   purchaseDate DateTime
-  pricePerUnit Float
-  shippingCost Float    @default(0)
+  pricePerUnit Decimal  @db.Decimal(14, 4)
+  shippingCost Decimal  @default(0) @db.Decimal(14, 4)
   quantity     Int?
   notes        String?
   currency     String   @default("EUR")
@@ -370,8 +370,8 @@ model AmazonAdSnapshot {
   campaignType String   @default("SP")
   impressions  Int      @default(0)
   clicks       Int      @default(0)
-  spend        Float    @default(0)
-  sales        Float    @default(0)
+  spend        Decimal  @default(0) @db.Decimal(14, 4)
+  sales        Decimal  @default(0) @db.Decimal(14, 4)
   orders       Int      @default(0)
   acos         Float?
   roas         Float?
@@ -396,8 +396,8 @@ model AmazonAdKeywordSnapshot {
   matchType    String   @default("EXACT")
   impressions  Int      @default(0)
   clicks       Int      @default(0)
-  spend        Float    @default(0)
-  sales        Float    @default(0)
+  spend        Decimal  @default(0) @db.Decimal(14, 4)
+  sales        Decimal  @default(0) @db.Decimal(14, 4)
   orders       Int      @default(0)
   acos         Float?
   createdAt    DateTime @default(now())
@@ -424,13 +424,13 @@ model AmazonAdSearchTerm {
   adGroupId    String   @default("")
   impressions  Int      @default(0)
   clicks       Int      @default(0)
-  spend        Float    @default(0)
-  sales        Float    @default(0)
+  spend        Decimal  @default(0) @db.Decimal(14, 4)
+  sales        Decimal  @default(0) @db.Decimal(14, 4)
   orders       Int      @default(0)
   acos         Float?
   roas         Float?
   ctr          Float    @default(0)
-  cpc          Float    @default(0)
+  cpc          Decimal  @default(0) @db.Decimal(14, 4)
   isWasted     Boolean  @default(false) // spend>1 & orders=0
   syncedAt     DateTime @default(now())
 
@@ -451,7 +451,7 @@ model AmazonAdKeyword {
   keywordText String
   matchType   String
   state       String
-  bid         Float    @default(0)
+  bid         Decimal  @default(0) @db.Decimal(14, 4)
   syncedAt    DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -463,6 +463,10 @@ model AmazonAdKeyword {
 // ─── Forecast Self-Calibration ────────────────────────────────────────────────
 
 // Per-marketplace learned ratios, updated daily via EWMA from actual settlements
+// NOTA: questo modello resta interamente Float di proposito. Non sono importi di un
+// ledger ma coefficienti di un modello statistico (rapporti, medie EWMA, punteggi di
+// confidenza, deviazioni standard): la precisione esatta di Decimal non serve e la
+// matematica EWMA (alpha * new + (1-alpha) * old) è nativamente in floating point.
 model AmazonForecastCalibration {
   id              String   @id @default(cuid())
   marketplace     String   @unique
@@ -598,15 +602,15 @@ model AmazonForecastSnapshot {
   periodStart      String    // YYYY-MM-DD
   periodEnd        String    // YYYY-MM-DD
   depositEst       String    // YYYY-MM-DD
-  // What we predicted
+  // What we predicted — proiezione statistica, resta Float (vedi nota su AmazonForecastCalibration)
   forecastGross    Float
   forecastNet      Float
   forecastFees     Float
   payoutRatioPct   Float
   totalOrders      Int
-  // Actual values (filled when settlement arrives and reconciles this period)
-  actualNet        Float?
-  actualGross      Float?
+  // Actual values (filled when settlement arrives and reconciles this period) — importi reali riconciliati: Decimal
+  actualNet        Decimal?  @db.Decimal(14, 4)
+  actualGross      Decimal?  @db.Decimal(14, 4)
   settlementId     String?
   errorPct         Float?    // |actual-forecast|/actual × 100
   reconciledAt     DateTime?

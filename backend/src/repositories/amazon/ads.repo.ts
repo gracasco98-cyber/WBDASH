@@ -3,6 +3,7 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 import type { PrismaClient, Prisma } from "@prisma/client";
+import { toNum } from "../../utils/decimal";
 
 // ─── AmazonAdSnapshot — Read ──────────────────────────────────────────────────
 
@@ -50,11 +51,23 @@ export async function groupAdSnapshotsByCampaign(
   };
   if (params.marketplace) where.marketplace = params.marketplace;
 
-  return prisma.amazonAdSnapshot.groupBy({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = (await (prisma.amazonAdSnapshot.groupBy as any)({
     by: ["campaignId", "marketplace"],
     where,
     _sum: { impressions: true, clicks: true, spend: true, sales: true, orders: true },
-  }) as any;
+  })) as any[];
+  return rows.map((r) => ({
+    campaignId: r.campaignId,
+    marketplace: r.marketplace,
+    _sum: {
+      impressions: r._sum.impressions,
+      clicks: r._sum.clicks,
+      spend: toNum(r._sum.spend),
+      sales: toNum(r._sum.sales),
+      orders: r._sum.orders,
+    },
+  }));
 }
 
 // ─── AmazonAdSearchTerm ───────────────────────────────────────────────────────

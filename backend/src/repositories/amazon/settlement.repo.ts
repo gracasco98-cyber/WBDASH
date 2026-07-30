@@ -2,6 +2,7 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 import type { PrismaClient, AmazonSettlementTransaction, Prisma } from "@prisma/client";
+import { toNum } from "../../utils/decimal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ export async function findSettlementNearDate(
 ): Promise<{ settlementId: string; totalAmount: number | null; endDate: Date; depositDate: Date | null } | null> {
   const windowMs = (params.windowDays ?? 7) * 86400000;
   const nearMs = params.nearDate.getTime();
-  return (prisma as any).amazonSettlement.findFirst({
+  const row = await (prisma as any).amazonSettlement.findFirst({
     where: {
       marketplace: params.marketplace,
       endDate: {
@@ -70,6 +71,8 @@ export async function findSettlementNearDate(
     },
     orderBy: { depositDate: "desc" },
   });
+  if (!row) return null;
+  return { ...row, totalAmount: toNum(row.totalAmount) };
 }
 
 // ─── AmazonSettlementTransaction operations ────────────────────────────────────
@@ -103,12 +106,15 @@ export async function createSettlementTransactions(
 export async function findTransactionsForOrders(
   prisma: PrismaClient,
   orderIds: string[]
-): Promise<Pick<AmazonSettlementTransaction, "orderId" | "amountType" | "amount" | "transactionType">[]> {
+): Promise<
+  (Pick<AmazonSettlementTransaction, "orderId" | "amountType" | "transactionType"> & { amount: number })[]
+> {
   if (orderIds.length === 0) return [];
-  return prisma.amazonSettlementTransaction.findMany({
+  const rows = await prisma.amazonSettlementTransaction.findMany({
     where: { orderId: { in: orderIds } },
     select: { orderId: true, amountType: true, amount: true, transactionType: true },
   });
+  return rows.map((r) => ({ ...r, amount: toNum(r.amount) }));
 }
 
 /**

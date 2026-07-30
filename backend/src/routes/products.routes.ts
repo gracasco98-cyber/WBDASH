@@ -483,19 +483,22 @@ router.get("/aggregated", async (req: Request, res: Response) => {
         });
       }
       const agg = settlementsByAsin.get(asin)!;
+      // settlement.amount is a Prisma.Decimal (monetary column) — convert once,
+      // `+=` on a Decimal silently concatenates strings instead of adding.
+      const amount = Number(settlement.amount);
 
       if (settlement.transactionType === "Refund") {
-        agg.totalRefunds += Math.abs(settlement.amount);
-        agg.refundCost += Math.abs(settlement.amount);
+        agg.totalRefunds += Math.abs(amount);
+        agg.refundCost += Math.abs(amount);
       }
       if (settlement.amountType?.includes("Commission") || settlement.amountType?.includes("Fee")) {
-        agg.amazonFees += Math.abs(settlement.amount);
+        agg.amazonFees += Math.abs(amount);
       }
       if (settlement.amountType?.includes("Shipping") || settlement.amountType?.includes("Inbound")) {
-        agg.shippingCosts += Math.abs(settlement.amount);
+        agg.shippingCosts += Math.abs(amount);
       }
       if (settlement.amountType === "Principal") {
-        agg.totalPayout += settlement.amount;
+        agg.totalPayout += amount;
       }
     }
 

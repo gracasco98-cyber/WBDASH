@@ -2,6 +2,27 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 import type { PrismaClient } from "@prisma/client";
+import { toNum } from "../../utils/decimal";
+
+/** Converts the Decimal-typed monetary fields on a raw COGS row to plain numbers. */
+function normalizeCogsRow(row: any): any {
+  if (!row) return row;
+  return {
+    ...row,
+    cogsPerUnit: toNum(row.cogsPerUnit),
+    shippingCost: toNum(row.shippingCost),
+  };
+}
+
+/** Converts the Decimal-typed monetary fields on a raw price-entry row to plain numbers. */
+function normalizePriceEntryRow(row: any): any {
+  if (!row) return row;
+  return {
+    ...row,
+    pricePerUnit: toNum(row.pricePerUnit),
+    shippingCost: toNum(row.shippingCost),
+  };
+}
 
 // ─── AmazonProductCogs ────────────────────────────────────────────────────────
 
@@ -9,7 +30,8 @@ import type { PrismaClient } from "@prisma/client";
  * Find all COGS records, ordered by updatedAt DESC.
  */
 export async function findAllCogs(prisma: PrismaClient): Promise<any[]> {
-  return (prisma as any).amazonProductCogs.findMany({ orderBy: { updatedAt: "desc" } });
+  const rows = await (prisma as any).amazonProductCogs.findMany({ orderBy: { updatedAt: "desc" } });
+  return rows.map(normalizeCogsRow);
 }
 
 /**
@@ -22,7 +44,7 @@ export async function findCogsForAsins(
   params: { asins: string[]; marketplace?: string }
 ): Promise<any[]> {
   const { asins, marketplace } = params;
-  return (prisma as any).amazonProductCogs.findMany({
+  const rows = await (prisma as any).amazonProductCogs.findMany({
     where: {
       asin: { in: asins },
       OR: (marketplace && marketplace !== "all")
@@ -30,6 +52,7 @@ export async function findCogsForAsins(
         : [{ marketplace: "IT" }, { marketplace: "ALL" }],
     },
   });
+  return rows.map(normalizeCogsRow);
 }
 
 /**
@@ -64,7 +87,7 @@ export async function upsertCogs(
     imageUrl?: string | null;
   }
 ): Promise<any> {
-  return (prisma as any).amazonProductCogs.upsert({
+  const row = await (prisma as any).amazonProductCogs.upsert({
     where: { asin_marketplace: { asin: params.asin, marketplace: params.marketplace } },
     create: {
       asin:         params.asin,
@@ -91,6 +114,7 @@ export async function upsertCogs(
       imageUrl:     params.imageUrl,
     },
   });
+  return normalizeCogsRow(row);
 }
 
 /**
@@ -144,10 +168,11 @@ export async function findPriceEntries(
   params?: { asin?: string }
 ): Promise<any[]> {
   const where = params?.asin ? { asin: params.asin } : {};
-  return (prisma as any).amazonCogsPriceEntry.findMany({
+  const rows = await (prisma as any).amazonCogsPriceEntry.findMany({
     where,
     orderBy: [{ asin: "asc" }, { purchaseDate: "desc" }],
   });
+  return rows.map(normalizePriceEntryRow);
 }
 
 /**
@@ -158,10 +183,11 @@ export async function findMostRecentPriceEntry(
   prisma: PrismaClient,
   asin: string
 ): Promise<any | null> {
-  return (prisma as any).amazonCogsPriceEntry.findFirst({
+  const row = await (prisma as any).amazonCogsPriceEntry.findFirst({
     where: { asin },
     orderBy: { purchaseDate: "desc" },
   });
+  return normalizePriceEntryRow(row);
 }
 
 /**
@@ -184,7 +210,8 @@ export async function createPriceEntry(
     currency: string;
   }
 ): Promise<any> {
-  return (prisma as any).amazonCogsPriceEntry.create({ data });
+  const row = await (prisma as any).amazonCogsPriceEntry.create({ data });
+  return normalizePriceEntryRow(row);
 }
 
 /**
@@ -195,12 +222,14 @@ export async function updatePriceEntry(
   id: string,
   data: Record<string, unknown>
 ): Promise<any> {
-  return (prisma as any).amazonCogsPriceEntry.update({ where: { id }, data });
+  const row = await (prisma as any).amazonCogsPriceEntry.update({ where: { id }, data });
+  return normalizePriceEntryRow(row);
 }
 
 /**
  * Delete a price history entry by ID, returning the deleted record.
  */
 export async function deletePriceEntry(prisma: PrismaClient, id: string): Promise<any> {
-  return (prisma as any).amazonCogsPriceEntry.delete({ where: { id } });
+  const row = await (prisma as any).amazonCogsPriceEntry.delete({ where: { id } });
+  return normalizePriceEntryRow(row);
 }

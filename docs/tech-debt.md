@@ -297,6 +297,31 @@ I file sotto sono **sopra i limiti documentati** in CONTRIBUTING.md ma **non in 
 
 ---
 
+## E. Repository layer non rispettato nel dominio Amazon (scoperto 2026-07-30)
+
+### E.1 — `backend/src/amazon/**` e diverse route/service chiamano Prisma direttamente
+
+- **File**: `amazon/*.service.ts`, `amazon/forecast/*.service.ts`, `amazon/routes/*.ts`, `jobs/sync.job.ts`, `chat/tools.ts`, `routes/analytics.routes.ts`, `routes/products.routes.ts`, `routes/stats.routes.ts` (e altri)
+- **Problema**: `AGENTS.md`/`CONTRIBUTING.md` documentano come regola assoluta "niente accesso diretto a Prisma fuori da `backend/src/repositories/`", enforced "dopo PR 12". In realtà molti di questi file continuano a chiamare `prisma.X.findMany/groupBy/$queryRaw` direttamente (spesso con `(prisma as any)` per bypassare i tipi), senza mai passare dal repository layer.
+- **Impatto**: la regola nei documenti operativi non riflette la realtà del codice. Ogni nuova modifica allo schema (es. Float→Decimal, vedi E.2) ha una superficie di rischio molto più ampia di quella dichiarata, perché tocca decine di file invece dei soli 12 file in `repositories/`.
+- **Effort**: XL (richiederebbe di spostare tutte le query dirette elencate sopra dentro repository dedicati — non fatto in questa sessione, fuori scope rispetto al task che l'ha scoperto)
+- **Origine**: scoperta durante la migrazione Decimal del 2026-07-30 (vedi E.2)
+
+### E.2 — Migrazione Float → Decimal per gli importi monetari (completata 2026-07-30)
+
+- **Cosa è cambiato**: tutti i campi realmente monetari (non rapporti/percentuali come ACOS, ROAS, CTR, né i coefficienti EWMA di `AmazonForecastCalibration`, che restano `Float` di proposito — vedi commento nello schema) sono ora `Decimal(14,4)` in `backend/prisma/schema.prisma`. Il database era vuoto al momento della migrazione: nessun backfill dati necessario, solo cambio di definizione schema.
+- **Perché serviva un fix più ampio del previsto**: `Prisma.Decimal` non supporta l'operatore `+`/`+=` nativamente — coercizione a stringa e concatenazione silenziosa invece di somma, senza errore TypeScript nei tanti punti tipati `any` (es. `$queryRaw<any[]>`, `groupBy as any`). Il problema di E.1 (repo layer non rispettato) ha reso il fix rilevante per ~25 file, non solo per `repositories/**`.
+- **Come è stato risolto**:
+  1. `backend/src/utils/decimal.ts` — `toNum()` (conversione singolo valore) e `convertDecimalsDeep()` (conversione ricorsiva di un intero risultato), entrambe testate in `decimal.test.ts`.
+  2. Ogni funzione di `repositories/**` che legge campi monetari (via `findMany`, `groupBy`/`_sum`/`_avg`, o full-entity) converte esplicitamente a `number` prima di restituire il risultato al chiamante — il contratto verso services/routes/frontend resta `number`, invariato.
+  3. `backend/src/db.ts` — il client Prisma condiviso usa `$extends({ query: { $allOperations } })` per convertire automaticamente ogni `Decimal` nei risultati di `$queryRaw`/`$queryRawUnsafe`, la superficie più ampia e più difficile da correggere file-per-file (query SQL grezze in `forecast.routes.ts`, `settlement.routes.ts`, `chat/tools.ts`, ecc.).
+  4. Un bug reale (non ipotetico) è stato trovato e corretto in `routes/products.routes.ts` (`agg.totalPayout += settlement.amount` su un risultato letto via `(prisma as any).amazonSettlementTransaction.findMany`, fuori dal repository layer) — confermando che il rischio di E.1 non era solo teorico.
+- **Verifica eseguita**: `tsc --noEmit` pulito su backend e frontend; 130 test non-DB verdi (incluso `marketplace-rules.test.ts`, invariato, a conferma che nessuna regressione è stata introdotta altrove). I test di integrazione/repository che usano Testcontainers **non sono stati eseguibili in questo ambiente** (Docker non disponibile) — vanno rilanciati (`npm run test`) in un ambiente con Docker prima di fidarsi ciecamente di questa migrazione end-to-end.
+- **Non ancora fatto**: E.1 resta aperto. La conversione centralizzata in `db.ts` copre le query raw; le query dirette via `.findMany()`/`.groupBy()` fuori da `repositories/**` sono state audit manualmente (ogni occorrenza di `+=`/`+` su un campo monetario nell'intero `backend/src`) ma non spostate dentro il repository layer — se in futuro si aggiunge nuovo codice che legge questi campi con `+=` fuori da un repository, il bug del punto precedente può ripresentarsi.
+- **Origine**: richiesta esplicita dell'utente (2026-07-30): "il programma deve essere vuoto... la migrazione decimal [va fatta] senza cerimonia di migrazione dati" — database vuoto, quindi solo cambio schema/codice, nessun backfill.
+
+---
+
 ## Voci risolte
 
 (nessuna voce ancora — quando una voce viene fixata, va spostata qui con la PR di fix)
