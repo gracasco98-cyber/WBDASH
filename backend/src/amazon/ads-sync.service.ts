@@ -1,0 +1,428 @@
+// amazon/ads-sync.service.ts — Fetch SP campaign daily metrics and store in AmazonAdSnapshot
+
+import { prisma } from "../db";
+import {
+  getConfiguredProfiles,
+  fetchSPCampaignReport,
+  fetchSPKeywordReport,
+  listSPCampaigns,
+  listSPAdGroups,
+  listSPKeywords,
+  isAdsConfigured,
+  listProfiles,
+  SpCampaign,
+  SpAdGroup,
+  SpKeyword,
+} from "./ads-api.service";
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function dateStr(d: Date): string {
+  return d.toISOString().split("T")[0];
+}
+
+// ── Live campaign cache (2-min TTL) ──────────────────────────────────────────
+interface LiveCampaign extends SpCampaign {
+  marketplace: string;
+}
+
+let _liveCampaignCache: LiveCampaign[] | null = null;
+let _liveCampaignCacheExpiry = 0;
+
+/** Fetch all live campaigns from all configured profiles (2-min cache) */
+export async function getLiveCampaigns(filterMarketplace?: string): Promise<LiveCampaign[]> {
+  // Refresh cache if expired
+  if (!_liveCampaignCache || Date.now() > _liveCampaignCacheExpiry) {
+    if (!isAdsConfigured()) return [];
+    const profiles = getConfiguredProfiles();
+    const result: LiveCampaign[] = [];
+    for (const p of profiles) {
+      try {
+        const campaigns = await listSPCampaigns(p.profileId);
+        for (const c of campaigns) result.push({ ...c, marketplace: p.marketplace });
+      } catch (e) {
+        console.warn(`[Ads] getLiveCampaigns ${p.marketplace} failed:`, String(e).slice(0, 80));
+      }
+    }
+    _liveCampaignCache = result;
+    _liveCampaignCacheExpiry = Date.now() + 2 * 60_000; // 2-min TTL
+    console.log(`[Ads] Live campaign cache refreshed: ${result.length} campaigns`);
+  }
+
+  if (filterMarketplace && filterMarketplace !== "all") {
+    return _liveCampaignCache!.filter((c) => c.marketplace === filterMarketplace);
+  }
+  return _liveCampaignCache!;
+}
+
+/** Force-refresh the live campaign cache (call from background job) */
+export async function refreshLiveCampaignCache(): Promise<void> {
+  _liveCampaignCache = null;
+  _liveCampaignCacheExpiry = 0;
+  await getLiveCampaigns().catch((e) =>
+    console.warn("[Ads] Cache refresh failed:", String(e).slice(0, 120))
+  );
+}
+
+/** Upsert campaign snapshots into DB — handles both single-day and multi-day (DAILY) rows.
+ *  Uses findFirst+create/update instead of upsert to avoid Prisma issues with nullable
+ *  adGroupId in compound unique keys.
+ *
+ * Exported for testing (PR 9 lock-in tests).
+ */
+export async function saveSnapshots(
+  marketplace: string,
+  defaultDate: string,
+  rows: Awaited<ReturnType<typeof fetchSPCampaignReport>>
+): Promise<number> {
+  let saved = 0;
+  for (const row of rows) {
+    const rowDate   = row.date ?? defaultDate;
+    const snapDate  = new Date(rowDate);
+    const acos      = row.sales > 0 ? row.spend / row.sales : null;
+    const roas      = row.spend > 0 ? row.sales / row.spend : null;
+
+    // findFirst avoids Prisma's compound-null-unique upsert limitation
+    const existing = await (prisma as any).amazonAdSnapshot.findFirst({
+      where: {
+        snapshotDate: snapDate,
+        marketplace,
+        campaignId:   row.campaignId,
+        adGroupId:    null,
+      },
+    });
+
+    if (existing) {
+      await (prisma as any).amazonAdSnapshot.update({
+        where: { id: existing.id },
+        data: {
+          campaignName: row.campaignName,
+          impressions:  row.impressions,
+          clicks:       row.clicks,
+          spend:        row.spend,
+          sales:        row.sales,
+          orders:       row.orders,
+          acos,
+          roas,
+        },
+      });
+    } else {
+      await (prisma as any).amazonAdSnapshot.create({
+        data: {
+          snapshotDate: snapDate,
+          marketplace,
+          campaignId:   row.campaignId,
+          campaignName: row.campaignName,
+          campaignType: "SP",
+          impressions:  row.impressions,
+          clicks:       row.clicks,
+          spend:        row.spend,
+          sales:        row.sales,
+          orders:       row.orders,
+          acos,
+          roas,
+        },
+      });
+    }
+    saved++;
+  }
+  return saved;
+}
+
+// ── Per-marketplace sync lock + cooldown after timeout ───────────────────────
+const _marketplaceSyncing = new Set<string>();          // keys = "marketplace-startDate"
+const _syncCooldown       = new Map<string, number>();  // key → timestamp of last failure
+const COOLDOWN_MS         = 30 * 60_000;               // 30 min before retrying a timed-out sync
+
+/** Sync one marketplace for a date range using a single report.
+ *  Guards against duplicate concurrent syncs (lock per key) and
+ *  implements a 30-min cooldown after a timeout failure so we don't
+ *  hammer Amazon with doomed retries.
+ */
+export async function syncMarketplaceDateRange(
+  profileId: string,
+  marketplace: string,
+  startDate: string,
+  endDate: string
+): Promise<number> {
+  const lockKey = `${marketplace}-${startDate}-${endDate}`;
+
+  // ── Cooldown check ──────────────────────────────────────────────────────────
+  const lastFail = _syncCooldown.get(lockKey);
+  if (lastFail && Date.now() - lastFail < COOLDOWN_MS) {
+    const remainMin = Math.ceil((COOLDOWN_MS - (Date.now() - lastFail)) / 60_000);
+    console.log(`[Ads Sync] ${marketplace} ${startDate} in cooldown (${remainMin}min remaining) — skipping`);
+    return 0;
+  }
+
+  // ── Concurrency lock ────────────────────────────────────────────────────────
+  if (_marketplaceSyncing.has(lockKey)) {
+    console.log(`[Ads Sync] ${marketplace} ${startDate} already syncing — skipping duplicate`);
+    return 0;
+  }
+  _marketplaceSyncing.add(lockKey);
+
+  console.log(`[Ads Sync] ${marketplace} ${startDate}→${endDate} report...`);
+  try {
+    const rows = await fetchSPCampaignReport(profileId, startDate, endDate);
+    if (!rows.length) {
+      console.log(`[Ads Sync] ${marketplace} ${startDate}→${endDate} — no data`);
+      return 0;
+    }
+    const saved = await saveSnapshots(marketplace, startDate, rows);
+    console.log(`[Ads Sync] ${marketplace} ${startDate}→${endDate} — saved ${saved} rows`);
+    _syncCooldown.delete(lockKey); // success → clear cooldown
+    return saved;
+  } catch (err) {
+    const msg = String(err);
+    console.error(`[Ads Sync] Failed ${marketplace} ${startDate}→${endDate}:`, msg.slice(0, 200));
+    // Set cooldown only for timeout errors (not auth/network errors worth retrying sooner)
+    if (msg.includes("timed out") || msg.includes("PENDING")) {
+      _syncCooldown.set(lockKey, Date.now());
+      console.log(`[Ads Sync] ${marketplace} ${startDate} cooldown set (30 min)`);
+    }
+    return 0;
+  } finally {
+    _marketplaceSyncing.delete(lockKey);
+  }
+}
+
+/** Sync all configured marketplaces for yesterday (run daily) */
+export async function syncAdsDaily(): Promise<void> {
+  if (!isAdsConfigured()) {
+    console.log("[Ads Sync] Advertising API not configured — skipping");
+    return;
+  }
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const date = dateStr(yesterday);
+
+  const profiles = getConfiguredProfiles();
+  console.log(`[Ads Sync] Daily sync for ${date} — ${profiles.length} marketplaces`);
+
+  for (const profile of profiles) {
+    await syncMarketplaceDateRange(profile.profileId, profile.marketplace, date, date);
+    await sleep(2000);
+  }
+  console.log("[Ads Sync] Daily sync complete");
+}
+
+/**
+ * Backfill N days using monthly report batches.
+ * One report per month per marketplace = ~4 reports for 120 days
+ * vs 120 reports for the day-by-day approach.
+ */
+export async function syncAdsBackfill(days = 30): Promise<void> {
+  if (!isAdsConfigured()) {
+    console.log("[Ads Sync] Advertising API not configured — skipping backfill");
+    return;
+  }
+
+  const profiles = getConfiguredProfiles();
+  const today = new Date();
+  const startFrom = new Date(today);
+  startFrom.setDate(startFrom.getDate() - days);
+
+  // Build monthly chunks
+  const chunks: Array<{ start: string; end: string }> = [];
+  let cur = new Date(startFrom);
+  while (cur <= today) {
+    const chunkStart = dateStr(cur);
+    const endOfMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+    const chunkEnd = dateStr(endOfMonth < today ? endOfMonth : today);
+    chunks.push({ start: chunkStart, end: chunkEnd });
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+  }
+
+  console.log(`[Ads Sync] Backfill ${days} days — ${chunks.length} monthly chunks × ${profiles.length} marketplaces`);
+
+  for (const profile of profiles) {
+    for (const chunk of chunks) {
+      await syncMarketplaceDateRange(profile.profileId, profile.marketplace, chunk.start, chunk.end);
+      await sleep(3000);
+    }
+  }
+  console.log("[Ads Sync] Backfill complete");
+}
+
+/** Sync any missing days between last snapshot date and yesterday */
+export async function syncAdsCatchUp(): Promise<void> {
+  if (!isAdsConfigured()) return;
+  const profiles = getConfiguredProfiles();
+
+  // Find latest snapshot date in DB
+  const latest = await prisma.$queryRawUnsafe<{ d: string }[]>(
+    `SELECT MAX("snapshotDate")::text AS d FROM "AmazonAdSnapshot"`
+  );
+  const latestDate = latest[0]?.d;
+  if (!latestDate) return;
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = dateStr(yesterday);
+
+  if (latestDate >= yesterdayStr) {
+    console.log(`[Ads CatchUp] Data is current (latest: ${latestDate})`);
+    return;
+  }
+
+  // Sync from day after latest up to yesterday
+  const fromDate = new Date(latestDate);
+  fromDate.setDate(fromDate.getDate() + 1);
+  const fromStr = dateStr(fromDate);
+
+  console.log(`[Ads CatchUp] Missing data from ${fromStr} to ${yesterdayStr} — syncing...`);
+  for (const profile of profiles) {
+    await syncMarketplaceDateRange(profile.profileId, profile.marketplace, fromStr, yesterdayStr);
+    await sleep(2000);
+  }
+  console.log(`[Ads CatchUp] Done`);
+}
+
+/** Verify connection: fetch profiles from Amazon and return them */
+export async function verifyAdsConnection(): Promise<{ ok: boolean; profiles: any[]; error?: string }> {
+  try {
+    const profiles = await listProfiles();
+    return { ok: true, profiles };
+  } catch (err) {
+    return { ok: false, profiles: [], error: String(err) };
+  }
+}
+
+/** Get a quick campaign list (no reports — instant) for a marketplace */
+export async function quickCampaignList(marketplace: string): Promise<any[]> {
+  const { getProfileId } = await import("./ads-api.service");
+  const profileId = getProfileId(marketplace);
+  return listSPCampaigns(profileId);
+}
+
+// ── Live keyword cache (5-min TTL) ────────────────────────────────────────────
+interface CachedStructure {
+  keywords:  (SpKeyword  & { marketplace: string })[];
+  adGroups:  (SpAdGroup  & { marketplace: string })[];
+  expiresAt: number;
+}
+let _structureCache: CachedStructure | null = null;
+
+/** Fetch all ad groups + keywords from all configured profiles (5-min cache) */
+export async function getLiveStructure(filterMarketplace?: string): Promise<{
+  adGroups: (SpAdGroup & { marketplace: string })[];
+  keywords: (SpKeyword & { marketplace: string })[];
+}> {
+  if (!_structureCache || Date.now() > _structureCache.expiresAt) {
+    if (!isAdsConfigured()) return { adGroups: [], keywords: [] };
+    const profiles = getConfiguredProfiles();
+    const adGroups: (SpAdGroup & { marketplace: string })[] = [];
+    const keywords: (SpKeyword & { marketplace: string })[] = [];
+
+    for (const p of profiles) {
+      try {
+        const ag = await listSPAdGroups(p.profileId);
+        for (const g of ag) adGroups.push({ ...g, marketplace: p.marketplace });
+        await sleep(500);
+        const kw = await listSPKeywords(p.profileId);
+        for (const k of kw) keywords.push({ ...k, marketplace: p.marketplace });
+        console.log(`[Ads Structure] ${p.marketplace}: ${ag.length} adGroups, ${kw.length} keywords`);
+      } catch (e) {
+        console.warn(`[Ads Structure] ${p.marketplace} failed:`, String(e).slice(0, 100));
+      }
+      await sleep(500);
+    }
+
+    _structureCache = { adGroups, keywords, expiresAt: Date.now() + 5 * 60_000 };
+    console.log(`[Ads Structure] Cache: ${adGroups.length} adGroups, ${keywords.length} keywords`);
+  }
+
+  const { adGroups, keywords } = _structureCache!;
+  if (filterMarketplace && filterMarketplace !== "all") {
+    return {
+      adGroups: adGroups.filter((g) => g.marketplace === filterMarketplace),
+      keywords: keywords.filter((k) => k.marketplace === filterMarketplace),
+    };
+  }
+  return { adGroups, keywords };
+}
+
+/** Sync keyword metrics for all configured profiles */
+export async function syncKeywordMetrics(days = 30): Promise<void> {
+  if (!isAdsConfigured()) return;
+  const profiles = getConfiguredProfiles();
+  const today = new Date();
+  const start = new Date(today); start.setDate(today.getDate() - days);
+  const startDate = dateStr(start);
+  const endDate   = dateStr(new Date(today.getTime() - 86400000));
+
+  for (const p of profiles) {
+    try {
+      console.log(`[Ads KW] Syncing ${p.marketplace} keywords ${startDate}→${endDate}`);
+
+      // Try to get adGroup→campaign mapping (live API, 30s timeout baked into adsRequest)
+      let adGroupMap = new Map<string, string>(); // adGroupId → campaignId
+      try {
+        const adGroups = await listSPAdGroups(p.profileId);
+        for (const ag of adGroups) adGroupMap.set(ag.adGroupId, ag.campaignId);
+        console.log(`[Ads KW] ${p.marketplace}: got ${adGroups.length} adGroups for campaign mapping`);
+      } catch (e) {
+        console.warn(`[Ads KW] ${p.marketplace}: adGroup mapping failed (will save without campaignId):`, String(e).slice(0, 120));
+      }
+
+      const rows = await fetchSPKeywordReport(p.profileId, startDate, endDate);
+      let saved = 0;
+      // SUMMARY report: all rows are aggregated over the period, use endDate as snapshotDate
+      const snapDate = new Date(endDate);
+      for (const row of rows) {
+        const acos = row.sales > 0 ? row.spend / row.sales : null;
+        // Use adGroupMap to resolve campaignId if not in the report
+        const campaignId = row.campaignId || adGroupMap.get(row.adGroupId) || "";
+        // Use findFirst + create/update to avoid compound-key issues
+        const existing = await (prisma as any).amazonAdKeywordSnapshot.findFirst({
+          where: {
+            snapshotDate: snapDate,
+            marketplace:  p.marketplace,
+            keywordId:    row.keywordId,
+          },
+        });
+        if (existing) {
+          await (prisma as any).amazonAdKeywordSnapshot.update({
+            where: { id: existing.id },
+            data: {
+              campaignId:   campaignId,
+              adGroupId:    row.adGroupId,
+              keywordText:  row.keywordText,
+              matchType:    row.matchType,
+              impressions:  row.impressions,
+              clicks:       row.clicks,
+              spend:        row.spend,
+              sales:        row.sales,
+              orders:       row.orders,
+              acos,
+            },
+          });
+        } else {
+          await (prisma as any).amazonAdKeywordSnapshot.create({
+            data: {
+              snapshotDate: snapDate,
+              marketplace:  p.marketplace,
+              campaignId:   campaignId,
+              adGroupId:    row.adGroupId,
+              keywordId:    row.keywordId,
+              keywordText:  row.keywordText,
+              matchType:    row.matchType,
+              impressions:  row.impressions,
+              clicks:       row.clicks,
+              spend:        row.spend,
+              sales:        row.sales,
+              orders:       row.orders,
+              acos,
+            },
+          });
+        }
+        saved++;
+      }
+      console.log(`[Ads KW] ${p.marketplace}: saved ${saved} keyword rows`);
+    } catch (e) {
+      console.error(`[Ads KW] ${p.marketplace} failed:`, String(e).slice(0, 200));
+    }
+    await sleep(3000);
+  }
+}

@@ -1,0 +1,303 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap');
+
+/* ── CSS theme variables ────────────────────────────────────────────────────── */
+:root {
+  --font-geist: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'DM Mono', monospace;
+
+  /* Default: dark theme */
+  --bg-base:   #0a0a0f;
+  --bg-card:   #111118;
+  --bg-hover:  #16161f;
+  --bg-border: #1e1e2e;
+  --body-color: #e2e2f0;
+  --scrollbar-track:  #0a0a0f;
+  --scrollbar-thumb:  #2a2a3e;
+  --scrollbar-thumb-hover: #3a3a5e;
+}
+
+[data-theme="light"] {
+  --bg-base:   #f5f6fa;       /* very subtle off-white, not blinding */
+  --bg-card:   #ffffff;       /* pure white cards stand out clearly */
+  --bg-hover:  #f0f1f6;       /* light hover */
+  --bg-border: #e4e5ef;       /* visible but subtle */
+  --body-color: #111827;      /* near-black text for maximum contrast */
+  --scrollbar-track:  #f5f6fa;
+  --scrollbar-thumb:  #c7c9d9;
+  --scrollbar-thumb-hover: #9395a8;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  font-size: 18px; /* +2pt rispetto al default 16px — scala tutti i rem proporzionalmente */
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--body-color);
+  font-family: var(--font-geist);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+/* Selection */
+::selection { background: rgba(110, 231, 183, 0.2); color: #6ee7b7; }
+
+/* Number highlight */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Live badge pulse */
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+.live-dot { animation: livePulse 1.8s ease-in-out infinite; }
+
+/* Card hover glow */
+.card-hover {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.card-hover:hover {
+  border-color: rgba(110, 231, 183, 0.15);
+  box-shadow: 0 0 20px rgba(110, 231, 183, 0.05);
+}
+
+/* Gradient number */
+.gradient-number {
+  background: linear-gradient(135deg, #6ee7b7 0%, #60a5fa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Table row hover */
+.table-row-hover:hover { background: rgba(0,0,0,0.03); }
+[data-theme="dark"] .table-row-hover:hover { background: rgba(255,255,255,0.02); }
+
+/* Animate in */
+.animate-in {
+  animation: fadeIn 0.35s ease-out both;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   LIGHT THEME — Bianco / Blu / Nero
+   Palette: sfondo bianco puro, testo nero #0f172a, accento blu #1d4ed8
+   Niente colori pastello — tutto ad alto contrasto e leggibilità massima.
+
+   Contrasto testo su bianco (#ffffff):
+     #0f172a → 19.1:1  ✓ AAA  (titoli, valori principali)
+     #1e293b → 16.1:1  ✓ AAA  (testo secondario)
+     #334155 → 8.9:1   ✓ AAA  (label, sottotitoli)
+     #64748b → 4.6:1   ✓ AA   (testo muted, icone)
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── CSS variable overrides per il tema chiaro ───────────────────────────────── */
+[data-theme="light"] {
+  --bg-base:   #f8fafc;
+  --bg-card:   #ffffff;
+  --bg-hover:  #f1f5f9;
+  --bg-border: #e2e8f0;
+  --body-color: #0f172a;
+}
+
+/* ── Body base ───────────────────────────────────────────────────────────────── */
+[data-theme="light"] body {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* ── Testo: sostituisci tutti i grigi chiari con colori ad alto contrasto ────── */
+[data-theme="light"] .text-white       { color: #0f172a !important; }
+[data-theme="light"] .text-zinc-100    { color: #0f172a !important; }
+[data-theme="light"] .text-zinc-200    { color: #1e293b !important; }
+[data-theme="light"] .text-zinc-300    { color: #334155 !important; }
+[data-theme="light"] .text-zinc-400    { color: #475569 !important; }
+[data-theme="light"] .text-zinc-500    { color: #64748b !important; }
+[data-theme="light"] .text-zinc-600    { color: #94a3b8 !important; }
+
+/* ── Skeleton loading ─────────────────────────────────────────────────────────── */
+[data-theme="light"] .bg-white\/5,
+[data-theme="light"] .bg-white\/10     { background-color: #e2e8f0 !important; }
+[data-theme="light"] .bg-white\/\[0\.02\] { background-color: #f8fafc !important; }
+[data-theme="light"] .animate-pulse    { --tw-pulse-opacity: 0.5; }
+
+/* ── Zinc backgrounds → equivalenti chiari ───────────────────────────────────── */
+[data-theme="light"] .bg-zinc-800,
+[data-theme="light"] .bg-zinc-800\/50  { background-color: #f1f5f9 !important; }
+[data-theme="light"] .bg-zinc-900      { background-color: #e2e8f0 !important; }
+[data-theme="light"] .bg-zinc-950      { background-color: #cbd5e1 !important; }
+[data-theme="light"] .bg-zinc-800\/20  { background-color: rgba(241,245,249,0.9) !important; }
+[data-theme="light"] .bg-zinc-700\/50  { background-color: #e2e8f0 !important; }
+[data-theme="light"] .bg-black\/60     { background-color: rgba(0,0,0,0.55) !important; }
+
+/* ── Bordi ────────────────────────────────────────────────────────────────────── */
+[data-theme="light"] .border-zinc-700  { border-color: #cbd5e1 !important; }
+[data-theme="light"] .border-zinc-800  { border-color: #e2e8f0 !important; }
+[data-theme="light"] .border-zinc-600  { border-color: #cbd5e1 !important; }
+
+/* ── Linee divisorie nelle tabelle ─────────────────────────────────────────────── */
+[data-theme="light"] .divide-y > * + *,
+[data-theme="light"] [class*="divide-bg-border"] > * + * { border-color: #e2e8f0 !important; }
+
+/* ── Header / barra di navigazione ─────────────────────────────────────────────── */
+[data-theme="light"] header {
+  background-color: rgba(255,255,255,0.95) !important;
+  backdrop-filter: blur(12px) !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(15,23,42,0.08) !important;
+}
+
+/* ── Hover states ─────────────────────────────────────────────────────────────── */
+[data-theme="light"] .hover\:bg-zinc-800:hover,
+[data-theme="light"] .hover\:bg-zinc-700:hover  { background-color: #f1f5f9 !important; }
+[data-theme="light"] .hover\:bg-bg-card:hover   { background-color: #f8fafc !important; }
+[data-theme="light"] .hover\:text-white:hover   { color: #0f172a !important; }
+[data-theme="light"] .table-row-hover:hover      { background-color: #f8fafc !important; }
+[data-theme="light"] .hover\:bg-white\/\[0\.02\]:hover { background-color: #f8fafc !important; }
+
+/* ── Input / Select / Textarea ──────────────────────────────────────────────────── */
+[data-theme="light"] input,
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+[data-theme="light"] input:focus,
+[data-theme="light"] select:focus,
+[data-theme="light"] textarea:focus {
+  border-color: #1d4ed8 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(29,78,216,0.12) !important;
+}
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder { color: #94a3b8 !important; }
+
+/* ── Tabelle ────────────────────────────────────────────────────────────────────── */
+[data-theme="light"] thead th {
+  color: #334155 !important;
+  background-color: #f8fafc !important;
+  border-bottom-color: #e2e8f0 !important;
+  font-weight: 600 !important;
+}
+[data-theme="light"] tbody td    { color: #1e293b !important; }
+[data-theme="light"] table tbody tr:hover { background-color: #f1f5f9 !important; }
+
+/* ── Sidebar / nav links ───────────────────────────────────────────────────────── */
+[data-theme="light"] nav a,
+[data-theme="light"] nav button        { color: #334155 !important; }
+[data-theme="light"] nav a:hover,
+[data-theme="light"] nav button:hover  { color: #0f172a !important; background-color: #f1f5f9 !important; }
+[data-theme="light"] nav a.active,
+[data-theme="light"] [aria-current="page"] { color: #1d4ed8 !important; background-color: #eff6ff !important; }
+
+/* ── KPI Cards — sovrascrittura inline dark gradient ───────────────────────────── */
+[data-theme="light"] .card-hover {
+  background: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 0 0 1px #e2e8f0 !important;
+  border-color: #e2e8f0 !important;
+}
+[data-theme="light"] .card-hover:hover {
+  box-shadow: 0 4px 12px rgba(15,23,42,0.12), 0 0 0 1px #cbd5e1 !important;
+  transform: translateY(-1px);
+}
+
+/* ── Badge / pill colorati — aumenta saturazione per visibilità ─────────────────── */
+/* Emerald (verde) → saturato e leggibile su bianco */
+[data-theme="light"] .bg-emerald-500\/15 { background-color: #d1fae5 !important; }
+[data-theme="light"] .text-emerald-400   { color: #059669 !important; }
+[data-theme="light"] .border-emerald-500\/30 { border-color: #6ee7b7 !important; }
+
+/* Amber (arancione) → saturato */
+[data-theme="light"] .bg-amber-500\/15  { background-color: #fef3c7 !important; }
+[data-theme="light"] .text-amber-400    { color: #d97706 !important; }
+[data-theme="light"] .border-amber-500\/30 { border-color: #fcd34d !important; }
+[data-theme="light"] .text-amber-300    { color: #b45309 !important; }
+
+/* Blue */
+[data-theme="light"] .bg-blue-500\/15  { background-color: #dbeafe !important; }
+[data-theme="light"] .text-blue-400    { color: #1d4ed8 !important; }
+[data-theme="light"] .border-blue-500\/30 { border-color: #93c5fd !important; }
+
+/* Red */
+[data-theme="light"] .bg-red-500\/15,
+[data-theme="light"] .bg-red-500\/10   { background-color: #fee2e2 !important; }
+[data-theme="light"] .text-red-400     { color: #dc2626 !important; }
+[data-theme="light"] .border-red-500\/20,
+[data-theme="light"] .border-red-500\/30 { border-color: #fca5a5 !important; }
+
+/* Purple */
+[data-theme="light"] .bg-purple-500\/15 { background-color: #ede9fe !important; }
+[data-theme="light"] .text-purple-400   { color: #7c3aed !important; }
+
+/* ── Accent colors vividi (non pastello) ─────────────────────────────────────── */
+[data-theme="light"] .text-accent-primary   { color: #059669 !important; }   /* verde saturato */
+[data-theme="light"] .text-accent-secondary { color: #7c3aed !important; }
+[data-theme="light"] .text-accent-amber     { color: #d97706 !important; }
+[data-theme="light"] .text-accent-red       { color: #dc2626 !important; }
+[data-theme="light"] .text-accent-blue      { color: #1d4ed8 !important; }   /* blu vivido */
+
+/* ── Info / warning / success banners ────────────────────────────────────────── */
+[data-theme="light"] .bg-blue-500\/5  { background-color: #eff6ff !important; }
+[data-theme="light"] .border-blue-500\/20 { border-color: #bfdbfe !important; }
+[data-theme="light"] .text-blue-400   { color: #1d4ed8 !important; }
+[data-theme="light"] .bg-blue-500\/10 { background-color: #dbeafe !important; }
+
+/* ── Modal dialogs ────────────────────────────────────────────────────────────── */
+[data-theme="light"] .bg-zinc-900.border.border-zinc-700.rounded-2xl {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* ── Recharts ─────────────────────────────────────────────────────────────────── */
+[data-theme="light"] .recharts-cartesian-grid line { stroke: #e2e8f0 !important; }
+[data-theme="light"] .recharts-text tspan          { fill: #475569 !important; }
+[data-theme="light"] .recharts-legend-item-text    { color: #334155 !important; }
+
+/* ── Transizioni fluide ─────────────────────────────────────────────────────────── */
+html[data-theme] body,
+html[data-theme] header,
+html[data-theme] .card-hover,
+html[data-theme] .bg-bg-card,
+html[data-theme] .bg-bg-base,
+html[data-theme] input,
+html[data-theme] select {
+  transition: background-color 0.18s ease, color 0.18s ease,
+              border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+/* ── iOS Safari: prevent auto-zoom on input/select focus ──────────────────── */
+/* iOS zooms when font-size < 16px. @supports targets iOS WebKit only.        */
+@supports (-webkit-touch-callout: none) {
+  select,
+  input[type="date"],
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ── Chat widget — iOS safe area ──────────────────────────────────────────── */
+/* Lifts the toggle button above the iOS home indicator on notched devices.    */
+.chat-safe-bottom {
+  bottom: max(1.5rem, calc(1.5rem + env(safe-area-inset-bottom, 0px)));
+}

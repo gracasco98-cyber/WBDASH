@@ -1,6 +1,8 @@
 # WBDASH — Project Spec
 
-Piattaforma gestionale e di business intelligence per aziende che vendono su Amazon (e in futuro su altri marketplace/canali). Questo documento è l'architettura di riferimento per la Fase 0 (fondamenta). Le regole operative per Claude Code sono in `../CLAUDE.md`; la specifica funzionale della Release 1 è in `phases/PHASE_01_SALES_PROFIT.md`.
+Piattaforma gestionale e di business intelligence per aziende che vendono su Amazon, Shopify (e in futuro altri marketplace/canali). Questo documento è l'architettura di riferimento. Le regole operative per Claude Code sono in `../CLAUDE.md`; la specifica funzionale della Release 1 è in `phases/PHASE_01_SALES_PROFIT.md`.
+
+> **Nota 2026-07-30**: le sezioni 2 (Stack) e 11 (Struttura repository) di questo documento descrivevano scelte assunte prima di avere codice reale. Il 2026-07-30 è stato importato in questo repository un codebase già funzionante e in produzione, che ha sostituito quelle assunzioni con la realtà (Express invece di NestJS, nessun monorepo tool, auth custom invece di Auth.js). Le sezioni sottostanti sono state aggiornate di conseguenza. La sezione 5 (ERD) descrive ancora l'architettura dati **target**; lo schema **reale** oggi in `backend/prisma/schema.prisma` è più semplice (single-tenant, marketplace come stringa, importi in Float) — vedi §5bis e la roadmap di adeguamento in `../CLAUDE.md`.
 
 ## 1. Scope confermato
 
@@ -10,41 +12,43 @@ Piattaforma gestionale e di business intelligence per aziende che vendono su Ama
 
 Nota tecnica SP-API: le credenziali (refresh token) sono rilasciate per *region* (NA/EU/FE), non per singolo marketplace. Un seller account con account Europa ottiene un solo set di credenziali valido per IT/DE/FR/ES/UK. Questo non elimina la necessità di modellare ogni marketplace come entità distinta (valuta, fuso orario, fee, lingua), ma significa che `amazon_credentials` è legato all'account+region, mentre `marketplaces` è una tabella di lookup indipendente collegata agli ordini.
 
-## 2. Stack tecnico
+## 2. Stack tecnico (reale, aggiornato al 2026-07-30)
 
 | Area | Tecnologia | Note |
 |---|---|---|
-| Frontend | Next.js + TypeScript | |
-| UI | Tailwind CSS + shadcn/ui | |
+| Frontend | Next.js 14 + TypeScript | |
+| UI | Tailwind CSS | (non shadcn/ui) |
 | Grafici | Recharts | |
-| Backend | NestJS + TypeScript | |
-| Worker | Processo NestJS separato | job schedulati, sync, ricalcoli |
+| Backend | Node.js + Express + TypeScript | non NestJS |
 | Database | PostgreSQL | |
-| ORM | Prisma | migrazioni versionate, mai `db push` in prod |
-| Cache e code | Redis + BullMQ | |
-| File / immagini | Object storage S3-compatible | default: Cloudflare R2 |
-| Autenticazione | Auth.js | default assunto, vedi `CLAUDE.md` |
-| API Amazon | Selling Partner API (SP-API) | Orders, Finances, Reports |
-| Monorepo | pnpm workspaces + Turborepo | default assunto |
-| Hosting iniziale | Render | default assunto |
-| Database gestito | Neon | default assunto (staging + prod) |
-| Monitoraggio errori | Sentry | |
-| Log | Pino, log strutturato JSON | |
-| Test | Vitest/Jest + Playwright | |
-| Repository | GitHub | |
-| CI/CD | GitHub Actions | |
+| ORM | Prisma | oggi senza storico migrazioni (`db push`) — da versionare, vedi `CLAUDE.md` |
+| Cache e code | Nessuna (no Redis/BullMQ) | sync via job schedulato + polling, non via coda |
+| File / immagini | Non ancora presente | da introdurre quando serve (prodotti, documenti) |
+| Autenticazione | Custom: bcrypt + express-session + connect-pg-simple + MFA (otplib/qrcode) | non Auth.js |
+| API Amazon | Selling Partner API (SP-API) | Orders, Ads, Settlement/Finances, Reports (inventory, forecast) — già implementato |
+| API Shopify | Admin GraphQL API + webhook + polling 60s | canale non previsto nella Fase 0 originale, ma già integrato e in uso |
+| Monorepo | Nessuno | `backend/` e `frontend/` sono due app indipendenti nello stesso repo Git |
+| Hosting | AWS Lightsail | Docker Compose, deploy manuale via SCP |
+| Database gestito | Nessuno (Postgres self-hosted su Lightsail) | |
+| Monitoraggio errori | `AppErrorLog` (tabella propria), nessun Sentry | |
+| Log | console/log applicativi | non ancora Pino strutturato |
+| Test | Vitest + Testcontainers (Postgres reale) + MSW | no Playwright ancora |
+| Repository | GitHub (privato, GitHub Free — niente branch protection automatica) | |
+| CI/CD | GitHub Actions (`ci-backend`, `ci-frontend`, `pr-quality`) | |
 
-Architettura: **monolite modulare**. Niente microservizi in questa fase, salvo necessità tecnica dimostrabile.
+Architettura: domini organizzati per cartella (`backend/src/amazon/`, `backend/src/auth/`, `backend/src/services/` per Shopify, `backend/src/repositories/` come unico accesso a Prisma) invece di moduli NestJS. La separazione delle responsabilità esiste comunque — vedi `CLAUDE.md § Architettura attuale`.
 
 ```
 Frontend (Next.js)
     ↓
-Backend API (NestJS)
+Backend API (Express)
     ↓
-Moduli applicativi (vedi CLAUDE.md § Architettura modulare)
+Domini applicativi (amazon/, shopify via services/, auth/, repositories/)
     ↓
-PostgreSQL + Redis + Object Storage
+PostgreSQL
 ```
+
+I moduli previsti dalla visione originale (magazzino con ledger, fornitori, ordini d'acquisto, fatture/prima nota/scadenzario) non sono ancora stati costruiti: vanno aggiunti seguendo i pattern già in uso (repository layer, route Express, test Testcontainers), non introducendo un framework diverso a metà progetto.
 
 ## 3. Modello dati a tre livelli
 
@@ -83,9 +87,11 @@ Tre stati del profitto, sempre distinti e mai confusi in UI:
 - **Consolidato**: dopo l'arrivo delle transazioni finanziarie (Finances API).
 - **Riconciliato**: verificato con settlement e fatture.
 
-Il motore di calcolo (`packages/profit-engine`) è isolato dalla UI, versionato, testabile. Ogni calcolo salva: versione formula, data calcolo, input utilizzati, valuta originale, tasso di cambio, risultato in valuta marketplace e in EUR. Un ricalcolo (cambio costo merce o formula) crea una nuova versione, non sovrascrive quella precedente.
+Il motore di calcolo va isolato dalla UI in un modulo dedicato (`backend/src/profit-engine/` o equivalente, coerente con l'architettura Express reale — non un package di monorepo, dato che non esiste un monorepo), versionato, testabile. Ogni calcolo salva: versione formula, data calcolo, input utilizzati, valuta originale, tasso di cambio, risultato in valuta marketplace e in EUR. Un ricalcolo (cambio costo merce o formula) crea una nuova versione, non sovrascrive quella precedente. **Questo motore non esiste ancora nel codebase importato**: oggi il P&L (`frontend/src/app/amazon/pl/page.tsx`) e i KPI derivano da query dirette sui repository, senza un livello di calcolo versionato — è uno dei gap principali da colmare per rispettare il principio non negoziabile "nessun dato economico sovrascritto senza storico".
 
-## 5. ERD testuale (entità principali — Fase 0/1)
+## 5. ERD testuale — architettura dati TARGET (non ancora implementata così)
+
+> Le entità sotto restano l'obiettivo architetturale (multi-tenant, multi-account, raw layer separato, Decimal). Per lo schema realmente in uso oggi vedi §5bis subito dopo.
 
 ### Identity & organizzazione
 - `organizations` (id, name, baseCurrency, timezone, createdAt, updatedAt)
@@ -148,35 +154,50 @@ Vincolo univoco critico: `(amazonAccountId, amazonOrderId)` — impedisce duplic
 - Scritture concorrenti su `sync_cursors` durante retry paralleli → lock ottimistico o `SELECT ... FOR UPDATE`.
 - Ricalcolo `daily_metrics` mentre arrivano nuove `financial_transactions` in ritardo → il job di ricalcolo deve essere idempotente e rieseguibile su un intervallo, non solo sull'ultimo giorno.
 
+## 5bis. Schema reale (importato 2026-07-30) — `backend/prisma/schema.prisma`
+
+24 modelli, single-tenant (nessun `Organization`/multi-account), Amazon + Shopify nello stesso schema:
+
+- **Shopify**: `ShopifyOrder`, `OrderLineItem`, `MarketplaceRule` (placeholder, non usato a runtime — vedi `docs/tech-debt.md` C.2), `SyncState`, `WebhookEventLog`, `AppErrorLog`, `ProductDailySnapshot`.
+- **Amazon**: `AmazonSyncJob`, `AmazonOrder`, `AmazonOrderItem`, `AmazonProductSnapshot`, `AmazonSettlement`, `AmazonSettlementTransaction`, `AmazonProductCogs`, `AmazonCogsPriceEntry`, `AmazonInventory`, `AmazonAdSnapshot`, `AmazonAdKeywordSnapshot`, `AmazonAdSearchTerm`, `AmazonAdKeyword`, `AmazonForecastCalibration`, `AmazonForecastSnapshot`.
+- **Identity/audit**: `User`, `MfaDevice`, `AuditLog`.
+
+Differenze principali rispetto al target §5:
+- `marketplace` è una **stringa** (`IT`/`DE`/`FR`/`ES`/`ALL_EU`) su ogni record, non un'entità con valuta/fuso/lingua propri.
+- Nessun `amazon_accounts`/`amazon_credentials`: le credenziali SP-API sono in variabili d'ambiente (`AMAZON_EU_REFRESH_TOKEN`, ecc. — vedi `.env.example`), un solo account gestibile.
+- Importi monetari in `Float` (`amount Float @default(0)`), non `Decimal`.
+- Nessuna tabella di payload raw: `AmazonOrder` e `ShopifyOrder` sono già "normalizzati" al momento della sync, il payload originale Amazon/Shopify non viene conservato.
+- `AmazonSyncJob` copre già bene il concetto di job (tipo, stato, date, contatori record, errore) — buona base per evolvere verso `sync_jobs`/`sync_cursors` del target.
+- `AmazonSettlement`/`AmazonSettlementTransaction` implementano già la distinzione fatturato-vs-incassato (vedi `docs/tech-debt.md` A.8 per il gap di riconciliazione automatica).
+
 ## 6. Strategia SP-API e sincronizzazione
 
-- Un account Amazon (`amazon_accounts`) appartiene a una region (EU in questo caso) e vende su N `marketplaces`.
-- Le credenziali sono cifrate a riposo, con rotazione e scadenza gestite in `amazon_credentials`.
-- Ogni sync usa **Orders API** (ordini nuovi/modificati), **Finances API** (transazioni finanziarie, non serve attendere la chiusura periodo), **Reports API** (inventario, advertising, riconciliazione).
+**Realtà implementata** (non basata su coda BullMQ, ma su `setInterval` in-process nel backend Express — `backend/src/amazon/sync.job.ts`):
 
-Job schedulato ogni 30 minuti:
+| Dato | Cadenza reale |
+|---|---|
+| Ordini (incremental sync) | ogni 5 minuti — **supera** il requisito Fase 1 di 30 minuti |
+| Snapshot prodotto giornaliero | 01:00 + refresh orario per il giorno corrente |
+| Settlement | ogni 4 ore |
+| Forecast snapshot | ogni 6 ore |
+| Ads: cache campagne live | ogni 2 minuti |
+| Ads: metriche giornaliere | ogni 24 ore |
+| Ads: keyword metrics | ogni 3 ore |
+| Ads: search term | ogni notte alle 02:00 |
+| Shopify (ordini) | webhook in tempo reale + polling ogni 60s |
 
-1. Individua account attivi.
-2. Crea `sync_jobs` per ogni combinazione account × marketplace × tipo dato.
-3. Recupera ordini nuovi/modificati (incrementale via `sync_cursors`).
-4. Normalizza gli ordini (Livello 1 → Livello 2).
-5. Recupera transazioni finanziarie disponibili.
-6. Aggiorna advertising quando disponibile.
-7. Ricalcola le `daily_metrics` per gli intervalli coinvolti (non solo l'ultimo giorno: i dati finanziari arrivano in ritardo).
-8. Invalida la cache Redis dei KPI coinvolti.
-9. Registra statistiche ed errori sul job.
+Limiti noti di questo approccio (da affrontare quando si introduce eventualmente una coda come BullMQ, non urgente oggi): i job vivono nel processo Express stesso (`setInterval`), quindi un riavvio del backend interrompe temporaneamente tutte le sync fino al prossimo avvio; non c'è retry con backoff strutturato né dead letter queue; non c'è distinzione esplicita tra errore temporaneo e permanente a livello di infrastruttura (solo `errorMessage` su `AmazonSyncJob`).
 
-Requisiti di sync: incrementale, idempotente, recuperabile, osservabile, resiliente ai retry, rispettosa dei rate limit, gestisce paginazione, dati in ritardo, ricalcolo di intervalli passati, nessun duplicato. Stati job: `queued`, `running`, `completed`, `completed_with_warnings`, `failed`, `cancelled`.
+**Target originale (non ancora implementato)**: un account Amazon (`amazon_accounts`) per region con N `marketplaces`, credenziali cifrate con rotazione (`amazon_credentials`), coda BullMQ con `sync_jobs`/`sync_cursors` per idempotenza esplicita e cache Redis invalidata sui KPI. Vedi `CLAUDE.md § Roadmap di adeguamento`.
 
 ## 7. Ambienti
 
 | Ambiente | Database | Note |
 |---|---|---|
-| Development | Postgres locale via Docker Compose | Redis e MinIO (stand-in R2) anch'essi in Docker Compose |
-| Staging | Neon (branch dedicato) | dati di test / sandbox SP-API |
-| Production | Neon | backup automatici, migrazioni solo via pipeline |
+| Development | Postgres locale (Docker Compose incluso, `docker-compose.yml`) | |
+| Production | Postgres self-hosted su AWS Lightsail | `docker-compose.prod.yml`, deploy manuale via SCP (il server non ha git installato) |
 
-Nessuna migrazione va eseguita manualmente in produzione: solo tramite pipeline CI/CD dopo approvazione.
+Non esiste ancora un ambiente di staging separato, né un database gestito (Neon/RDS/Supabase): tutto gira su un'unica istanza Lightsail. Nessuna migrazione va eseguita manualmente in produzione senza conferma esplicita, anche in assenza di una pipeline CI/CD che lo impedisca automaticamente.
 
 ## 8. Migrazioni
 
@@ -184,53 +205,55 @@ Nessuna migrazione va eseguita manualmente in produzione: solo tramite pipeline 
 - Modifiche distruttive seguono il processo: nuova struttura → doppia scrittura temporanea → backfill → verifica → migrazione letture → periodo di deprecazione → rimozione autorizzata.
 - Nessuna migrazione già applicata va modificata; nessuna colonna eliminata senza fase di deprecazione.
 
-## 9. Test e CI/CD
+## 9. Test e CI/CD (reale)
 
-- Unit test, integration test, test su database reale (non mockato per i path economici), test di idempotenza, test gestione errori, test autorizzazioni, test casi limite.
-- Fixture obbligatorie per il profit engine: vendita standard, vendita con sconto, ordine multi-prodotto, rimborso totale, rimborso parziale, fee tardiva, costo advertising tardivo, costo prodotto mancante, cambio valuta, reso, rimborso senza reso, commissione negativa, accredito Amazon, ordine cancellato.
-- Pipeline GitHub Actions: lint → typecheck → test → build, obbligatoria prima del merge su `develop`/`main`.
+- Vitest + `@testcontainers/postgresql` (Postgres reale, non mockato) per repository, integration test su sync Shopify/Amazon, stats. MSW per mockare le API esterne (Shopify GraphQL, SP-API, Ads API).
+- Fixture esistenti in `backend/tests/fixtures/`: `amazon-orders`, `amazon-settlements`, `shopify-orders`, `users`. Non copre ancora tutti i casi limite economici elencati nella visione originale (fee tardiva, cambio valuta, commissione negativa, ecc.) — da estendere quando si costruisce il profit engine versionato.
+- Pipeline GitHub Actions reali: `ci-backend.yml` (path `backend/**`), `ci-frontend.yml` (path `frontend/**`), `pr-quality.yml`. Obbligatorie verdi prima del merge su `develop`/`main`, per convenzione (non enforced da GitHub Free — vedi `docs/branch-protection.md`).
 
-## 10. Osservabilità e sicurezza
+## 10. Osservabilità e sicurezza (reale)
 
-- Log JSON strutturati (Pino) con correlation ID, request ID, job ID, account ID, marketplace ID. Mai token, dati personali o payload sensibili nei log.
-- Metriche sui job, alert su errori, dead letter queue, retry con backoff, distinzione errore temporaneo/permanente.
-- RBAC, segregazione dati per organizzazione, cifratura segreti, validazione input, rate limiting, audit log, backup con restore testato, principio del minimo privilegio.
+- Log: `console.log`/`console.error` con prefissi (`[Sync]`, `[Amazon Sync]`), non ancora JSON strutturato né Pino. Nessun correlation ID cross-servizio.
+- Errori applicativi in tabella `AppErrorLog`; job Amazon tracciano stato/errore su `AmazonSyncJob`. Nessun Sentry, nessuna dead letter queue, nessun retry con backoff strutturato (i job si riprovano al giro di `setInterval` successivo).
+- Sicurezza già presente: bcrypt per password, sessioni server-side (`connect-pg-simple`), MFA (TOTP via `otplib`/`qrcode`), rate limiting (`express-rate-limit`), `AuditLog` su azioni admin/auth, validazione input con `zod`.
+- Gap: nessuna segregazione multi-organizzazione (single-tenant), nessuna cifratura esplicita delle credenziali SP-API a riposo (vivono in variabili d'ambiente, non in DB).
 
-## 11. Struttura repository
+## 11. Struttura repository (reale)
 
 ```
 WBDASH/
-├── apps/
-│   ├── web/            # Next.js
-│   ├── api/             # NestJS
-│   └── worker/          # NestJS worker (job schedulati)
-├── packages/
-│   ├── database/        # Prisma client condiviso
-│   ├── ui/
-│   ├── shared/
-│   ├── config/
-│   ├── amazon-sp-api/   # client SP-API isolato
-│   ├── profit-engine/   # motore di calcolo isolato e versionato
-│   └── testing/
+├── backend/
+│   ├── prisma/schema.prisma        # nessuna cartella migrations/ ancora
+│   └── src/
+│       ├── amazon/                  # SP-API: routes/, forecast/, services, repo-adjacent logic
+│       ├── auth/
+│       ├── chat/
+│       ├── config/                  # marketplace-rules.ts (Shopify)
+│       ├── jobs/                    # sync Shopify
+│       ├── middleware/
+│       ├── repositories/            # amazon/, shopify/ — unico accesso a Prisma
+│       ├── routes/                  # stats, analytics, products, chat
+│       ├── services/                 # shopify.service, order.service, product.service
+│       ├── sse/
+│       ├── types/
+│       └── webhooks/
+│   └── tests/                       # fixtures/, helpers/, integration/, repositories/
+├── frontend/
+│   └── src/
+│       ├── app/                     # pagine (dashboard, amazon/**, admin, login, account)
+│       ├── components/               # dashboard/, amazon/, amazon/payments/, auth/, products/, layout/
+│       ├── context/, hooks/, lib/
+│       └── test/
 ├── docs/
 │   ├── PROJECT_SPEC.md
 │   ├── phases/
-│   ├── decisions/       # ADR, creata al bisogno
-│   ├── architecture/    # creata al bisogno
-│   ├── database/        # creata al bisogno
-│   └── modules/         # creata al bisogno
-├── infrastructure/
-│   ├── docker/
-│   ├── scripts/
-│   └── github/
-├── prisma/
-│   ├── schema.prisma
-│   ├── migrations/
-│   └── seed/
-├── CLAUDE.md
-├── README.md
-├── docker-compose.yml
-└── package.json
+│   ├── tech-debt.md
+│   ├── cd-evolution.md
+│   └── branch-protection.md
+├── nginx/, scripts/, .github/workflows/
+├── docker-compose.yml, docker-compose.prod.yml, nginx.conf
+├── CLAUDE.md, AGENTS.md, CONTRIBUTING.md, GIT_WORKFLOW.md, DEPLOY_CHECKLIST.md, README.md
+└── amazon-auth.js                   # helper OAuth SP-API standalone
 ```
 
-Nota: in questa fase (Fase 0 — documentazione) le cartelle `apps/`, `packages/`, `prisma/` **non vengono ancora create**. Verranno scaffoldate come primo task implementativo di Fase 0, una volta approvato questo documento.
+Non esiste (e non va introdotta senza motivo esplicito) una struttura `apps/`/`packages/`/monorepo tool: `backend/` e `frontend/` restano due app Node indipendenti nello stesso repository, coerentemente con come il codice è stato scritto, testato e deployato finora.

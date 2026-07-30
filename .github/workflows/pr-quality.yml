@@ -1,0 +1,55 @@
+name: pr-quality
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  size-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute diff size
+        id: diff
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          LOC=$(git diff --stat "$BASE_SHA" "$HEAD_SHA" -- ':!**/*.lock' ':!**/package-lock.json' ':!**/yarn.lock' \
+            | tail -1 \
+            | grep -oE '[0-9]+ insertions?\(\+\)' \
+            | grep -oE '[0-9]+' \
+            | head -1)
+          LOC="${LOC:-0}"
+          echo "loc=$LOC" >> "$GITHUB_OUTPUT"
+          echo "Diff size: $LOC LOC"
+
+      - name: Check size limit
+        env:
+          LOC: ${{ steps.diff.outputs.loc }}
+          LABELS: ${{ toJson(github.event.pull_request.labels) }}
+        run: |
+          MAX=1000
+          HAS_LABEL=$(echo "$LABELS" | grep -c '"name":"large-pr-approved"' || echo 0)
+          if [ "$LOC" -gt "$MAX" ] && [ "$HAS_LABEL" -eq 0 ]; then
+            echo "::error::PR too large ($LOC LOC > $MAX). Add label 'large-pr-approved' to override."
+            exit 1
+          fi
+          echo "OK: $LOC LOC (limit $MAX, label override: $HAS_LABEL)"
+
+  title-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title format
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if echo "$TITLE" | grep -qE '^(feat|fix|ui|refactor|perf|data|api|chore|docs|test)(\([a-z0-9-]+\))?: .+'; then
+            echo "OK: title format valid"
+          else
+            echo "::error::PR title must match 'type(scope): description'. Got: $TITLE"
+            echo "Allowed types: feat, fix, ui, refactor, perf, data, api, chore, docs, test"
+            exit 1
+          fi

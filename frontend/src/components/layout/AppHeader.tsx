@@ -1,0 +1,124 @@
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Bell, Menu, X } from "lucide-react";
+import ThemeToggle from "@/components/ThemeToggle";
+import { UserMenu } from "@/components/auth/UserMenu";
+
+interface AppHeaderProps {
+  accentColor?: "primary" | "amber";
+  /** Rendered centered on desktop, in the hamburger drawer on mobile */
+  centerContent?: React.ReactNode;
+  /** Right-side controls (SyncStatus, clock, refresh) — already hidden on mobile via their own classes */
+  rightExtras?: React.ReactNode;
+  notificationCount?: number;
+  onNotificationClick?: () => void;
+}
+
+export default function AppHeader({
+  accentColor = "primary",
+  centerContent,
+  rightExtras,
+  notificationCount = 0,
+  onNotificationClick,
+}: AppHeaderProps) {
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+
+  return (
+    <>
+      <header className="border-b border-bg-border px-3 md:px-5 flex items-center justify-between sticky top-0 z-40 bg-bg-base/95 backdrop-blur-sm h-[57px]">
+
+        {/* ── Logo ─────────────────────────────────────────────────────── */}
+        <div
+          onClick={() => router.push("/")}
+          className="flex items-center gap-2 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.ico"
+            alt="My Dashboard"
+            className="h-8 w-8 rounded-lg object-contain shrink-0"
+          />
+          <span className="font-bold text-white tracking-wide text-sm hidden sm:block uppercase">
+            My Dashboard
+          </span>
+        </div>
+
+        {/* ── Center slot — ONLY on md+ (hidden on mobile, shown in drawer) ── */}
+        {centerContent && (
+          <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center pointer-events-auto">
+            {centerContent}
+          </div>
+        )}
+
+        {/* ── Right cluster ─────────────────────────────────────────────── */}
+        <div className="flex items-center gap-1 md:gap-2 ml-auto">
+
+          {/* Page-specific extras (SyncStatus, clock, refresh) — hidden on mobile via own classes */}
+          {rightExtras}
+
+          {/* Notification bell */}
+          <button
+            onClick={onNotificationClick}
+            className="relative p-1.5 rounded-lg border border-bg-border text-zinc-400 hover:text-white hover:bg-bg-card transition-colors"
+            aria-label="Notifiche ordini live"
+          >
+            <Bell size={14} />
+            {notificationCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-[9px] font-bold flex items-center justify-center leading-none" style={{ color: '#ffffff' }}>
+                {notificationCount > 9 ? "9+" : notificationCount}
+              </span>
+            )}
+          </button>
+
+          {/* ThemeToggle — hidden on mobile (saves space) */}
+          <div className="hidden sm:block">
+            <ThemeToggle />
+          </div>
+
+          {/* UserMenu */}
+          <UserMenu />
+
+          {/* Hamburger — mobile only */}
+          <button
+            onClick={() => setOpen(v => !v)}
+            className="md:hidden p-1.5 rounded-lg hover:bg-bg-card border border-bg-border text-zinc-400 hover:text-white transition-colors"
+            aria-label={open ? "Chiudi menu" : "Apri menu"}
+          >
+            {open ? <X size={16} /> : <Menu size={16} />}
+          </button>
+        </div>
+      </header>
+
+      {/* ── Mobile drawer ─────────────────────────────────────────────────── */}
+      {open && (
+        <div
+          className="md:hidden fixed inset-0 z-30 bg-black/60"
+          onClick={() => setOpen(false)}
+        >
+          <nav
+            className="absolute top-[57px] left-0 right-0 bg-bg-base border-b border-bg-border px-4 py-3 flex flex-col gap-1"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* View tabs (Tiles/Chart/P&L/Trends) — shown at top of drawer */}
+            {centerContent && (
+              <div className="pb-3 border-b border-bg-border mb-2">
+                {centerContent}
+              </div>
+            )}
+            {/* Nav links */}
+            <a href="/"         onClick={() => setOpen(false)} className="px-3 py-2.5 text-sm rounded-lg text-zinc-400 hover:text-white hover:bg-bg-card transition-all">Dashboard</a>
+            <a href="/products" onClick={() => setOpen(false)} className="px-3 py-2.5 text-sm rounded-lg text-zinc-400 hover:text-white hover:bg-bg-card transition-all">Marketplace</a>
+            <a href="/amazon"   onClick={() => setOpen(false)} className="px-3 py-2.5 text-sm rounded-lg text-zinc-400 hover:text-white hover:bg-bg-card transition-all">Amazon</a>
+            {/* ThemeToggle in drawer on mobile */}
+            <div className="pt-2 border-t border-bg-border mt-1 flex items-center gap-2 px-3">
+              <span className="text-xs text-zinc-500">Tema</span>
+              <ThemeToggle />
+            </div>
+          </nav>
+        </div>
+      )}
+    </>
+  );
+}

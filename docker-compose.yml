@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shopify-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: shopify_dashboard
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shopify-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-password}@postgres:5432/shopify_dashboard
+      SHOPIFY_STORE_DOMAIN: ${SHOPIFY_STORE_DOMAIN}
+      SHOPIFY_ADMIN_TOKEN: ${SHOPIFY_ADMIN_TOKEN}
+      SHOPIFY_WEBHOOK_SECRET: ${SHOPIFY_WEBHOOK_SECRET:-}
+      PORT: 3001
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      AMAZON_LWA_CLIENT_ID: ${AMAZON_LWA_CLIENT_ID:-}
+      AMAZON_LWA_CLIENT_SECRET: ${AMAZON_LWA_CLIENT_SECRET:-}
+      AMAZON_EU_REFRESH_TOKEN: ${AMAZON_EU_REFRESH_TOKEN:-}
+      AMAZON_US_REFRESH_TOKEN: ${AMAZON_US_REFRESH_TOKEN:-}
+      AMAZON_ADVERTISING_CLIENT_ID: ${AMAZON_ADVERTISING_CLIENT_ID:-}
+      AMAZON_ADVERTISING_CLIENT_SECRET: ${AMAZON_ADVERTISING_CLIENT_SECRET:-}
+      AMAZON_ADVERTISING_REFRESH_TOKEN: ${AMAZON_ADVERTISING_REFRESH_TOKEN:-}
+      AMAZON_ADVERTISING_PROFILE_IT: ${AMAZON_ADVERTISING_PROFILE_IT:-}
+      AMAZON_ADVERTISING_PROFILE_DE: ${AMAZON_ADVERTISING_PROFILE_DE:-}
+      AMAZON_ADVERTISING_PROFILE_FR: ${AMAZON_ADVERTISING_PROFILE_FR:-}
+      AMAZON_ADVERTISING_PROFILE_ES: ${AMAZON_ADVERTISING_PROFILE_ES:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # ── Auth ──────────────────────────────────────────────────────────────────
+      SESSION_SECRET: ${SESSION_SECRET}
+      SESSION_MAX_AGE_HOURS: ${SESSION_MAX_AGE_HOURS:-8}
+      MASTER_EMAIL: ${MASTER_EMAIL}
+      MASTER_PASSWORD: ${MASTER_PASSWORD}
+      NODE_ENV: ${NODE_ENV:-production}
+    ports:
+      - "3001:3001"
+    volumes:
+      - "./data/pagamenti-amazon.xlsx:/data/pagamenti-amazon.xlsx:ro"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://192.168.1.43:3001}
+    container_name: shopify-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+      
+  nginx:
+    image: nginx:alpine
+    container_name: shopify-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  postgres_data:
