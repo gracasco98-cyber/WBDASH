@@ -56,7 +56,7 @@ Non più uno scaffolding da zero: sono estensioni incrementali su un sistema gi�
 1. `chore/prisma-baseline-migration` — creare la prima migrazione versionata (`prisma migrate dev --name init`) sullo schema esistente, per stabilire una baseline prima di qualsiasi altra modifica.
 2. `feature/profit-engine` — estrarre la logica di calcolo P&L da `frontend/src/app/amazon/pl/page.tsx` e dalle query dirette in un modulo backend dedicato, versionato (formula version, input snapshot, stati stimato/consolidato/riconciliato), con fixture di test sui casi limite economici (vendita con sconto, rimborso parziale, fee tardiva, cambio valuta, ordine cancellato).
 3. `feature/data-completeness-state` — aggiungere il flag di completezza dati a livello di risposta API e mostrarlo in ogni KPI card.
-4. ~~`migration/decimal-money`~~ — **fatto il 2026-07-30** (database vuoto, nessun backfill dati). Vedi `../tech-debt.md` E.2. Verifica end-to-end con Testcontainers ancora da eseguire in un ambiente con Docker.
+4. ~~`migration/decimal-money`~~ — **fatto e verificato il 2026-07-30** (database vuoto, nessun backfill dati). Vedi `../tech-debt.md` E.2. Verifica end-to-end con Testcontainers su Postgres reale: 250 test passati.
 5. `migration/multi-account-amazon` — vedi §3. Migrazione maggiore, da discutere e pianificare a parte prima di iniziare.
 6. `feature/raw-payload-persistence` — introdurre una tabella (o storage esterno) per conservare il payload raw ricevuto da Amazon/Shopify prima della normalizzazione, per permettere ricalcoli futuri senza re-fetch.
 7. `refactor/settlement-reconciliation` — chiudere il gap di `docs/tech-debt.md` A.8 (delta tra `AmazonSettlement.totalAmount` e somma delle transazioni) con un widget di riconciliazione esplicito.
