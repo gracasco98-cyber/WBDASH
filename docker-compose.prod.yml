@@ -1,0 +1,145 @@
+services:
+  postgres:
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    image: dashboard-db:latest
+    container_name: dashboard-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: shopify_dashboard
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  pgagent:
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    image: dashboard-db:latest
+    container_name: dashboard-pgagent
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    command: >
+      pgagent
+      -f
+      -l 1
+      host=postgres port=5432 dbname=shopify_dashboard user=postgres
+    networks:
+      - internal
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: dashboard-backend:latest
+    container_name: dashboard-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@postgres:5432/shopify_dashboard
+      PORT: 3001
+      NODE_ENV: production
+      # ── Frontend origin (same domain, nginx same-origin) ──────────────────────
+      FRONTEND_URL: https://dashboard.example.com
+      # ── Auth ──────────────────────────────────────────────────────────────────
+      SESSION_SECRET: ${SESSION_SECRET}
+      SESSION_MAX_AGE_HOURS: ${SESSION_MAX_AGE_HOURS:-8}
+      MASTER_EMAIL: ${MASTER_EMAIL}
+      MASTER_PASSWORD: ${MASTER_PASSWORD}
+      # ── Shopify ───────────────────────────────────────────────────────────────
+      SHOPIFY_STORE_DOMAIN: ${SHOPIFY_STORE_DOMAIN}
+      SHOPIFY_ADMIN_TOKEN: ${SHOPIFY_ADMIN_TOKEN}
+      SHOPIFY_WEBHOOK_SECRET: ${SHOPIFY_WEBHOOK_SECRET:-}
+      # ── OpenAI ────────────────────────────────────────────────────────────────
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # ── Amazon SP-API ─────────────────────────────────────────────────────────
+      AMAZON_LWA_CLIENT_ID: ${AMAZON_LWA_CLIENT_ID:-}
+      AMAZON_LWA_CLIENT_SECRET: ${AMAZON_LWA_CLIENT_SECRET:-}
+      AMAZON_EU_REFRESH_TOKEN: ${AMAZON_EU_REFRESH_TOKEN:-}
+      AMAZON_US_REFRESH_TOKEN: ${AMAZON_US_REFRESH_TOKEN:-}
+      # ── Amazon Advertising ────────────────────────────────────────────────────
+      AMAZON_ADVERTISING_CLIENT_ID: ${AMAZON_ADVERTISING_CLIENT_ID:-}
+      AMAZON_ADVERTISING_CLIENT_SECRET: ${AMAZON_ADVERTISING_CLIENT_SECRET:-}
+      AMAZON_ADVERTISING_REFRESH_TOKEN: ${AMAZON_ADVERTISING_REFRESH_TOKEN:-}
+      AMAZON_ADVERTISING_PROFILE_IT: ${AMAZON_ADVERTISING_PROFILE_IT:-}
+      AMAZON_ADVERTISING_PROFILE_DE: ${AMAZON_ADVERTISING_PROFILE_DE:-}
+      AMAZON_ADVERTISING_PROFILE_FR: ${AMAZON_ADVERTISING_PROFILE_FR:-}
+      AMAZON_ADVERTISING_PROFILE_ES: ${AMAZON_ADVERTISING_PROFILE_ES:-}
+      AMAZON_ADVERTISING_PROFILE_UK: ${AMAZON_ADVERTISING_PROFILE_UK:-}
+      AMAZON_ADVERTISING_PROFILE_NL: ${AMAZON_ADVERTISING_PROFILE_NL:-}
+      AMAZON_ADVERTISING_PROFILE_BE: ${AMAZON_ADVERTISING_PROFILE_BE:-}
+      AMAZON_ADVERTISING_PROFILE_SE: ${AMAZON_ADVERTISING_PROFILE_SE:-}
+      AMAZON_ADVERTISING_PROFILE_PL: ${AMAZON_ADVERTISING_PROFILE_PL:-}
+    volumes:
+      - /opt/dashboard/data/pagamenti-amazon.xlsx:/data/pagamenti-amazon.xlsx:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:3001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - internal
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Same-origin: nginx serves both frontend + /api/* on same domain
+        NEXT_PUBLIC_API_URL: https://dashboard.example.com
+    image: dashboard-frontend:latest
+    container_name: dashboard-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - internal
+
+  nginx:
+    image: nginx:alpine
+    container_name: dashboard-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
+      - backend
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - /opt/dashboard/certbot/conf:/etc/letsencrypt:ro
+      - /opt/dashboard/certbot/www:/var/www/certbot:ro
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+
+networks:
+  internal:
+    driver: bridge

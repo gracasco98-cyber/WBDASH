@@ -1,63 +1,69 @@
 # Fase 1 — Dashboard Vendite e Profitti
 
-Priorità assoluta della Release 1. Dipende dal completamento della Fase 0 (fondamenta, vedi `../PROJECT_SPEC.md`). Non iniziare l'implementazione di questa fase finché Fase 0 non è approvata.
+> **Aggiornato 2026-07-30**: il 2026-07-30 è stato importato in WBDASH un codebase reale e già in produzione che copre la maggior parte di questa fase. Questo documento ora distingue esplicitamente **cosa è già fatto** da **cosa manca ancora**, invece di essere un backlog da zero. Vedi `../PROJECT_SPEC.md` §5bis per lo schema reale e `CLAUDE.md § Roadmap di adeguamento` per i gap architetturali.
 
 ## 1. Obiettivo
 
-Dare visibilità affidabile e aggiornata su vendite e profitto reale su Amazon, multi-account e multi-marketplace (IT, DE, FR, ES), con aggiornamento almeno ogni 30 minuti.
+Dare visibilità affidabile e aggiornata su vendite e profitto reale su Amazon, multi-marketplace (IT, DE, FR, ES), con aggiornamento almeno ogni 30 minuti.
 
-## 2. Funzionalità
+**Stato: raggiunto, con una limitazione.** Il sync ordini Amazon gira ogni 5 minuti (batte il requisito), copre IT/DE/FR/ES/ALL_EU. La limitazione è il **multi seller-account**: l'obiettivo originale lo richiedeva fin da Release 1, ma il codebase importato è single-account (un solo set di credenziali SP-API in `.env`). Vedi §3.
 
-- Collegamento account Amazon SP-API (OAuth, gestione credenziali cifrate).
-- Gestione multi seller-account.
-- Gestione multi-marketplace (IT, DE, FR, ES).
-- Sincronizzazione ordini ogni 30 minuti.
-- Sincronizzazione transazioni finanziarie.
-- Importazione report (inventario, advertising).
-- Inserimento costo prodotto (costo standard, costo medio ponderato).
-- Caricamento costi advertising.
-- Calcolo profitto stimato e consolidato.
-- Dashboard giornaliera con confronto: ieri, settimana precedente, mese precedente.
-- Filtri: marketplace, account, brand, prodotto/SKU/ASIN, intervallo temporale, valuta.
+## 2. Funzionalità — stato reale
 
-## 3. KPI Release 1
+| Funzionalità | Stato | Dove |
+|---|---|---|
+| Collegamento account Amazon SP-API (OAuth) | ✅ fatto | `amazon-auth.js`, `backend/src/amazon/token.service.ts`, `backend/src/amazon/sp-api.service.ts` |
+| Gestione credenziali cifrate | ⚠️ parziale — credenziali in `.env`, non cifrate a riposo in DB | — |
+| Gestione multi seller-account | ❌ non fatto (single-account) | vedi §3 |
+| Gestione multi-marketplace (IT, DE, FR, ES) | ✅ fatto | campo `marketplace` su quasi tutti i modelli Amazon |
+| Sincronizzazione ordini ogni 30 minuti | ✅ superato (ogni 5 min) | `backend/src/amazon/sync.job.ts` |
+| Sincronizzazione transazioni finanziarie | ✅ fatto (settlement ogni 4h) | `AmazonSettlement`, `AmazonSettlementTransaction`, `backend/src/amazon/settlement.service.ts` |
+| Importazione report (inventario, advertising) | ✅ fatto | `AmazonInventory`, `AmazonAdSnapshot` e affini |
+| Inserimento costo prodotto (standard / medio ponderato) | ✅ fatto, con storico temporale | `AmazonProductCogs`, `AmazonCogsPriceEntry` |
+| Caricamento costi advertising | ✅ fatto | `backend/src/amazon/ads-api.service.ts`, `ads-sync.service.ts` |
+| Calcolo profitto stimato e consolidato | ⚠️ parziale — P&L calcolato a query-time, non versionato/riproducibile | `frontend/src/app/amazon/pl/page.tsx` — manca un vero profit engine (vedi `PROJECT_SPEC.md` §4) |
+| Dashboard giornaliera + confronti (ieri/settimana/mese) | ✅ fatto | `frontend/src/components/dashboard/**`, `PeriodContext`, `usePeriodFilter` |
+| Filtri (marketplace, brand, prodotto/SKU/ASIN, periodo, valuta) | ✅ fatto (account escluso, non esiste ancora il concetto) | `AmazonFilterBar`, `FilterBar` |
 
-Fatturato, Ordini, Unità vendute, Profitto, Margine %, Advertising spend, ACOS, TACOS, ROAS, Costo merce, Commissioni Amazon, Costi FBA, Rimborsi, Prezzo medio, Profitto per unità.
+## 3. Multi seller-account: perché manca e come chiuderlo
 
-Ogni KPI mostrato in dashboard deve esporre: valore, variazione assoluta, variazione percentuale, **stato di completezza dei dati** (stimato/consolidato/riconciliato — vedi `PROJECT_SPEC.md` §4), ultimo aggiornamento.
+Il codebase adottato è nato come dashboard per un singolo account Amazon + singolo store Shopify. Introdurre multi-account richiede:
+
+1. Un modello `AmazonAccount` (o riuso di `User`/nuova tabella) con credenziali SP-API proprie, oggi in `.env` globali.
+2. Aggiungere `amazonAccountId` a tutti i modelli Amazon (`AmazonOrder`, `AmazonSyncJob`, `AmazonSettlement`, ecc.) — migrazione non banale su tabelle già popolate in produzione.
+3. Aggiornare ogni query/repository per filtrare per account, non solo per marketplace.
+4. UI: selettore account in `AmazonFilterBar` e simili.
+
+Questo è il gap più grande rispetto all'obiettivo originale di Release 1. Va trattato come una migrazione dedicata (branch `migration/multi-account-amazon`), pianificata a parte, non come un side-effect di un altro task — tocca dati economici reali già in produzione.
 
 ## 4. Stati dei dati (obbligatorio in UI)
 
-Non mostrare mai un solo numero senza indicarne l'affidabilità:
+**Stato: non implementato esplicitamente.** Oggi la dashboard mostra valori senza un flag di completezza (stimato/consolidato/riconciliato) esplicito in UI, anche se i dati sottostanti (settlement arrivato o no) lo permetterebbero implicitamente. Resta un requisito valido per quando si costruisce il profit engine versionato:
 
 - **Provvisorio**: solo ordini, senza dati finanziari né costi completi.
 - **Stimato**: ordini + costo prodotto, advertising eventualmente mancante.
-- **Consolidato**: transazioni finanziarie arrivate (Finances API).
-- **Riconciliato**: verificato con settlement/fatture (post Release 1, ma il campo va previsto da subito nello schema).
+- **Consolidato**: transazioni finanziarie arrivate (settlement).
+- **Riconciliato**: verificato con settlement/fatture.
 
-## 5. Backlog atomico — branch consigliate
+## 5. KPI Release 1
 
-Ordine consigliato, ogni riga è una branch `feature/*` indipendente e verificabile:
+Fatturato, Ordini, Unità vendute, Profitto, Margine %, Advertising spend, ACOS, TACOS, ROAS, Costo merce, Commissioni Amazon, Costi FBA, Rimborsi, Prezzo medio, Profitto per unità — **tutti già presenti** in `SellerboardKpiCards`, `AmazonKpiCards`, `AmazonOverviewCards`. Manca solo l'esposizione esplicita dello stato di completezza per ciascun KPI (§4).
 
-1. `feature/project-foundation` — scaffolding monorepo (pnpm + Turborepo), apps/packages vuoti, lint/format/tsconfig condivisi, Docker Compose (Postgres, Redis, MinIO).
-2. `feature/database-bootstrap` — Prisma init, primo schema (organizations, users, roles), prima migrazione, seed di sviluppo.
-3. `feature/authentication` — Auth.js, login, sessione, RBAC di base.
-4. `feature/amazon-sp-api-auth` — modulo `amazon-integration`: onboarding account Amazon (OAuth), tabelle `amazon_accounts`/`amazon_credentials`/`marketplaces`/`amazon_account_marketplaces`, cifratura credenziali.
-5. `feature/sync-job-infrastructure` — modulo `synchronization`: `sync_jobs`, `sync_cursors`, coda BullMQ, worker NestJS, stati job, retry/backoff.
-6. `feature/amazon-orders-sync` — client `amazon-sp-api` per Orders API, `raw_api_events`, normalizzazione in `orders`/`order_items`/`order_status_history`, idempotenza su `(amazonAccountId, amazonOrderId)`.
-7. `feature/amazon-finances-sync` — Finances API, `raw_financial_events`, `financial_transactions`, `fees`, `refunds`, `reimbursements`.
-8. `feature/amazon-reports-sync` — Reports API per inventario e advertising, `raw_reports`, `advertising_costs`.
-9. `feature/product-costs` — modulo `products` + `product-costs`: anagrafica minima, `product_marketplace_identifiers`, `product_cost_history` (costo standard e medio ponderato).
-10. `feature/profit-calculation-engine` — package `profit-engine` isolato: formula versionata, fixture di test (vedi `PROJECT_SPEC.md` §9), `profit_calculations` append-only, stati stimato/consolidato.
-11. `feature/daily-metrics-aggregation` — job di aggregazione `daily_metrics`, invalidazione cache Redis, ricalcolo su intervalli passati per dati in ritardo.
-12. `feature/dashboard-overview` — frontend Next.js: dashboard principale, KPI card con stato di completezza, grafico andamento (Recharts).
-13. `feature/dashboard-marketplace-filter` — filtri marketplace/account/brand/prodotto/SKU/ASIN/periodo/valuta.
-14. `feature/dashboard-period-comparison` — confronto ieri/settimana precedente/mese precedente.
-15. `feature/scheduler-30min` — job schedulato end-to-end che orchestra sync ordini/finanze/report ogni 30 minuti, osservabilità (log strutturati, correlation ID).
-16. `feature/observability-baseline` — Sentry, dashboard di salute dei job, dead letter queue.
+## 6. Backlog aggiornato — cosa resta da fare
 
-Ogni branch richiede: test propri, lint/typecheck/build verdi, migrazione + rollback documentati (o esplicitamente "nessuna modifica database").
+Non più uno scaffolding da zero: sono estensioni incrementali su un sistema già funzionante. Ogni riga è una branch indipendente e verificabile, da `develop`, seguendo `CONTRIBUTING.md`.
 
-## 6. Fuori scope per Release 1
+1. `chore/prisma-baseline-migration` — creare la prima migrazione versionata (`prisma migrate dev --name init`) sullo schema esistente, per stabilire una baseline prima di qualsiasi altra modifica.
+2. `feature/profit-engine` — estrarre la logica di calcolo P&L da `frontend/src/app/amazon/pl/page.tsx` e dalle query dirette in un modulo backend dedicato, versionato (formula version, input snapshot, stati stimato/consolidato/riconciliato), con fixture di test sui casi limite economici (vendita con sconto, rimborso parziale, fee tardiva, cambio valuta, ordine cancellato).
+3. `feature/data-completeness-state` — aggiungere il flag di completezza dati a livello di risposta API e mostrarlo in ogni KPI card.
+4. `migration/decimal-money` — migrare i campi monetari da `Float` a `Decimal` in `backend/prisma/schema.prisma` (priorità alta, rischio di arrotondamento su dati finanziari reali). Da pianificare con l'utente vista la sensibilità.
+5. `migration/multi-account-amazon` — vedi §3. Migrazione maggiore, da discutere e pianificare a parte prima di iniziare.
+6. `feature/raw-payload-persistence` — introdurre una tabella (o storage esterno) per conservare il payload raw ricevuto da Amazon/Shopify prima della normalizzazione, per permettere ricalcoli futuri senza re-fetch.
+7. `refactor/settlement-reconciliation` — chiudere il gap di `docs/tech-debt.md` A.8 (delta tra `AmazonSettlement.totalAmount` e somma delle transazioni) con un widget di riconciliazione esplicito.
+8. Voci minori già tracciate in `docs/tech-debt.md` sezione A (cutoff date disallineati, AOV su gross invece di net, ordini cancellati trattati diversamente tra Shopify e Amazon) — da valutare caso per caso, sono comportamenti lockati nei test attuali.
 
-Magazzino/ledger, fornitori, ordini di acquisto, fatture/prima nota/scadenzario, listing e marketing, indici di intelligence (Fase 2+). Questi moduli sono solo nominati nell'architettura modulare per evitare scelte che li ostacolino in futuro, ma non vanno implementati ora.
+Ogni branch richiede: test propri, lint/typecheck/build verdi (`ci-backend`/`ci-frontend`), migrazione + rollback documentati quando tocca lo schema.
+
+## 7. Fuori scope per Release 1
+
+Magazzino/ledger, fornitori, ordini di acquisto, fatture/prima nota/scadenzario, listing e marketing (Fase 2+ della visione originale). Il forecasting Amazon già presente (`AmazonForecastCalibration`, `AmazonForecastSnapshot`) anticipa parte della Fase 2 ("Intelligence") — non toccarlo se non richiesto, è già testato e in uso.

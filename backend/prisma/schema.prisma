@@ -1,0 +1,619 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ShopifyOrder {
+  id                        String   @id @default(cuid())
+  shopifyOrderId            String   @unique
+  orderName                 String
+  createdAt                 DateTime
+  updatedAt                 DateTime
+  processedAt               DateTime?
+  cancelledAt               DateTime?
+  closedAt                  DateTime?
+  totalAmount               Float
+  currency                  String   @default("EUR")
+  financialStatus           String
+  fulfillmentStatus         String?
+  rawTags                   String[] @default([])
+  sourceName                String?
+  sourceIdentifier          String?
+  channelDisplayName        String?
+  customerCountry           String?
+  customerEmail             String?
+  marketplaceDetected       String   @default("UNCLASSIFIED")
+  marketplaceDetectionReason String?
+  isRefunded                Boolean  @default(false)
+  refundedAmount            Float    @default(0)
+  netAmount                 Float
+  isCancelled               Boolean  @default(false)
+  isTest                    Boolean  @default(false)
+  lineItemsCount            Int      @default(0)
+  rawData                   Json?
+  syncedAt                  DateTime @default(now())
+  lineItems    OrderLineItem[]
+
+  @@index([createdAt])
+  @@index([marketplaceDetected])
+  @@index([financialStatus])
+  @@index([updatedAt])
+}
+
+model MarketplaceRule {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String
+  priority    Int      @default(100)
+  tagPatterns String[] @default([])
+  sourceNames String[] @default([])
+  channelNames String[] @default([])
+  color       String   @default("#6366f1")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SyncState {
+  id              String    @id @default(cuid())
+  lastSyncAt      DateTime?
+  lastOrderCursor String?
+  totalSynced     Int       @default(0)
+  status          String    @default("idle")
+  error           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model WebhookEventLog {
+  id          String   @id @default(cuid())
+  topic       String
+  shopifyId   String
+  payload     Json
+  processed   Boolean  @default(false)
+  error       String?
+  receivedAt  DateTime @default(now())
+  processedAt DateTime?
+
+  @@index([shopifyId])
+  @@index([topic])
+}
+
+model AppErrorLog {
+  id        String   @id @default(cuid())
+  source    String
+  message   String
+  stack     String?
+  context   Json?
+  createdAt DateTime @default(now())
+
+  @@index([source])
+  @@index([createdAt])
+}
+
+model OrderLineItem {
+  id                String       @id @default(cuid())
+  shopifyLineItemId String       @unique
+  orderId           String
+  order             ShopifyOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  shopifyProductId  String
+  productTitle      String
+  variantId         String?
+  variantTitle      String?
+  sku               String?
+  quantity          Int          @default(1)
+  unitPrice         Float
+  originalUnitPrice Float
+  totalDiscount     Float        @default(0)
+  lineTotal         Float
+  currency          String       @default("EUR")
+  imageUrl          String?
+  marketplace       String       @default("UNCLASSIFIED")
+  orderDate         DateTime
+  refundedAmount    Float        @default(0)
+
+  @@index([shopifyProductId])
+  @@index([marketplace])
+  @@index([orderDate])
+  @@index([sku])
+}
+
+model ProductDailySnapshot {
+  id               String   @id @default(cuid())
+  snapshotDate     DateTime @db.Date
+  shopifyProductId String
+  productTitle     String
+  sku              String?
+  marketplace      String   @default("UNCLASSIFIED")
+  imageUrl         String?
+  unitsSold        Int      @default(0)
+  grossRevenue     Float    @default(0)
+  refundedUnits    Int      @default(0)
+  refundedAmount   Float    @default(0)
+  netRevenue       Float    @default(0)
+  orderCount       Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([snapshotDate, shopifyProductId, marketplace])
+  @@index([shopifyProductId])
+  @@index([snapshotDate])
+  @@index([marketplace])
+}
+
+// ─── Amazon Module Models ──────────────────────────────────────────────────────
+
+model AmazonSyncJob {
+  id              String    @id @default(cuid())
+  jobType         String    // orders_incremental | orders_backfill | ads_daily
+  marketplace     String    // IT | DE | FR | ES | ALL_EU
+  dateFrom        DateTime?
+  dateTo          DateTime?
+  status          String    @default("pending") // pending | running | done | failed
+  recordsIn       Int       @default(0)
+  recordsImported Int       @default(0)
+  recordsUpdated  Int       @default(0)
+  recordsRejected Int       @default(0)
+  errorMessage    String?
+  reportId        String?
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+
+  @@index([jobType])
+  @@index([marketplace])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model AmazonOrder {
+  id                 String           @id @default(cuid())
+  amazonOrderId      String           @unique
+  purchaseDate       DateTime
+  lastUpdatedDate    DateTime
+  orderStatus        String
+  salesChannel       String           @default("Amazon.it")
+  marketplace        String
+  fulfillmentChannel String           @default("AFN")
+  shipCountry        String?
+  currency           String           @default("EUR")
+  itemTotal          Float            @default(0)
+  isBusinessOrder    Boolean          @default(false)
+  syncedAt           DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  items              AmazonOrderItem[]
+
+  @@index([purchaseDate])
+  @@index([marketplace])
+  @@index([orderStatus])
+  @@index([lastUpdatedDate])
+}
+
+model AmazonOrderItem {
+  id                String      @id @default(cuid())
+  amazonOrderId     String
+  order             AmazonOrder @relation(fields: [amazonOrderId], references: [amazonOrderId], onDelete: Cascade)
+  orderItemId       String      @unique
+  asin              String
+  sku               String?
+  productTitle      String
+  quantityOrdered   Int         @default(1)
+  quantityShipped   Int         @default(0)
+  itemPrice         Float       @default(0)
+  itemTax           Float       @default(0)
+  promotionDiscount Float       @default(0)
+  currency          String      @default("EUR")
+  marketplace       String
+  purchaseDate      DateTime
+
+  @@index([asin])
+  @@index([sku])
+  @@index([marketplace])
+  @@index([purchaseDate])
+}
+
+model AmazonProductSnapshot {
+  id             String   @id @default(cuid())
+  snapshotDate   DateTime @db.Date
+  asin           String
+  sku            String?
+  productTitle   String
+  marketplace    String
+  unitsSold      Int      @default(0)
+  grossRevenue   Float    @default(0)
+  refundedAmount Float    @default(0)
+  netRevenue     Float    @default(0)
+  orderCount     Int      @default(0)
+  adSpend        Float    @default(0)
+  bsr            Int?                       // Best Seller Rank (lower is better, null if unavailable)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([snapshotDate, asin, marketplace])
+  @@index([snapshotDate])
+  @@index([asin])
+  @@index([marketplace])
+}
+
+// Settlement transactions — commissioni reali da Amazon (ogni 2 settimane)
+// Settlement header — one record per Amazon settlement cycle (source of truth for totalAmount)
+model AmazonSettlement {
+  id            String    @id @default(cuid())
+  settlementId  String    @unique
+  marketplace   String
+  currency      String    @default("EUR")
+  startDate     DateTime
+  endDate       DateTime
+  depositDate   DateTime?
+  totalAmount   Float     @default(0) // actual bank transfer amount from Amazon
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([marketplace])
+  @@index([depositDate])
+  @@index([endDate])
+}
+
+model AmazonSettlementTransaction {
+  id                String   @id @default(cuid())
+  settlementId      String
+  transactionType   String   // Order | Refund | ServiceFee | FeeAdjustment | etc.
+  orderId           String?
+  asin              String?
+  sku               String?
+  marketplace       String
+  amountType        String   // Principal | Commission | FBAPerUnitFulfillmentFee | Cost Per Click Advertising Fees | etc.
+  amount            Float    @default(0)
+  currency          String   @default("EUR")
+  postedDate        DateTime
+  quantityPurchased Int?
+  createdAt         DateTime @default(now())
+
+  @@unique([settlementId, orderId, asin, amountType, transactionType])
+  @@index([orderId])
+  @@index([asin])
+  @@index([marketplace])
+  @@index([postedDate])
+  @@index([settlementId])
+  @@index([transactionType])
+}
+
+// Costo del venduto per ASIN (configurabile dall'utente)
+model AmazonProductCogs {
+  id               String   @id @default(cuid())
+  asin             String
+  sku              String?
+  marketplace      String   @default("ALL")
+  productTitle     String?
+  cogsPerUnit      Float    @default(0)
+  shippingCost     Float    @default(0)  // costo spedizione inbound per unità
+  vatRate          Float    @default(0)  // aliquota IVA %
+  vatCategory      String?              // categoria IVA Amazon
+  currency         String   @default("EUR")
+  imageUrl         String?              // URL immagine prodotto
+  notes            String?
+  isActive         Boolean  @default(true)
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+
+  @@unique([asin, marketplace])
+  @@index([asin])
+  @@index([sku])
+  @@index([marketplace])
+}
+
+// Storico prezzi di acquisto per ASIN (fasce temporali)
+model AmazonCogsPriceEntry {
+  id           String   @id @default(cuid())
+  asin         String
+  sku          String?
+  productTitle String?
+  imageUrl     String?
+  marketplace  String   @default("ALL")
+  supplier     String?
+  purchaseDate DateTime
+  pricePerUnit Float
+  shippingCost Float    @default(0)
+  quantity     Int?
+  notes        String?
+  currency     String   @default("EUR")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([asin])
+  @@index([purchaseDate])
+  @@index([asin, purchaseDate])
+}
+
+// Inventario FBA/FBM per ASIN (sincronizzato o inserito manualmente)
+model AmazonInventory {
+  id            String   @id @default(cuid())
+  asin          String
+  sku           String?
+  marketplace   String   @default("IT")
+  productTitle  String?
+  imageUrl      String?
+  // Quantità FBA
+  qtyAfn        Int      @default(0)   // Available for selling (FBA)
+  qtyMfn        Int      @default(0)   // MFN/FBM stock
+  qtyInbound    Int      @default(0)   // In shipment to Amazon
+  qtyReserved   Int      @default(0)   // Reserved (FC transfer, etc.)
+  qtyTotal      Int      @default(0)   // Total = afn + mfn + inbound
+  // Metriche riordino
+  reorderPoint  Int      @default(0)
+  reorderQty    Int      @default(0)
+  leadTimeDays  Int      @default(30)
+  // Calcolato
+  salesVelocity Float    @default(0)   // unità/giorno (media 30gg)
+  daysRemaining Int?                   // giorni rimanenti a scorta
+  lastSyncedAt  DateTime?
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+
+  @@unique([asin, sku, marketplace])
+  @@index([asin])
+  @@index([marketplace])
+  @@index([sku])
+}
+
+model AmazonAdSnapshot {
+  id           String   @id @default(cuid())
+  snapshotDate DateTime @db.Date
+  marketplace  String
+  campaignId   String
+  campaignName String
+  adGroupId    String?
+  adGroupName  String?
+  campaignType String   @default("SP")
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  spend        Float    @default(0)
+  sales        Float    @default(0)
+  orders       Int      @default(0)
+  acos         Float?
+  roas         Float?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([snapshotDate, marketplace, campaignId, adGroupId])
+  @@index([snapshotDate])
+  @@index([marketplace])
+  @@index([campaignId])
+}
+
+// Per-keyword daily metrics (from spKeywords report)
+model AmazonAdKeywordSnapshot {
+  id           String   @id @default(cuid())
+  snapshotDate DateTime @db.Date
+  marketplace  String
+  campaignId   String
+  adGroupId    String
+  keywordId    String
+  keywordText  String
+  matchType    String   @default("EXACT")
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  spend        Float    @default(0)
+  sales        Float    @default(0)
+  orders       Int      @default(0)
+  acos         Float?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([snapshotDate, marketplace, campaignId, keywordId])
+  @@index([campaignId])
+  @@index([marketplace])
+  @@index([keywordId])
+}
+
+// Search term report (persisted — survives restarts, updated on each sync)
+// One row per unique (marketplace, dateFrom, dateTo, query, keywordText, campaignId)
+model AmazonAdSearchTerm {
+  id           String   @id @default(cuid())
+  marketplace  String
+  dateFrom     String   // YYYY-MM-DD (report period start)
+  dateTo       String   // YYYY-MM-DD (report period end)
+  query        String   // actual search term the customer typed
+  keywordText  String   // matched keyword
+  matchType    String   @default("")
+  campaignId   String
+  campaignName String   @default("")
+  adGroupId    String   @default("")
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  spend        Float    @default(0)
+  sales        Float    @default(0)
+  orders       Int      @default(0)
+  acos         Float?
+  roas         Float?
+  ctr          Float    @default(0)
+  cpc          Float    @default(0)
+  isWasted     Boolean  @default(false) // spend>1 & orders=0
+  syncedAt     DateTime @default(now())
+
+  @@unique([marketplace, dateFrom, dateTo, query, keywordText, campaignId])
+  @@index([marketplace])
+  @@index([syncedAt])
+  @@index([spend])
+  @@index([isWasted])
+}
+
+// Live keyword structure (refreshed every 2 min from API — no metrics)
+model AmazonAdKeyword {
+  id          String   @id @default(cuid())
+  keywordId   String
+  campaignId  String
+  adGroupId   String
+  marketplace String
+  keywordText String
+  matchType   String
+  state       String
+  bid         Float    @default(0)
+  syncedAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([keywordId, marketplace])
+  @@index([campaignId])
+  @@index([marketplace])
+}
+
+// ─── Forecast Self-Calibration ────────────────────────────────────────────────
+
+// Per-marketplace learned ratios, updated daily via EWMA from actual settlements
+model AmazonForecastCalibration {
+  id              String   @id @default(cuid())
+  marketplace     String   @unique
+  // Core payout ratio (net_bank_transfer / gross_principal) — most critical
+  payoutRatio     Float
+  // Per-fee ratios (as fraction of gross_principal)
+  rCommission     Float    @default(0)
+  rFba            Float    @default(0)
+  rAds            Float    @default(0)
+  rAdsVat         Float    @default(0)
+  rDsf            Float    @default(0)
+  rStorage        Float    @default(0)
+  rInbound        Float    @default(0)
+  rPrep           Float    @default(0)
+  rRefunds        Float    @default(0)
+  rOther          Float    @default(0)
+  rReimb          Float    @default(0)
+  avgStoragePerSett Float  @default(0)
+  avgInboundPerSett Float  @default(0)
+  // PPC as autonomous absolute cost (EUR per settlement, not ratio of gross)
+  avgAdsPerSett     Float  @default(0)
+  // Refund smoothing: slower EWMA to absorb cross-settlement noise
+  rRefundsSmoothed  Float  @default(0)
+  // Meta
+  dataPoints      Int      @default(0)   // # settlements used
+  ewmaAlpha       Float    @default(0.3) // current learning rate
+  // Accuracy tracking
+  lastForecastErrorPct  Float?  // |actual-forecast|/actual × 100 last settlement
+  avgForecastErrorPct   Float?  // running average error
+  bestForecastErrorPct  Float?  // best error seen
+  confidenceScore Float    @default(0.5)  // 0–1
+  // Bias detection: systematic over/under-estimation
+  recentErrors    Json?    // number[] signed error% last 10 (+ = over, - = under)
+  hasBias         Boolean  @default(false)
+  biasCorrection  Float    @default(0)   // avg signed error% when bias detected
+  // Structural break: sudden fee regime change (e.g. Amazon updates tariffs)
+  recentRatios    Json?    // number[] last 10 actual payout ratios
+  structuralBreakAt  DateTime?
+  postBreakAlpha  Float?   // temporary higher alpha after break (decays per update)
+  // Component model parameters
+  avgFbaPerUnit       Float  @default(0)   // EUR per unit shipped (from FBAPerUnitFulfillmentFee / units)
+  avgUnitsPerOrder    Float  @default(1)   // avg units per order
+  refundLagDays       Float  @default(30)  // avg days from order → refund in settlement
+  ppcDailyAvg7d       Float  @default(0)   // EUR/day PPC last 7d (from AmazonAdSnapshot)
+  ppcDailyAvg30d      Float  @default(0)   // EUR/day PPC last 30d
+  forecastStdDev      Float  @default(0)   // EWMA std dev of absolute forecast error (EUR)
+  // Seasonality: per-month ratio multipliers (1.0 = no adjustment)
+  seasonalFactors Json?    // Record<"01"–"12", number>
+  // Source
+  bootstrapSource String   @default("db_settlements") // db_settlements | excel_import
+  lastUpdatedAt   DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([marketplace])
+}
+
+// ─── Authentication & User Management ────────────────────────────────────────
+
+// Roles: master > admin > user
+// master  — full access, can create/manage admins and other masters
+// admin   — can create/manage users, read everything
+// user    — read-only dashboard access
+model User {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  passwordHash        String
+  role                String    @default("user")   // "master" | "admin" | "user"
+  isActive            Boolean   @default(true)
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  passwordChangedAt   DateTime?                    // tracks last password change
+  deletedAt           DateTime?                    // soft-delete timestamp
+  // ── MFA (TOTP) ────────────────────────────────────────────────────────────
+  mfaEnabled          Boolean   @default(false)
+  mfaSecret           String?                      // primary TOTP secret (kept in sync for backward compat)
+  mfaSecretPending    String?                      // unconfirmed secret during legacy setup flow
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  createdById         String?
+  createdBy           User?     @relation("CreatedUsers", fields: [createdById], references: [id])
+  createdUsers        User[]    @relation("CreatedUsers")
+  auditLogsInitiated  AuditLog[] @relation("AuditInitiator")
+  auditLogsReceived   AuditLog[] @relation("AuditTarget")
+  mfaDevices          MfaDevice[]
+
+  @@index([email])
+  @@index([role])
+  @@index([deletedAt])
+}
+
+// One row per registered TOTP authenticator app (supports multiple devices per user)
+model MfaDevice {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String    @default("Authenticator")  // user-assigned label
+  secret     String                               // confirmed TOTP secret
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+// Immutable audit trail — never deleted, append-only
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorId      String?                           // who performed the action (null = system)
+  actor        User?    @relation("AuditInitiator", fields: [actorId], references: [id])
+  targetUserId String?                           // who was affected
+  targetUser   User?    @relation("AuditTarget", fields: [targetUserId], references: [id])
+  action       String                            // LOGIN_SUCCESS | LOGIN_FAIL | LOGOUT |
+                                                //  USER_CREATED | USER_DEACTIVATED |
+                                                //  PASSWORD_RESET | ROLE_CHANGED | etc.
+  details      Json?                             // extra context (IP, role change old→new, etc.)
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetUserId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// Snapshot of each forecast made, for accuracy tracking
+model AmazonForecastSnapshot {
+  id               String    @id @default(cuid())
+  snapshotDate     DateTime  @default(now())
+  marketplace      String
+  // Settlement period this forecast covers
+  periodStart      String    // YYYY-MM-DD
+  periodEnd        String    // YYYY-MM-DD
+  depositEst       String    // YYYY-MM-DD
+  // What we predicted
+  forecastGross    Float
+  forecastNet      Float
+  forecastFees     Float
+  payoutRatioPct   Float
+  totalOrders      Int
+  // Actual values (filled when settlement arrives and reconciles this period)
+  actualNet        Float?
+  actualGross      Float?
+  settlementId     String?
+  errorPct         Float?    // |actual-forecast|/actual × 100
+  reconciledAt     DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([marketplace])
+  @@index([snapshotDate])
+  @@index([periodEnd])
+  @@index([settlementId])
+}
