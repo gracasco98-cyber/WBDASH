@@ -11,12 +11,14 @@ import {
   findCogsForAsins,
 } from "../../repositories/amazon/cogs.repo";
 import { italyOffsetMs, getDateRange } from "../utils/datetime";
+import { getCurrentAccountId } from "../../context/account-context";
 
 export const productsRouter = Router();
 
 // ─── GET /products ──────────────────────────────────────────────────────────────
 productsRouter.get("/products", async (req: Request, res: Response) => {
   try {
+    const accountId = getCurrentAccountId();
     const { filter = "last30", from, to, marketplace, search, sortBy = "grossRevenue", sortDir = "desc" } = req.query as Record<string, string>;
     const range = getDateRange(filter, from, to);
     const dateFrom = range.gte ?? new Date(Date.now() - 30 * 86400000);
@@ -69,6 +71,7 @@ productsRouter.get("/products", async (req: Request, res: Response) => {
         WHERE asin IN (${asinList})
           AND "purchaseDate" >= '${fromIso}'::timestamp
           AND "purchaseDate" <= '${toIso}'::timestamp
+          AND "amazonAccountId" = '${accountId}'
           ${mpClause}
         ORDER BY asin, "purchaseDate" DESC
       `),
@@ -80,6 +83,7 @@ productsRouter.get("/products", async (req: Request, res: Response) => {
         WHERE asin IN (${asinList})
           AND "purchaseDate" >= '${fromIso}'::timestamp
           AND "purchaseDate" <= '${toIso}'::timestamp
+          AND "amazonAccountId" = '${accountId}'
           ${mpClause}
         GROUP BY asin
       `),
@@ -204,6 +208,7 @@ productsRouter.get("/products/:asin/history", async (req: Request, res: Response
 // Monthly P&L: Sales, Fees (settlement), AdSpend, COGS, GrossProfit, NetProfit
 productsRouter.get("/pl", async (req: Request, res: Response) => {
   try {
+    const accountId = getCurrentAccountId();
     const { marketplace, months = "12" } = req.query as Record<string, string>;
     const mpFilter = marketplace && marketplace !== "all" ? marketplace.replace(/'/g, "") : null;
     const mths = Math.min(24, Math.max(1, parseInt(months, 10)));
@@ -225,9 +230,10 @@ productsRouter.get("/pl", async (req: Request, res: Response) => {
         COUNT(DISTINCT CASE WHEN o."orderStatus" NOT IN ('Canceled','Cancelled') THEN o."amazonOrderId" END)::INTEGER AS "orderCount",
         COUNT(DISTINCT CASE WHEN o."orderStatus" IN ('Canceled','Cancelled') THEN o."amazonOrderId" END)::INTEGER AS "cancelledCount"
       FROM "AmazonOrder" o
-      LEFT JOIN "AmazonOrderItem" i ON i."amazonOrderId" = o."amazonOrderId"
+      LEFT JOIN "AmazonOrderItem" i ON i."amazonAccountId" = o."amazonAccountId" AND i."amazonOrderId" = o."amazonOrderId"
       WHERE o."purchaseDate" >= '${since.toISOString()}'::timestamp
         AND o."salesChannel" != 'Non-Amazon'
+        AND o."amazonAccountId" = '${accountId}'
         ${mpW}
       GROUP BY DATE_TRUNC('month', o."purchaseDate")
       ORDER BY 1
@@ -239,10 +245,11 @@ productsRouter.get("/pl", async (req: Request, res: Response) => {
         TO_CHAR(DATE_TRUNC('month', i."purchaseDate"), 'YYYY-MM') AS month,
         COALESCE(SUM(i."quantityOrdered"), 0)::INTEGER AS "unitsSold"
       FROM "AmazonOrderItem" i
-      JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+      JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
       WHERE i."purchaseDate" >= '${since.toISOString()}'::timestamp
         AND o."orderStatus" NOT IN ('Canceled','Cancelled')
         AND o."salesChannel" != 'Non-Amazon'
+        AND i."amazonAccountId" = '${accountId}'
         ${mpW}
       GROUP BY DATE_TRUNC('month', i."purchaseDate")
     `);
@@ -264,8 +271,9 @@ productsRouter.get("/pl", async (req: Request, res: Response) => {
         -- Other fees from EU (storage, subscription, etc.)
         COALESCE(SUM(CASE WHEN marketplace = 'EU' AND "amountType" = 'OtherFee'                        THEN ABS(amount) ELSE 0 END), 0)::FLOAT8 AS "otherFees"
       FROM "AmazonSettlementTransaction"
-      WHERE "postedDate" >= '${since.toISOString()}'::timestamp
-        ${adMpW ? adMpW + " OR marketplace = 'EU'" : ""}
+      WHERE ("postedDate" >= '${since.toISOString()}'::timestamp
+        ${adMpW ? adMpW + " OR marketplace = 'EU'" : ""})
+        AND "amazonAccountId" = '${accountId}'
       GROUP BY DATE_TRUNC('month', "postedDate")
     `);
 
@@ -276,6 +284,7 @@ productsRouter.get("/pl", async (req: Request, res: Response) => {
         COALESCE(SUM(spend), 0)::FLOAT8 AS "adSpend"
       FROM "AmazonAdSnapshot"
       WHERE "snapshotDate" >= '${since.toISOString().split("T")[0]}'::date
+        AND "amazonAccountId" = '${accountId}'
         ${adMpW}
       GROUP BY DATE_TRUNC('month', "snapshotDate")
     `);
@@ -287,11 +296,12 @@ productsRouter.get("/pl", async (req: Request, res: Response) => {
         TO_CHAR(DATE_TRUNC('month', i."purchaseDate"), 'YYYY-MM') AS month,
         COALESCE(SUM(i."quantityOrdered" * COALESCE(c."cogsPerUnit", 0)), 0)::FLOAT8 AS "cogsTotal"
       FROM "AmazonOrderItem" i
-      JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
-      LEFT JOIN "AmazonProductCogs" c ON (c.asin = i.asin AND (c.marketplace = i.marketplace OR c.marketplace = 'ALL'))
+      JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
+      LEFT JOIN "AmazonProductCogs" c ON (c."amazonAccountId" = i."amazonAccountId" AND c.asin = i.asin AND (c.marketplace = i.marketplace OR c.marketplace = 'ALL'))
       WHERE i."purchaseDate" >= '${since.toISOString()}'::timestamp
         AND o."orderStatus" NOT IN ('Canceled','Cancelled')
         AND o."salesChannel" != 'Non-Amazon'
+        AND i."amazonAccountId" = '${accountId}'
         ${mpW}
       GROUP BY DATE_TRUNC('month', i."purchaseDate")
       ORDER BY 1

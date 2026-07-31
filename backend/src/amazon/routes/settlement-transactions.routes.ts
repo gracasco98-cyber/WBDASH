@@ -2,6 +2,7 @@
 // Split from settlement.routes.ts to keep each file ≤500 LOC.
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
+import { getCurrentAccountId } from "../../context/account-context";
 
 export const settlementTransactionsRouter = Router();
 
@@ -9,6 +10,7 @@ export const settlementTransactionsRouter = Router();
 // Returns paginated order groups + non-order movements for a settlement
 settlementTransactionsRouter.get("/payments/settlement/:settlementId/transactions", async (req: Request, res: Response) => {
   try {
+    const amazonAccountId = getCurrentAccountId();
     const { settlementId } = req.params;
     const page    = parseInt((req.query.page as string) ?? "1", 10);
     const limit   = Math.min(parseInt((req.query.limit as string) ?? "50", 10), 200);
@@ -43,7 +45,7 @@ settlementTransactionsRouter.get("/payments/settlement/:settlementId/transaction
         BOOL_OR("transactionType" = 'Refund')                                                                              AS "hasRefund",
         COUNT(*)::BIGINT                                                                                                    AS "lineCount"
       FROM "AmazonSettlementTransaction"
-      WHERE "settlementId" = '${settlementId}' AND "orderId" IS NOT NULL ${whereClause}
+      WHERE "settlementId" = '${settlementId}' AND "orderId" IS NOT NULL AND "amazonAccountId" = '${amazonAccountId}' ${whereClause}
       GROUP BY "orderId", "marketplace"
       ORDER BY MIN("postedDate") DESC
       LIMIT ${limit} OFFSET ${offset}
@@ -54,7 +56,7 @@ settlementTransactionsRouter.get("/payments/settlement/:settlementId/transaction
     const [{ total }] = await prisma.$queryRawUnsafe<CountRow[]>(`
       SELECT COUNT(DISTINCT "orderId") AS total
       FROM "AmazonSettlementTransaction"
-      WHERE "settlementId" = '${settlementId}' AND "orderId" IS NOT NULL ${whereClause}
+      WHERE "settlementId" = '${settlementId}' AND "orderId" IS NOT NULL AND "amazonAccountId" = '${amazonAccountId}' ${whereClause}
     `);
 
     // ── Non-order movements (ServiceFee, storage, advertising, etc.) ──────────
@@ -66,14 +68,14 @@ settlementTransactionsRouter.get("/payments/settlement/:settlementId/transaction
         MIN("postedDate")         AS "postedDate",
         COUNT(*)::BIGINT          AS cnt
       FROM "AmazonSettlementTransaction"
-      WHERE "settlementId" = '${settlementId}' AND ("orderId" IS NULL OR "orderId" = '')
+      WHERE "settlementId" = '${settlementId}' AND ("orderId" IS NULL OR "orderId" = '') AND "amazonAccountId" = '${amazonAccountId}'
       GROUP BY "transactionType", "amountType", "currency"
       ORDER BY SUM(amount) ASC
     `);
 
     // ── Settlement header (for reconciliation summary) ────────────────────────
     const settlementHeader = await (prisma as any).amazonSettlement.findUnique({
-      where: { settlementId },
+      where: { amazonAccountId_settlementId: { amazonAccountId, settlementId } },
       select: { totalAmount: true, depositDate: true, startDate: true, endDate: true, currency: true, marketplace: true },
     }).catch(() => null);
 
@@ -85,7 +87,7 @@ settlementTransactionsRouter.get("/payments/settlement/:settlementId/transaction
         COALESCE(SUM(CASE WHEN "orderId" IS NOT NULL THEN amount ELSE 0 END),0)::FLOAT8 AS order_net,
         COALESCE(SUM(CASE WHEN "orderId" IS NULL THEN amount ELSE 0 END),0)::FLOAT8 AS non_order_net
       FROM "AmazonSettlementTransaction"
-      WHERE "settlementId" = '${settlementId}'
+      WHERE "settlementId" = '${settlementId}' AND "amazonAccountId" = '${amazonAccountId}'
     `);
 
     // ── Cross-settlement check ─────────────────────────────────────────────────
@@ -96,6 +98,7 @@ settlementTransactionsRouter.get("/payments/settlement/:settlementId/transaction
       FROM "AmazonSettlementTransaction"
       WHERE "orderId" IN (${orderIds})
         AND "settlementId" != '${settlementId}'
+        AND "amazonAccountId" = '${amazonAccountId}'
       GROUP BY "orderId"
     `) : [];
 

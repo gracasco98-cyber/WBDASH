@@ -147,8 +147,49 @@ model ProductDailySnapshot {
 
 // ─── Amazon Module Models ──────────────────────────────────────────────────────
 
+// One row per Amazon seller account connected to WBDASH. Credentials are
+// encrypted at rest (utils/crypto.ts, AES-256-GCM) — never stored in plain
+// text, never logged. A region groups marketplaces that share one set of
+// SP-API credentials (e.g. "EU" covers IT/DE/FR/ES/UK).
+model AmazonAccount {
+  id                   String    @id @default(cuid())
+  name                 String                          // display name, e.g. "Main EU account"
+  sellerId             String    @unique                // Amazon Merchant/Seller ID
+  region               String    @default("EU")          // EU | NA | FE
+  isActive             Boolean   @default(true)
+  lwaClientId          String?
+  lwaClientSecretEnc   String?                          // encrypted
+  spApiRefreshTokenEnc String?                          // encrypted
+  adsClientId          String?
+  adsClientSecretEnc   String?                          // encrypted
+  adsRefreshTokenEnc   String?                          // encrypted
+  adsProfileIds        Json?                            // { "IT": "123", "DE": "456", ... }
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  syncJobs             AmazonSyncJob[]
+  orders               AmazonOrder[]
+  orderItems           AmazonOrderItem[]
+  productSnapshots     AmazonProductSnapshot[]
+  settlements          AmazonSettlement[]
+  settlementTxns       AmazonSettlementTransaction[]
+  productCogs          AmazonProductCogs[]
+  cogsPriceEntries     AmazonCogsPriceEntry[]
+  inventory            AmazonInventory[]
+  adSnapshots          AmazonAdSnapshot[]
+  adKeywordSnapshots   AmazonAdKeywordSnapshot[]
+  adSearchTerms        AmazonAdSearchTerm[]
+  adKeywords           AmazonAdKeyword[]
+  forecastCalibrations AmazonForecastCalibration[]
+  forecastSnapshots    AmazonForecastSnapshot[]
+
+  @@index([isActive])
+}
+
 model AmazonSyncJob {
   id              String    @id @default(cuid())
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id])
   jobType         String    // orders_incremental | orders_backfill | ads_daily
   marketplace     String    // IT | DE | FR | ES | ALL_EU
   dateFrom        DateTime?
@@ -163,6 +204,7 @@ model AmazonSyncJob {
   startedAt       DateTime  @default(now())
   completedAt     DateTime?
 
+  @@index([amazonAccountId])
   @@index([jobType])
   @@index([marketplace])
   @@index([status])
@@ -171,7 +213,9 @@ model AmazonSyncJob {
 
 model AmazonOrder {
   id                 String           @id @default(cuid())
-  amazonOrderId      String           @unique
+  amazonAccountId    String
+  amazonAccount      AmazonAccount    @relation(fields: [amazonAccountId], references: [id])
+  amazonOrderId      String
   purchaseDate       DateTime
   lastUpdatedDate    DateTime
   orderStatus        String
@@ -186,6 +230,8 @@ model AmazonOrder {
   updatedAt          DateTime         @updatedAt
   items              AmazonOrderItem[]
 
+  @@unique([amazonAccountId, amazonOrderId])
+  @@index([amazonAccountId])
   @@index([purchaseDate])
   @@index([marketplace])
   @@index([orderStatus])
@@ -194,9 +240,11 @@ model AmazonOrder {
 
 model AmazonOrderItem {
   id                String      @id @default(cuid())
+  amazonAccountId   String
+  amazonAccount     AmazonAccount @relation(fields: [amazonAccountId], references: [id])
   amazonOrderId     String
-  order             AmazonOrder @relation(fields: [amazonOrderId], references: [amazonOrderId], onDelete: Cascade)
-  orderItemId       String      @unique
+  order             AmazonOrder @relation(fields: [amazonAccountId, amazonOrderId], references: [amazonAccountId, amazonOrderId], onDelete: Cascade)
+  orderItemId       String
   asin              String
   sku               String?
   productTitle      String
@@ -209,6 +257,8 @@ model AmazonOrderItem {
   marketplace       String
   purchaseDate      DateTime
 
+  @@unique([amazonAccountId, orderItemId])
+  @@index([amazonAccountId])
   @@index([asin])
   @@index([sku])
   @@index([marketplace])
@@ -216,23 +266,26 @@ model AmazonOrderItem {
 }
 
 model AmazonProductSnapshot {
-  id             String   @id @default(cuid())
-  snapshotDate   DateTime @db.Date
-  asin           String
-  sku            String?
-  productTitle   String
-  marketplace    String
-  unitsSold      Int      @default(0)
-  grossRevenue   Decimal  @default(0) @db.Decimal(14, 4)
-  refundedAmount Decimal  @default(0) @db.Decimal(14, 4)
-  netRevenue     Decimal  @default(0) @db.Decimal(14, 4)
-  orderCount     Int      @default(0)
-  adSpend        Decimal  @default(0) @db.Decimal(14, 4)
-  bsr            Int?                       // Best Seller Rank (lower is better, null if unavailable)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(cuid())
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id])
+  snapshotDate    DateTime @db.Date
+  asin            String
+  sku             String?
+  productTitle    String
+  marketplace     String
+  unitsSold       Int      @default(0)
+  grossRevenue    Decimal  @default(0) @db.Decimal(14, 4)
+  refundedAmount  Decimal  @default(0) @db.Decimal(14, 4)
+  netRevenue      Decimal  @default(0) @db.Decimal(14, 4)
+  orderCount      Int      @default(0)
+  adSpend         Decimal  @default(0) @db.Decimal(14, 4)
+  bsr             Int?                       // Best Seller Rank (lower is better, null if unavailable)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@unique([snapshotDate, asin, marketplace])
+  @@unique([amazonAccountId, snapshotDate, asin, marketplace])
+  @@index([amazonAccountId])
   @@index([snapshotDate])
   @@index([asin])
   @@index([marketplace])
@@ -241,17 +294,21 @@ model AmazonProductSnapshot {
 // Settlement transactions — commissioni reali da Amazon (ogni 2 settimane)
 // Settlement header — one record per Amazon settlement cycle (source of truth for totalAmount)
 model AmazonSettlement {
-  id            String    @id @default(cuid())
-  settlementId  String    @unique
-  marketplace   String
-  currency      String    @default("EUR")
-  startDate     DateTime
-  endDate       DateTime
-  depositDate   DateTime?
-  totalAmount   Decimal   @default(0) @db.Decimal(14, 4) // actual bank transfer amount from Amazon
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id])
+  settlementId    String
+  marketplace     String
+  currency        String    @default("EUR")
+  startDate       DateTime
+  endDate         DateTime
+  depositDate     DateTime?
+  totalAmount     Decimal   @default(0) @db.Decimal(14, 4) // actual bank transfer amount from Amazon
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
+  @@unique([amazonAccountId, settlementId])
+  @@index([amazonAccountId])
   @@index([marketplace])
   @@index([depositDate])
   @@index([endDate])
@@ -259,6 +316,8 @@ model AmazonSettlement {
 
 model AmazonSettlementTransaction {
   id                String   @id @default(cuid())
+  amazonAccountId   String
+  amazonAccount     AmazonAccount @relation(fields: [amazonAccountId], references: [id])
   settlementId      String
   transactionType   String   // Order | Refund | ServiceFee | FeeAdjustment | etc.
   orderId           String?
@@ -272,7 +331,8 @@ model AmazonSettlementTransaction {
   quantityPurchased Int?
   createdAt         DateTime @default(now())
 
-  @@unique([settlementId, orderId, asin, amountType, transactionType])
+  @@unique([amazonAccountId, settlementId, orderId, asin, amountType, transactionType])
+  @@index([amazonAccountId])
   @@index([orderId])
   @@index([asin])
   @@index([marketplace])
@@ -284,6 +344,8 @@ model AmazonSettlementTransaction {
 // Costo del venduto per ASIN (configurabile dall'utente)
 model AmazonProductCogs {
   id               String   @id @default(cuid())
+  amazonAccountId  String
+  amazonAccount    AmazonAccount @relation(fields: [amazonAccountId], references: [id])
   asin             String
   sku              String?
   marketplace      String   @default("ALL")
@@ -299,7 +361,8 @@ model AmazonProductCogs {
   updatedAt        DateTime @updatedAt
   createdAt        DateTime @default(now())
 
-  @@unique([asin, marketplace])
+  @@unique([amazonAccountId, asin, marketplace])
+  @@index([amazonAccountId])
   @@index([asin])
   @@index([sku])
   @@index([marketplace])
@@ -307,22 +370,25 @@ model AmazonProductCogs {
 
 // Storico prezzi di acquisto per ASIN (fasce temporali)
 model AmazonCogsPriceEntry {
-  id           String   @id @default(cuid())
-  asin         String
-  sku          String?
-  productTitle String?
-  imageUrl     String?
-  marketplace  String   @default("ALL")
-  supplier     String?
-  purchaseDate DateTime
-  pricePerUnit Decimal  @db.Decimal(14, 4)
-  shippingCost Decimal  @default(0) @db.Decimal(14, 4)
-  quantity     Int?
-  notes        String?
-  currency     String   @default("EUR")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id])
+  asin            String
+  sku             String?
+  productTitle    String?
+  imageUrl        String?
+  marketplace     String   @default("ALL")
+  supplier        String?
+  purchaseDate    DateTime
+  pricePerUnit    Decimal  @db.Decimal(14, 4)
+  shippingCost    Decimal  @default(0) @db.Decimal(14, 4)
+  quantity        Int?
+  notes           String?
+  currency        String   @default("EUR")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
+  @@index([amazonAccountId])
   @@index([asin])
   @@index([purchaseDate])
   @@index([asin, purchaseDate])
@@ -330,55 +396,61 @@ model AmazonCogsPriceEntry {
 
 // Inventario FBA/FBM per ASIN (sincronizzato o inserito manualmente)
 model AmazonInventory {
-  id            String   @id @default(cuid())
-  asin          String
-  sku           String?
-  marketplace   String   @default("IT")
-  productTitle  String?
-  imageUrl      String?
+  id              String   @id @default(cuid())
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id])
+  asin            String
+  sku             String?
+  marketplace     String   @default("IT")
+  productTitle    String?
+  imageUrl        String?
   // Quantità FBA
-  qtyAfn        Int      @default(0)   // Available for selling (FBA)
-  qtyMfn        Int      @default(0)   // MFN/FBM stock
-  qtyInbound    Int      @default(0)   // In shipment to Amazon
-  qtyReserved   Int      @default(0)   // Reserved (FC transfer, etc.)
-  qtyTotal      Int      @default(0)   // Total = afn + mfn + inbound
+  qtyAfn          Int      @default(0)   // Available for selling (FBA)
+  qtyMfn          Int      @default(0)   // MFN/FBM stock
+  qtyInbound      Int      @default(0)   // In shipment to Amazon
+  qtyReserved     Int      @default(0)   // Reserved (FC transfer, etc.)
+  qtyTotal        Int      @default(0)   // Total = afn + mfn + inbound
   // Metriche riordino
-  reorderPoint  Int      @default(0)
-  reorderQty    Int      @default(0)
-  leadTimeDays  Int      @default(30)
+  reorderPoint    Int      @default(0)
+  reorderQty      Int      @default(0)
+  leadTimeDays    Int      @default(30)
   // Calcolato
-  salesVelocity Float    @default(0)   // unità/giorno (media 30gg)
-  daysRemaining Int?                   // giorni rimanenti a scorta
-  lastSyncedAt  DateTime?
-  updatedAt     DateTime @updatedAt
-  createdAt     DateTime @default(now())
+  salesVelocity   Float    @default(0)   // unità/giorno (media 30gg)
+  daysRemaining   Int?                   // giorni rimanenti a scorta
+  lastSyncedAt    DateTime?
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
 
-  @@unique([asin, sku, marketplace])
+  @@unique([amazonAccountId, asin, sku, marketplace])
+  @@index([amazonAccountId])
   @@index([asin])
   @@index([marketplace])
   @@index([sku])
 }
 
 model AmazonAdSnapshot {
-  id           String   @id @default(cuid())
-  snapshotDate DateTime @db.Date
-  marketplace  String
-  campaignId   String
-  campaignName String
-  adGroupId    String?
-  adGroupName  String?
-  campaignType String   @default("SP")
-  impressions  Int      @default(0)
-  clicks       Int      @default(0)
-  spend        Decimal  @default(0) @db.Decimal(14, 4)
-  sales        Decimal  @default(0) @db.Decimal(14, 4)
-  orders       Int      @default(0)
-  acos         Float?
-  roas         Float?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id])
+  snapshotDate    DateTime @db.Date
+  marketplace     String
+  campaignId      String
+  campaignName    String
+  adGroupId       String?
+  adGroupName     String?
+  campaignType    String   @default("SP")
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  spend           Decimal  @default(0) @db.Decimal(14, 4)
+  sales           Decimal  @default(0) @db.Decimal(14, 4)
+  orders          Int      @default(0)
+  acos            Float?
+  roas            Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@unique([snapshotDate, marketplace, campaignId, adGroupId])
+  @@unique([amazonAccountId, snapshotDate, marketplace, campaignId, adGroupId])
+  @@index([amazonAccountId])
   @@index([snapshotDate])
   @@index([marketplace])
   @@index([campaignId])
@@ -386,55 +458,61 @@ model AmazonAdSnapshot {
 
 // Per-keyword daily metrics (from spKeywords report)
 model AmazonAdKeywordSnapshot {
-  id           String   @id @default(cuid())
-  snapshotDate DateTime @db.Date
-  marketplace  String
-  campaignId   String
-  adGroupId    String
-  keywordId    String
-  keywordText  String
-  matchType    String   @default("EXACT")
-  impressions  Int      @default(0)
-  clicks       Int      @default(0)
-  spend        Decimal  @default(0) @db.Decimal(14, 4)
-  sales        Decimal  @default(0) @db.Decimal(14, 4)
-  orders       Int      @default(0)
-  acos         Float?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id])
+  snapshotDate    DateTime @db.Date
+  marketplace     String
+  campaignId      String
+  adGroupId       String
+  keywordId       String
+  keywordText     String
+  matchType       String   @default("EXACT")
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  spend           Decimal  @default(0) @db.Decimal(14, 4)
+  sales           Decimal  @default(0) @db.Decimal(14, 4)
+  orders          Int      @default(0)
+  acos            Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@unique([snapshotDate, marketplace, campaignId, keywordId])
+  @@unique([amazonAccountId, snapshotDate, marketplace, campaignId, keywordId])
+  @@index([amazonAccountId])
   @@index([campaignId])
   @@index([marketplace])
   @@index([keywordId])
 }
 
 // Search term report (persisted — survives restarts, updated on each sync)
-// One row per unique (marketplace, dateFrom, dateTo, query, keywordText, campaignId)
+// One row per unique (account, marketplace, dateFrom, dateTo, query, keywordText, campaignId)
 model AmazonAdSearchTerm {
-  id           String   @id @default(cuid())
-  marketplace  String
-  dateFrom     String   // YYYY-MM-DD (report period start)
-  dateTo       String   // YYYY-MM-DD (report period end)
-  query        String   // actual search term the customer typed
-  keywordText  String   // matched keyword
-  matchType    String   @default("")
-  campaignId   String
-  campaignName String   @default("")
-  adGroupId    String   @default("")
-  impressions  Int      @default(0)
-  clicks       Int      @default(0)
-  spend        Decimal  @default(0) @db.Decimal(14, 4)
-  sales        Decimal  @default(0) @db.Decimal(14, 4)
-  orders       Int      @default(0)
-  acos         Float?
-  roas         Float?
-  ctr          Float    @default(0)
-  cpc          Decimal  @default(0) @db.Decimal(14, 4)
-  isWasted     Boolean  @default(false) // spend>1 & orders=0
-  syncedAt     DateTime @default(now())
+  id              String   @id @default(cuid())
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id])
+  marketplace     String
+  dateFrom        String   // YYYY-MM-DD (report period start)
+  dateTo          String   // YYYY-MM-DD (report period end)
+  query           String   // actual search term the customer typed
+  keywordText     String   // matched keyword
+  matchType       String   @default("")
+  campaignId      String
+  campaignName    String   @default("")
+  adGroupId       String   @default("")
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  spend           Decimal  @default(0) @db.Decimal(14, 4)
+  sales           Decimal  @default(0) @db.Decimal(14, 4)
+  orders          Int      @default(0)
+  acos            Float?
+  roas            Float?
+  ctr             Float    @default(0)
+  cpc             Decimal  @default(0) @db.Decimal(14, 4)
+  isWasted        Boolean  @default(false) // spend>1 & orders=0
+  syncedAt        DateTime @default(now())
 
-  @@unique([marketplace, dateFrom, dateTo, query, keywordText, campaignId])
+  @@unique([amazonAccountId, marketplace, dateFrom, dateTo, query, keywordText, campaignId])
+  @@index([amazonAccountId])
   @@index([marketplace])
   @@index([syncedAt])
   @@index([spend])
@@ -443,19 +521,22 @@ model AmazonAdSearchTerm {
 
 // Live keyword structure (refreshed every 2 min from API — no metrics)
 model AmazonAdKeyword {
-  id          String   @id @default(cuid())
-  keywordId   String
-  campaignId  String
-  adGroupId   String
-  marketplace String
-  keywordText String
-  matchType   String
-  state       String
-  bid         Decimal  @default(0) @db.Decimal(14, 4)
-  syncedAt    DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id])
+  keywordId       String
+  campaignId      String
+  adGroupId       String
+  marketplace     String
+  keywordText     String
+  matchType       String
+  state           String
+  bid             Decimal  @default(0) @db.Decimal(14, 4)
+  syncedAt        DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@unique([keywordId, marketplace])
+  @@unique([amazonAccountId, keywordId, marketplace])
+  @@index([amazonAccountId])
   @@index([campaignId])
   @@index([marketplace])
 }
@@ -469,7 +550,9 @@ model AmazonAdKeyword {
 // matematica EWMA (alpha * new + (1-alpha) * old) è nativamente in floating point.
 model AmazonForecastCalibration {
   id              String   @id @default(cuid())
-  marketplace     String   @unique
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id])
+  marketplace     String
   // Core payout ratio (net_bank_transfer / gross_principal) — most critical
   payoutRatio     Float
   // Per-fee ratios (as fraction of gross_principal)
@@ -520,6 +603,8 @@ model AmazonForecastCalibration {
   lastUpdatedAt   DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  @@unique([amazonAccountId, marketplace])
+  @@index([amazonAccountId])
   @@index([marketplace])
 }
 
@@ -596,6 +681,8 @@ model AuditLog {
 // Snapshot of each forecast made, for accuracy tracking
 model AmazonForecastSnapshot {
   id               String    @id @default(cuid())
+  amazonAccountId  String
+  amazonAccount    AmazonAccount @relation(fields: [amazonAccountId], references: [id])
   snapshotDate     DateTime  @default(now())
   marketplace      String
   // Settlement period this forecast covers
@@ -616,6 +703,7 @@ model AmazonForecastSnapshot {
   reconciledAt     DateTime?
   createdAt        DateTime  @default(now())
 
+  @@index([amazonAccountId])
   @@index([marketplace])
   @@index([snapshotDate])
   @@index([periodEnd])

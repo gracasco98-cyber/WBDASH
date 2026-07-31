@@ -5,6 +5,7 @@ import { prisma } from "../../db";
 import { findAmazonOrdersWithItems } from "../../repositories/amazon/orders.repo";
 import { getDateRange } from "../utils/datetime";
 import { toCsv } from "./orders.routes";
+import { getCurrentAccountId } from "../../context/account-context";
 
 export const ordersExportRouter = Router();
 
@@ -55,6 +56,7 @@ ordersExportRouter.get("/export/orders", async (req: Request, res: Response) => 
 // Download all orders (up to 50k) as CSV with isPaid status
 ordersExportRouter.get("/orders/export", async (req: Request, res: Response) => {
   try {
+    const amazonAccountId = getCurrentAccountId();
     const { marketplace, status, filter, from, to } = req.query as Record<string, string>;
     const range = getDateRange(filter ?? "last90", from, to);
     const dfStr = (range.gte ?? new Date(Date.now() - 90 * 86400000)).toISOString().split("T")[0];
@@ -80,14 +82,16 @@ ordersExportRouter.get("/orders/export", async (req: Request, res: Response) => 
       LEFT JOIN LATERAL (
         SELECT st2."settlementId", st2."orderId"
         FROM "AmazonSettlementTransaction" st2
-        WHERE st2."orderId" = o."amazonOrderId"
+        WHERE st2."amazonAccountId" = o."amazonAccountId"
+          AND st2."orderId" = o."amazonOrderId"
           AND st2."amountType" = 'Principal'
           AND st2."transactionType" = 'Order'
         LIMIT 1
       ) st ON true
-      LEFT JOIN "AmazonSettlement" s ON s."settlementId" = st."settlementId"
+      LEFT JOIN "AmazonSettlement" s ON s."amazonAccountId" = o."amazonAccountId" AND s."settlementId" = st."settlementId"
       WHERE o."purchaseDate" >= '${dfStr}'::date
         AND o."purchaseDate" <= '${dtStr}'::date + interval '1 day'
+        AND o."amazonAccountId" = '${amazonAccountId}'
         ${mpWhere}${stWhere}
       ORDER BY o."purchaseDate" DESC
       LIMIT 50000

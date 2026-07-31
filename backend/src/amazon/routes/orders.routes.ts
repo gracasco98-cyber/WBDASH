@@ -6,6 +6,7 @@ import {
   findAmazonOrdersWithItems,
 } from "../../repositories/amazon/orders.repo";
 import { italyOffsetMs, italyDayStart, getDateRange } from "../utils/datetime";
+import { getCurrentAccountId } from "../../context/account-context";
 
 export const ordersRouter = Router();
 
@@ -30,6 +31,7 @@ export function toCsv(headers: string[], rows: (string | number | null | undefin
 ordersRouter.get("/overview", async (req: Request, res: Response) => {
   console.log(`[Amazon] /overview HIT — ip=${req.ip} mp=${req.query.marketplace ?? "all"}`);
   try {
+    const amazonAccountId = getCurrentAccountId();
     const { marketplace } = req.query as Record<string, string>;
     const mpFilter = marketplace && marketplace !== "all" ? marketplace.replace(/'/g, "") : null;
 
@@ -100,10 +102,11 @@ ordersRouter.get("/overview", async (req: Request, res: Response) => {
       prisma.$queryRawUnsafe<FlatRow[]>(`
         SELECT ${orderColsSql}
         FROM "AmazonOrder" o
-        LEFT JOIN "AmazonOrderItem" i ON i."amazonOrderId" = o."amazonOrderId"
+        LEFT JOIN "AmazonOrderItem" i ON i."amazonAccountId" = o."amazonAccountId" AND i."amazonOrderId" = o."amazonOrderId"
         WHERE o."purchaseDate" >= '${iso(wideFrom)}'::timestamp
           AND o."purchaseDate" <= '${iso(wideTo)}'::timestamp
           AND o."salesChannel" != 'Non-Amazon'
+          AND o."amazonAccountId" = '${amazonAccountId}'
           ${mpW}
       `).then(r => r[0] ?? {}),
 
@@ -112,6 +115,7 @@ ordersRouter.get("/overview", async (req: Request, res: Response) => {
         FROM "AmazonAdSnapshot"
         WHERE "snapshotDate" >= '${isoSnapD(wideFrom)}'::date
           AND "snapshotDate" <= '${isoSnapD(wideTo)}'::date
+          AND "amazonAccountId" = '${amazonAccountId}'
           ${adMpW}
       `).then(r => r[0] ?? {}),
     ]);
@@ -172,6 +176,7 @@ ordersRouter.get("/overview", async (req: Request, res: Response) => {
 // ─── GET /summary ───────────────────────────────────────────────────────────────
 ordersRouter.get("/summary", async (req: Request, res: Response) => {
   try {
+    const amazonAccountId = getCurrentAccountId();
     const { filter = "last30", from, to, marketplace } = req.query as Record<string, string>;
     const range = getDateRange(filter, from, to);
     const dateFrom = range.gte ?? new Date(Date.now() - 30 * 86400000);
@@ -193,11 +198,12 @@ ordersRouter.get("/summary", async (req: Request, res: Response) => {
         COALESCE(SUM(i."quantityOrdered"), 0)::INTEGER AS "unitsSold",
         COALESCE(SUM(i."itemPrice"), 0)::FLOAT8 AS "grossRevenue"
       FROM "AmazonOrder" o
-      LEFT JOIN "AmazonOrderItem" i ON i."amazonOrderId" = o."amazonOrderId"
+      LEFT JOIN "AmazonOrderItem" i ON i."amazonAccountId" = o."amazonAccountId" AND i."amazonOrderId" = o."amazonOrderId"
       WHERE o."purchaseDate" >= '${dateFrom.toISOString()}'::timestamp
         AND o."purchaseDate" <= '${dateTo.toISOString()}'::timestamp
         AND o."orderStatus" NOT IN ('Canceled', 'Cancelled')
         AND o."salesChannel" != 'Non-Amazon'
+        AND o."amazonAccountId" = '${amazonAccountId}'
         ${mpFilter}
       GROUP BY o.marketplace
     `);
@@ -227,6 +233,7 @@ ordersRouter.get("/summary", async (req: Request, res: Response) => {
       FROM "AmazonAdSnapshot"
       WHERE "snapshotDate" >= '${_adFrom}'::date
         AND "snapshotDate" <= '${_adTo}'::date
+        AND "amazonAccountId" = '${amazonAccountId}'
         ${marketplace && marketplace !== "all" ? `AND marketplace = '${marketplace.replace(/'/g, "")}'` : ""}
     `);
 
@@ -254,6 +261,7 @@ ordersRouter.get("/summary", async (req: Request, res: Response) => {
 // ─── GET /timeseries ────────────────────────────────────────────────────────────
 ordersRouter.get("/timeseries", async (req: Request, res: Response) => {
   try {
+    const amazonAccountId = getCurrentAccountId();
     const { filter = "last30", from, to, marketplace, granularity = "day" } = req.query as Record<string, string>;
     const range = getDateRange(filter, from, to);
     const dateFrom = range.gte ?? new Date(Date.now() - 30 * 86400000);
@@ -272,11 +280,12 @@ ordersRouter.get("/timeseries", async (req: Request, res: Response) => {
           COALESCE(SUM(i."itemPrice"), 0)::FLOAT8 AS revenue,
           COUNT(DISTINCT o."amazonOrderId")::INTEGER AS count
         FROM "AmazonOrder" o
-        LEFT JOIN "AmazonOrderItem" i ON i."amazonOrderId" = o."amazonOrderId"
+        LEFT JOIN "AmazonOrderItem" i ON i."amazonAccountId" = o."amazonAccountId" AND i."amazonOrderId" = o."amazonOrderId"
         WHERE o."purchaseDate" >= '${dateFrom.toISOString()}'::timestamp
           AND o."purchaseDate" <= '${dateTo.toISOString()}'::timestamp
           AND o."orderStatus" NOT IN ('Canceled', 'Cancelled')
           AND o."salesChannel" != 'Non-Amazon'
+          AND o."amazonAccountId" = '${amazonAccountId}'
           ${mpFilter}
         GROUP BY TO_CHAR(o."purchaseDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome', 'YYYY-MM-DD"T"HH24:00'), o.marketplace
         ORDER BY TO_CHAR(o."purchaseDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome', 'YYYY-MM-DD"T"HH24:00') ASC
@@ -308,11 +317,12 @@ ordersRouter.get("/timeseries", async (req: Request, res: Response) => {
           COALESCE(SUM(i."itemPrice"), 0)::FLOAT8 AS revenue,
           COUNT(DISTINCT o."amazonOrderId")::INTEGER AS count
         FROM "AmazonOrder" o
-        LEFT JOIN "AmazonOrderItem" i ON i."amazonOrderId" = o."amazonOrderId"
+        LEFT JOIN "AmazonOrderItem" i ON i."amazonAccountId" = o."amazonAccountId" AND i."amazonOrderId" = o."amazonOrderId"
         WHERE o."purchaseDate" >= '${dateFrom.toISOString()}'::timestamp
           AND o."purchaseDate" <= '${dateTo.toISOString()}'::timestamp
           AND o."orderStatus" NOT IN ('Canceled', 'Cancelled')
           AND o."salesChannel" != 'Non-Amazon'
+          AND o."amazonAccountId" = '${amazonAccountId}'
           ${mpFilter}
         GROUP BY DATE(o."purchaseDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome'), o.marketplace
         ORDER BY DATE(o."purchaseDate" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Rome') ASC
@@ -346,6 +356,7 @@ ordersRouter.get("/timeseries", async (req: Request, res: Response) => {
 // ─── GET /orders ────────────────────────────────────────────────────────────────
 ordersRouter.get("/orders", async (req: Request, res: Response) => {
   try {
+    const amazonAccountId = getCurrentAccountId();
     const { filter = "last30", from, to, marketplace, page = "1", limit = "50", status } = req.query as Record<string, string>;
     const range = getDateRange(filter, from, to);
     const pageNum = Math.max(1, parseInt(page, 10));
@@ -360,7 +371,10 @@ ordersRouter.get("/orders", async (req: Request, res: Response) => {
     }
 
     // Build WHERE conditions for raw SQL
-    const conditions: string[] = [`o."purchaseDate" >= '${range.gte!.toISOString()}' AND o."purchaseDate" <= '${range.lte ? range.lte.toISOString() : new Date().toISOString()}'`];
+    const conditions: string[] = [
+      `o."purchaseDate" >= '${range.gte!.toISOString()}' AND o."purchaseDate" <= '${range.lte ? range.lte.toISOString() : new Date().toISOString()}'`,
+      `o."amazonAccountId" = '${amazonAccountId}'`,
+    ];
     if (marketplace && marketplace !== "all") conditions.push(`o."marketplace" = '${marketplace.replace(/'/g, "''")}'`);
     if (status) {
       conditions.push(`o."orderStatus" = '${status.replace(/'/g, "''")}'`);
@@ -389,12 +403,13 @@ ordersRouter.get("/orders", async (req: Request, res: Response) => {
         LEFT JOIN LATERAL (
           SELECT st2."settlementId", st2."orderId"
           FROM "AmazonSettlementTransaction" st2
-          WHERE st2."orderId" = o."amazonOrderId"
+          WHERE st2."amazonAccountId" = o."amazonAccountId"
+            AND st2."orderId" = o."amazonOrderId"
             AND st2."amountType" = 'Principal'
             AND st2."transactionType" = 'Order'
           LIMIT 1
         ) st ON true
-        LEFT JOIN "AmazonSettlement" s ON s."settlementId" = st."settlementId"
+        LEFT JOIN "AmazonSettlement" s ON s."amazonAccountId" = o."amazonAccountId" AND s."settlementId" = st."settlementId"
         ${whereClause}
         ORDER BY o."purchaseDate" DESC
         LIMIT ${limitNum} OFFSET ${offset}
@@ -402,7 +417,8 @@ ordersRouter.get("/orders", async (req: Request, res: Response) => {
       prisma.$queryRawUnsafe<any[]>(`
         SELECT oi.*
         FROM "AmazonOrderItem" oi
-        WHERE oi."amazonOrderId" IN (
+        WHERE oi."amazonAccountId" = '${amazonAccountId}'
+          AND oi."amazonOrderId" IN (
           SELECT o."amazonOrderId" FROM "AmazonOrder" o
           ${whereClause}
           ORDER BY o."purchaseDate" DESC

@@ -3,6 +3,7 @@ import { Router, Request, Response } from "express";
 import { Prisma } from "@prisma/client";
 // Prisma namespace imported for Prisma.sql tagged template literal
 import { prisma } from "../db";
+import { getCurrentAccountId } from "../context/account-context";
 import {
   computeDailySnapshot,
   runDailySnapshotJob,
@@ -409,10 +410,24 @@ router.get("/aggregated", async (req: Request, res: Response) => {
     const limitNum = Math.min(parseInt(limit) || 50, 500);
     const mpArray = marketplaces ? marketplaces.split(",").map(m => m.trim()) : undefined;
 
+    // This endpoint merges Amazon + Shopify products into one list. If no
+    // single Amazon account is in scope (0 or 2+ accounts, none specified),
+    // degrade gracefully: skip the Amazon portion entirely and still return
+    // Shopify products below, with a note on the response.
+    let amazonAccountId: string | null = null;
+    let amazonDataNote: string | undefined;
+    try {
+      amazonAccountId = getCurrentAccountId();
+    } catch (e) {
+      if (!(e instanceof Error && e.message.includes("No Amazon account in scope"))) throw e;
+      amazonDataNote = "Dati Amazon non disponibili: nessun account Amazon univoco selezionato per questa richiesta.";
+    }
+
     // Query Amazon data with comprehensive metrics
-    const amazonGroups = await (prisma as any).amazonOrderItem.groupBy({
+    const amazonGroups = amazonAccountId ? await (prisma as any).amazonOrderItem.groupBy({
       by: ["asin"],
       where: {
+        amazonAccountId,
         purchaseDate: range,
         order: { salesChannel: { not: "Non-Amazon" } },
         ...(mpArray && mpArray.length > 0 ? { order: { marketplace: { in: mpArray } } } : {}),
@@ -423,11 +438,12 @@ router.get("/aggregated", async (req: Request, res: Response) => {
         promotionDiscount: true,
       },
       _count: { id: true },
-    });
+    }) : [];
 
     // Get Amazon product details and COGS
     const amazonDetails = amazonGroups.length > 0 ? await (prisma as any).amazonProductCogs.findMany({
       where: {
+        amazonAccountId,
         asin: { in: amazonGroups.map(g => g.asin) },
         OR: mpArray && mpArray.length > 0
           ? mpArray.map(mp => ({ marketplace: mp })).concat([{ marketplace: "ALL" }])
@@ -440,6 +456,7 @@ router.get("/aggregated", async (req: Request, res: Response) => {
     // Get Amazon settlement data (refunds, fees, payouts)
     const amazonSettlements = amazonGroups.length > 0 ? await (prisma as any).amazonSettlementTransaction.findMany({
       where: {
+        amazonAccountId,
         asin: { in: amazonGroups.map(g => g.asin) },
         postedDate: range,
         ...(mpArray && mpArray.length > 0 ? { marketplace: { in: mpArray } } : {}),
@@ -449,6 +466,7 @@ router.get("/aggregated", async (req: Request, res: Response) => {
     // Get Amazon Ads data (ad spend)
     const amazonAds = amazonGroups.length > 0 ? await (prisma as any).amazonAdSnapshot.findMany({
       where: {
+        amazonAccountId,
         snapshotDate: {
           gte: dateFrom,
           lte: dateTo,
@@ -460,6 +478,7 @@ router.get("/aggregated", async (req: Request, res: Response) => {
     // Get Amazon product snapshots (sessions)
     const amazonSnapshots = amazonGroups.length > 0 ? await (prisma as any).amazonProductSnapshot.findMany({
       where: {
+        amazonAccountId,
         asin: { in: amazonGroups.map(g => g.asin) },
         snapshotDate: {
           gte: dateFrom,
@@ -708,6 +727,7 @@ router.get("/aggregated", async (req: Request, res: Response) => {
       kpis,
       limit: limitNum,
       total: products.length,
+      ...(amazonDataNote ? { amazonDataNote } : {}),
     });
   } catch (err) {
     console.error("[Products] GET /aggregated:", err);

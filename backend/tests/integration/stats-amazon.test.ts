@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { setupTestDb, truncateAll, type TestDb } from '../helpers/db';
+import { setupTestDb, truncateAll, createTestAmazonAccount, type TestDb } from '../helpers/db';
 import { sampleAmazonOrders, sampleAmazonOrderItems } from '../fixtures/amazon-orders.fixture';
 import { sampleSettlements, sampleSettlementTransactions } from '../fixtures/amazon-settlements.fixture';
 
@@ -96,6 +96,7 @@ function getDateRange(filter: string, from?: string, to?: string) {
 /** Core /summary aggregation — mirrors the SQL in GET /summary */
 async function querySummary(
   prisma: any,
+  accountId: string,
   filter: string,
   opts: { from?: string; to?: string; marketplace?: string } = {},
 ) {
@@ -121,8 +122,9 @@ async function querySummary(
       COALESCE(SUM(i."quantityOrdered"), 0)::INTEGER   AS "unitsSold",
       COALESCE(SUM(i."itemPrice"), 0)::FLOAT8          AS "grossRevenue"
     FROM "AmazonOrder" o
-    LEFT JOIN "AmazonOrderItem" i ON i."amazonOrderId" = o."amazonOrderId"
-    WHERE o."purchaseDate" >= '${dateFrom.toISOString()}'::timestamp
+    LEFT JOIN "AmazonOrderItem" i ON i."amazonAccountId" = o."amazonAccountId" AND i."amazonOrderId" = o."amazonOrderId"
+    WHERE o."amazonAccountId" = '${accountId}'
+      AND o."purchaseDate" >= '${dateFrom.toISOString()}'::timestamp
       AND o."purchaseDate" <= '${dateTo.toISOString()}'::timestamp
       AND o."orderStatus" NOT IN ('Canceled', 'Cancelled')
       AND o."salesChannel" != 'Non-Amazon'
@@ -149,18 +151,19 @@ async function querySummary(
 }
 
 /** Settlement total — sum of all transactions for a given settlementId */
-async function querySettlementTxnSum(prisma: any, settlementId: string): Promise<number> {
+async function querySettlementTxnSum(prisma: any, accountId: string, settlementId: string): Promise<number> {
   type Row = { total: number | string };
   const rows = await prisma.$queryRawUnsafe<Row[]>(`
     SELECT COALESCE(SUM(amount), 0)::FLOAT8 AS total
     FROM "AmazonSettlementTransaction"
-    WHERE "settlementId" = '${settlementId}'
+    WHERE "amazonAccountId" = '${accountId}'
+      AND "settlementId" = '${settlementId}'
   `);
   return Number(rows[0]?.total ?? 0);
 }
 
 /** Settlement fee ratios — mirrors the CTE in GET /dashboard */
-async function queryFeeRatios(prisma: any) {
+async function queryFeeRatios(prisma: any, accountId: string) {
   type FeeRow = {
     marketplace: string;
     gross_sales: number;
@@ -175,7 +178,8 @@ async function queryFeeRatios(prisma: any) {
     WITH sett_totals AS (
       SELECT marketplace, SUM("totalAmount") AS real_payout
       FROM "AmazonSettlement"
-      WHERE marketplace IN ('IT','DE','FR','ES')
+      WHERE "amazonAccountId" = '${accountId}'
+        AND marketplace IN ('IT','DE','FR','ES')
       GROUP BY marketplace
     ),
     txn_totals AS (
@@ -185,8 +189,9 @@ async function queryFeeRatios(prisma: any) {
         SUM(CASE WHEN t."amountType"='FBAPerUnitFulfillmentFee' THEN t.amount ELSE 0 END) AS fba_fee,
         SUM(CASE WHEN t."transactionType"='Refund' THEN t.amount ELSE 0 END) AS refunds
       FROM "AmazonSettlementTransaction" t
-      JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId"
-      WHERE s.marketplace IN ('IT','DE','FR','ES')
+      JOIN "AmazonSettlement" s ON s."amazonAccountId" = t."amazonAccountId" AND s."settlementId" = t."settlementId"
+      WHERE t."amazonAccountId" = '${accountId}'
+        AND s.marketplace IN ('IT','DE','FR','ES')
       GROUP BY s.marketplace
     )
     SELECT
@@ -211,6 +216,7 @@ async function queryFeeRatios(prisma: any) {
 
 describe('Amazon KPIs — integration (PR 7)', () => {
   let db: TestDb;
+  let accountId: string;
 
   beforeAll(async () => {
     db = await setupTestDb();
@@ -222,28 +228,29 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   beforeEach(async () => {
     await truncateAll(db.prisma);
+    accountId = await createTestAmazonAccount(db.prisma);
 
     // Seed Amazon orders (parent records first)
     for (const order of sampleAmazonOrders) {
-      await db.prisma.amazonOrder.create({ data: order });
+      await db.prisma.amazonOrder.create({ data: { ...order, amazonAccountId: accountId } });
     }
     // Seed Amazon order items (children)
     for (const item of sampleAmazonOrderItems) {
-      await db.prisma.amazonOrderItem.create({ data: item });
+      await db.prisma.amazonOrderItem.create({ data: { ...item, amazonAccountId: accountId } });
     }
     // Seed settlements
     for (const sett of sampleSettlements) {
-      await db.prisma.amazonSettlement.create({ data: sett });
+      await db.prisma.amazonSettlement.create({ data: { ...sett, amazonAccountId: accountId } });
     }
     // Seed settlement transactions
     for (const txn of sampleSettlementTransactions) {
-      await db.prisma.amazonSettlementTransaction.create({ data: txn });
+      await db.prisma.amazonSettlementTransaction.create({ data: { ...txn, amazonAccountId: accountId } });
     }
   });
 
   // ── 1. last30: IT marketplace revenue and order count ───────────────────────
   it('last30: IT marketplace grossRevenue and orderCount correct', async () => {
-    const result = await querySummary(db.prisma, 'last30');
+    const result = await querySummary(db.prisma, accountId, 'last30');
     const it = result.byMarketplace['IT'];
     // IT orders: AZ-IT-001(90) + AZ-IT-002(30) + AZ-IT-003(75) + AZ-IT-004(120) + AZ-IT-005(70)
     // LOCK-IN: AZ-IT-CANCEL excluded (Cancelled), AZ-IT-NONAMAZON excluded (Non-Amazon)
@@ -256,7 +263,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 2. last30: DE marketplace revenue ───────────────────────────────────────
   it('last30: DE marketplace grossRevenue and orderCount correct', async () => {
-    const result = await querySummary(db.prisma, 'last30');
+    const result = await querySummary(db.prisma, accountId, 'last30');
     const de = result.byMarketplace['DE'];
     // AZ-DE-001(80) + AZ-DE-002(100, business) + AZ-DE-003(45) = 225
     expect(de).toBeDefined();
@@ -267,7 +274,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 3. last30: FR marketplace revenue ───────────────────────────────────────
   it('last30: FR marketplace grossRevenue and orderCount correct', async () => {
-    const result = await querySummary(db.prisma, 'last30');
+    const result = await querySummary(db.prisma, accountId, 'last30');
     const fr = result.byMarketplace['FR'];
     // AZ-FR-001(80) + AZ-FR-002(55) = 135
     expect(fr).toBeDefined();
@@ -278,7 +285,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 4. last30: ES marketplace revenue ───────────────────────────────────────
   it('last30: ES marketplace grossRevenue and orderCount correct', async () => {
-    const result = await querySummary(db.prisma, 'last30');
+    const result = await querySummary(db.prisma, accountId, 'last30');
     const es = result.byMarketplace['ES'];
     // AZ-ES-001(60) + AZ-ES-002(60) = 120
     expect(es).toBeDefined();
@@ -289,7 +296,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 5. last30: ALL_EU aggregate ──────────────────────────────────────────────
   it('last30: ALL_EU aggregate sums all marketplace revenues', async () => {
-    const result = await querySummary(db.prisma, 'last30');
+    const result = await querySummary(db.prisma, accountId, 'last30');
     // IT(385) + DE(225) + FR(135) + ES(120) = 865
     expect(result.totalRevenue).toBe(865);
     expect(result.totalOrders).toBe(12);
@@ -298,7 +305,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 6. LOCK-IN: Cancelled orders ARE excluded ───────────────────────────────
   it('LOCK-IN: cancelled orders are EXCLUDED from /summary (opposite of Shopify)', async () => {
-    const result = await querySummary(db.prisma, 'last30');
+    const result = await querySummary(db.prisma, accountId, 'last30');
     // AZ-IT-CANCEL has itemPrice=999 — if included, IT revenue would be 385+999=1384
     // LOCK-IN: Cancelled is EXCLUDED (WHERE NOT IN 'Canceled','Cancelled')
     const it = result.byMarketplace['IT'];
@@ -308,7 +315,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 7. LOCK-IN: Non-Amazon channel orders are excluded ──────────────────────
   it('LOCK-IN: salesChannel=Non-Amazon orders are EXCLUDED from /summary', async () => {
-    const result = await querySummary(db.prisma, 'last30');
+    const result = await querySummary(db.prisma, accountId, 'last30');
     // AZ-IT-NONAMAZON has itemPrice=888 — if included, IT revenue would be 385+888=1273
     const it = result.byMarketplace['IT'];
     expect(it.revenue).toBe(385);
@@ -321,6 +328,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
     // Create a deliberate mismatch: seed an order with itemTotal=9999 but items summing to 10
     await db.prisma.amazonOrder.create({
       data: {
+        amazonAccountId:    accountId,
         amazonOrderId:      'AZ-MISMATCH',
         purchaseDate:       new Date('2026-04-10T09:00:00Z'),
         lastUpdatedDate:    new Date('2026-04-10T09:00:00Z'),
@@ -336,6 +344,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
     });
     await db.prisma.amazonOrderItem.create({
       data: {
+        amazonAccountId:   accountId,
         amazonOrderId:     'AZ-MISMATCH',
         orderItemId:       'ITEM-MISMATCH-A',
         asin:              'B0AMISMATCH',
@@ -352,7 +361,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
       },
     });
 
-    const result = await querySummary(db.prisma, 'last30');
+    const result = await querySummary(db.prisma, accountId, 'last30');
     // IT revenue should include 10 (itemPrice), not 9999 (itemTotal)
     // Without mismatch: IT=385. With mismatch item: IT=395
     const it = result.byMarketplace['IT'];
@@ -364,7 +373,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
   it('today: returns only orders with purchaseDate in Italy today window', async () => {
     // today gte = 2026-04-14T22:00:00Z (Italy midnight 2026-04-15, TZ=UTC)
     // Only AZ-IT-004 (2026-04-14T22:30Z) qualifies
-    const result = await querySummary(db.prisma, 'today');
+    const result = await querySummary(db.prisma, accountId, 'today');
     expect(result.totalOrders).toBe(1);
     expect(result.totalRevenue).toBe(120);
     expect(result.byMarketplace['IT']).toBeDefined();
@@ -377,7 +386,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
   it('yesterday: returns only orders in Italy yesterday window', async () => {
     // yesterday gte = 2026-04-13T22:00:00Z, lte = 2026-04-14T21:59:59.999Z (TZ=UTC)
     // Only AZ-IT-005 (2026-04-13T23:00Z) qualifies
-    const result = await querySummary(db.prisma, 'yesterday');
+    const result = await querySummary(db.prisma, accountId, 'yesterday');
     expect(result.totalOrders).toBe(1);
     expect(result.totalRevenue).toBe(70);
     expect(result.byMarketplace['IT']).toBeDefined();
@@ -390,7 +399,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
     // last7 gte = Date.now() - 7*86400000 - italyOffsetMs()
     //           = 2026-04-15T10:00Z - 604800000ms - 7200000ms = 2026-04-08T08:00:00Z
     // AZ-ES-001 is at exactly 2026-04-08T08:00:00Z → included (gte is inclusive)
-    const result = await querySummary(db.prisma, 'last7');
+    const result = await querySummary(db.prisma, accountId, 'last7');
     const es = result.byMarketplace['ES'];
     expect(es).toBeDefined();
     expect(es.revenue).toBe(120); // includes AZ-ES-001(60) + AZ-ES-002(60)
@@ -401,6 +410,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
   it('LOCK-IN: order at 2026-04-08T07:59:59Z (just before last7 gte) is excluded', async () => {
     await db.prisma.amazonOrder.create({
       data: {
+        amazonAccountId:    accountId,
         amazonOrderId:      'AZ-BOUNDARY-BEFORE',
         purchaseDate:       new Date('2026-04-08T07:59:59Z'),  // 1s before last7 cutoff
         lastUpdatedDate:    new Date('2026-04-08T07:59:59Z'),
@@ -416,6 +426,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
     });
     await db.prisma.amazonOrderItem.create({
       data: {
+        amazonAccountId:   accountId,
         amazonOrderId:     'AZ-BOUNDARY-BEFORE',
         orderItemId:       'ITEM-BOUNDARY-A',
         asin:              'B0ABOUNDARY',
@@ -432,7 +443,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
       },
     });
 
-    const result = await querySummary(db.prisma, 'last7');
+    const result = await querySummary(db.prisma, accountId, 'last7');
     const es = result.byMarketplace['ES'];
     // ES total should still be 120 (AZ-ES-001 + AZ-ES-002), not 197
     expect(es.revenue).toBe(120);
@@ -453,7 +464,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
     //   AZ-ES-002 (2026-04-11T16:00Z) ✓
     //   AZ-FR-002 (2026-04-13T08:00Z) ✗ (2026-04-12T21:59:59Z boundary)
     // Also within range: AZ-IT-CANCEL (excluded), AZ-IT-NONAMAZON (excluded)
-    const result = await querySummary(db.prisma, 'custom', { from: '2026-04-10', to: '2026-04-12' });
+    const result = await querySummary(db.prisma, accountId, 'custom', { from: '2026-04-10', to: '2026-04-12' });
 
     // IT: AZ-IT-001(90) + AZ-IT-002(30) + AZ-IT-003(75) = 195
     expect(result.byMarketplace['IT']?.revenue).toBe(195);
@@ -483,14 +494,14 @@ describe('Amazon KPIs — integration (PR 7)', () => {
     // AZ-IT-002 (2026-04-11T14:00Z) ✓
     // AZ-DE-002 (2026-04-11T10:00Z) ✓
     // AZ-ES-002 (2026-04-11T16:00Z) ✓
-    const result = await querySummary(db.prisma, 'custom', { from: '2026-04-11' });
+    const result = await querySummary(db.prisma, accountId, 'custom', { from: '2026-04-11' });
     expect(result.totalRevenue).toBe(30 + 100 + 60); // 190
     expect(result.totalOrders).toBe(3);
   });
 
   // ── 15. marketplace filter on /summary ──────────────────────────────────────
   it('marketplace filter: returns only orders from specified marketplace', async () => {
-    const result = await querySummary(db.prisma, 'last30', { marketplace: 'DE' });
+    const result = await querySummary(db.prisma, accountId, 'last30', { marketplace: 'DE' });
     // Only DE orders: AZ-DE-001(80) + AZ-DE-002(100) + AZ-DE-003(45) = 225
     expect(result.totalRevenue).toBe(225);
     expect(result.totalOrders).toBe(3);
@@ -503,7 +514,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
   // ── 16. LOCK-IN: isBusinessOrder does NOT affect KPI filtering ───────────────
   it('LOCK-IN: isBusinessOrder=true orders ARE included in KPI aggregations', async () => {
     // AZ-DE-002 is a business order — it should be included
-    const result = await querySummary(db.prisma, 'last30', { marketplace: 'DE' });
+    const result = await querySummary(db.prisma, accountId, 'last30', { marketplace: 'DE' });
     // If B2B excluded: DE revenue = 80+45 = 125, count=2
     // LOCK-IN: B2B included: DE revenue = 225, count=3
     expect(result.totalRevenue).toBe(225);
@@ -515,14 +526,14 @@ describe('Amazon KPIs — integration (PR 7)', () => {
     // AZ-IT-002 has orderStatus='Unshipped' — included because exclusion only covers
     // 'Canceled' and 'Cancelled'
     // If Unshipped excluded: IT revenue = 385-30 = 355, count=4
-    const result = await querySummary(db.prisma, 'last30', { marketplace: 'IT' });
+    const result = await querySummary(db.prisma, accountId, 'last30', { marketplace: 'IT' });
     expect(result.totalRevenue).toBe(385); // includes Unshipped order
     expect(result.totalOrders).toBe(5);
   });
 
   // ── 18. empty period returns zeros ──────────────────────────────────────────
   it('empty period returns empty byMarketplace without crash', async () => {
-    const result = await querySummary(db.prisma, 'custom', { from: '2030-01-01', to: '2030-01-02' });
+    const result = await querySummary(db.prisma, accountId, 'custom', { from: '2030-01-01', to: '2030-01-02' });
     expect(result.totalRevenue).toBe(0);
     expect(result.totalOrders).toBe(0);
     expect(result.totalUnits).toBe(0);
@@ -531,8 +542,8 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 19. old orders do not appear in last7 or today ──────────────────────────
   it('old orders (AZ-IT-OLD from 2025-01-01) do not affect last7 or today results', async () => {
-    const resultLast7 = await querySummary(db.prisma, 'last7');
-    const resultToday = await querySummary(db.prisma, 'today');
+    const resultLast7 = await querySummary(db.prisma, accountId, 'last7');
+    const resultToday = await querySummary(db.prisma, accountId, 'today');
     // last7 should not include AZ-IT-OLD (2025-01-01)
     expect(resultLast7.totalRevenue).toBe(865);
     // today should not include AZ-IT-OLD
@@ -542,9 +553,9 @@ describe('Amazon KPIs — integration (PR 7)', () => {
   // ── 20. settlement total amount != sum of transactions (LOCK-IN) ─────────────
   it('LOCK-IN: settlement totalAmount (bank transfer) differs from sum of transactions for IT', async () => {
     const settlement = await db.prisma.amazonSettlement.findUnique({
-      where: { settlementId: 'SETT-IT-001' },
+      where: { amazonAccountId_settlementId: { amazonAccountId: accountId, settlementId: 'SETT-IT-001' } },
     });
-    const txnSum = await querySettlementTxnSum(db.prisma, 'SETT-IT-001');
+    const txnSum = await querySettlementTxnSum(db.prisma, accountId, 'SETT-IT-001');
 
     expect(settlement).not.toBeNull();
     expect(settlement!.totalAmount).toBe(450); // actual bank transfer
@@ -560,9 +571,9 @@ describe('Amazon KPIs — integration (PR 7)', () => {
   // ── 21. settlement total matches txn sum for DE (clean settlement) ────────────
   it('DE settlement totalAmount equals sum of transactions (clean settlement example)', async () => {
     const settlement = await db.prisma.amazonSettlement.findUnique({
-      where: { settlementId: 'SETT-DE-001' },
+      where: { amazonAccountId_settlementId: { amazonAccountId: accountId, settlementId: 'SETT-DE-001' } },
     });
-    const txnSum = await querySettlementTxnSum(db.prisma, 'SETT-DE-001');
+    const txnSum = await querySettlementTxnSum(db.prisma, accountId, 'SETT-DE-001');
 
     expect(settlement!.totalAmount).toBe(280);
     // txn sum: 400-60-25-35 = 280 (clean match)
@@ -572,7 +583,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 22. settlement fee ratios — IT payout_ratio ──────────────────────────────
   it('settlement fee ratios: IT payout_ratio = totalAmount / gross_sales', async () => {
-    const ratios = await queryFeeRatios(db.prisma);
+    const ratios = await queryFeeRatios(db.prisma, accountId);
     const it = ratios['IT'];
     expect(it).toBeDefined();
     // gross_sales = sum of Principal/Order txns = 300+200 = 500
@@ -585,7 +596,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 23. settlement fee ratios — DE clean settlement ──────────────────────────
   it('settlement fee ratios: DE gross_sales, payout_ratio correct', async () => {
-    const ratios = await queryFeeRatios(db.prisma);
+    const ratios = await queryFeeRatios(db.prisma, accountId);
     const de = ratios['DE'];
     expect(de).toBeDefined();
     // gross_sales = 400 (one Principal/Order txn)
@@ -598,7 +609,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 24. settlement fee ratios — IT commission ratio ──────────────────────────
   it('settlement fee ratios: IT r_commission reflects combined commission deductions', async () => {
-    const ratios = await queryFeeRatios(db.prisma);
+    const ratios = await queryFeeRatios(db.prisma, accountId);
     const it = ratios['IT'];
     // commission = -45 + -30 + 9 (refund returns) = -66 (sum of all Commission txns)
     // r_commission = -(-66) / 500 = 66/500 = 0.132
@@ -607,7 +618,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 25. settlement fee ratios — IT FBA ratio ──────────────────────────────────
   it('settlement fee ratios: IT r_fba reflects FBA fee deductions', async () => {
-    const ratios = await queryFeeRatios(db.prisma);
+    const ratios = await queryFeeRatios(db.prisma, accountId);
     const it = ratios['IT'];
     // fba = -18 + -12 + 6 (refund) = -24
     // r_fba = -(-24)/500 = 24/500 = 0.048
@@ -616,7 +627,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 26. settlement fee ratios — IT refund ratio ───────────────────────────────
   it('settlement fee ratios: IT r_refunds reflects Refund-type transactions sum', async () => {
-    const ratios = await queryFeeRatios(db.prisma);
+    const ratios = await queryFeeRatios(db.prisma, accountId);
     const it = ratios['IT'];
     // Refund txns sum: -60 + 9 + 6 = -45 (principal refund + commission back + FBA back)
     // r_refunds = -(-45)/500 = 45/500 = 0.09
@@ -625,17 +636,19 @@ describe('Amazon KPIs — integration (PR 7)', () => {
 
   // ── 27. settlement ratios absent for ES (no settlement data) ─────────────────
   it('no settlement data for ES: ES does not appear in fee ratio results', async () => {
-    const ratios = await queryFeeRatios(db.prisma);
+    const ratios = await queryFeeRatios(db.prisma, accountId);
     // ES has no AmazonSettlement seeded → no row in fee ratios
     expect(ratios['ES']).toBeUndefined();
   });
 
   // ── 28. FR settlement total matches txn sum ────────────────────────────────────
   it('FR settlement totalAmount equals sum of transactions', async () => {
-    const txnSum = await querySettlementTxnSum(db.prisma, 'SETT-FR-001');
+    const txnSum = await querySettlementTxnSum(db.prisma, accountId, 'SETT-FR-001');
     // 300-45-20-35 = 200
     expect(txnSum).toBeCloseTo(200, 2);
-    const sett = await db.prisma.amazonSettlement.findUnique({ where: { settlementId: 'SETT-FR-001' } });
+    const sett = await db.prisma.amazonSettlement.findUnique({
+      where: { amazonAccountId_settlementId: { amazonAccountId: accountId, settlementId: 'SETT-FR-001' } },
+    });
     expect(sett!.totalAmount).toBeCloseTo(txnSum, 2);
   });
 
@@ -643,7 +656,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
   it('month: returns all orders from Italy April 1 (= UTC 2026-03-31T22:00Z)', async () => {
     // Italy April 1 midnight (TZ=UTC, setHours(-2)): new Date(2026-04-01).setHours(-2) = 2026-03-31T22:00Z
     // All fixture orders are in April 2026 (except AZ-IT-OLD which is Jan 2025)
-    const result = await querySummary(db.prisma, 'month');
+    const result = await querySummary(db.prisma, accountId, 'month');
     // Same as last30 in this fixture set (all orders are after March 31 22:00Z)
     expect(result.totalOrders).toBe(12);
     expect(result.totalRevenue).toBe(865);
@@ -656,6 +669,7 @@ describe('Amazon KPIs — integration (PR 7)', () => {
     const rows = await db.prisma.$queryRawUnsafe<Row[]>(`
       SELECT currency, COUNT(*)::INTEGER AS count
       FROM "AmazonOrder"
+      WHERE "amazonAccountId" = '${accountId}'
       GROUP BY currency
     `);
     expect(rows.length).toBe(1);
@@ -670,13 +684,14 @@ describe('Amazon KPIs — integration (PR 7)', () => {
     const rows = await db.prisma.$queryRawUnsafe<Row[]>(`
       SELECT COUNT(*)::INTEGER AS total_count
       FROM "AmazonSettlementTransaction"
+      WHERE "amazonAccountId" = '${accountId}'
     `);
     expect(Number(rows[0].total_count)).toBe(sampleSettlementTransactions.length);
   });
 
   // ── 32. last7 + marketplace filter: DE only ───────────────────────────────────
   it('last7 + marketplace filter: returns only DE orders', async () => {
-    const result = await querySummary(db.prisma, 'last7', { marketplace: 'DE' });
+    const result = await querySummary(db.prisma, accountId, 'last7', { marketplace: 'DE' });
     expect(result.totalRevenue).toBe(225);
     expect(result.totalOrders).toBe(3);
     expect(result.byMarketplace['IT']).toBeUndefined();

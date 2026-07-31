@@ -1,6 +1,7 @@
 // amazon/routes/settlement.routes.ts — Settlement dashboard and payment list endpoints
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
+import { getCurrentAccountId } from "../../context/account-context";
 export const settlementRouter = Router();
 
 // ─── GET /dashboard ─────────────────────────────────────────────────────────────
@@ -11,6 +12,8 @@ export const settlementRouter = Router();
 // 3. Historical payout ratios per marketplace.
 settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
   try {
+    const amazonAccountId = getCurrentAccountId();
+
     // ── 1. Per-marketplace fee ratios from historical settlement data ───────────
     const feeRatioRows = await prisma.$queryRawUnsafe<{
       marketplace: string;
@@ -32,7 +35,7 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
       WITH sett_totals AS (
         SELECT marketplace, SUM("totalAmount") AS real_payout, COUNT(*) AS n_sett
         FROM "AmazonSettlement"
-        WHERE marketplace IN ('IT','DE','FR','ES')
+        WHERE marketplace IN ('IT','DE','FR','ES') AND "amazonAccountId" = '${amazonAccountId}'
         GROUP BY marketplace
       ),
       txn_totals AS (
@@ -56,8 +59,8 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
             AND t."transactionType" IN ('REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST','WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND')
             THEN t.amount ELSE 0 END) AS reimbursements
         FROM "AmazonSettlementTransaction" t
-        JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId"
-        WHERE s.marketplace IN ('IT','DE','FR','ES')
+        JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId" AND s."amazonAccountId" = t."amazonAccountId"
+        WHERE s.marketplace IN ('IT','DE','FR','ES') AND s."amazonAccountId" = '${amazonAccountId}'
         GROUP BY s.marketplace
       )
       SELECT
@@ -103,7 +106,7 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
           MAX("endDate")::date::text     AS last_end,
           MAX("depositDate")::date::text AS last_deposit
         FROM "AmazonSettlement"
-        WHERE marketplace IN ('IT','DE','FR','ES')
+        WHERE marketplace IN ('IT','DE','FR','ES') AND "amazonAccountId" = '${amazonAccountId}'
         GROUP BY marketplace
       )
       SELECT
@@ -116,10 +119,12 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
       JOIN last_sett ls ON ls.marketplace = o.marketplace
       WHERE o."orderStatus" NOT IN ('Cancelled','Pending')
         AND o."purchaseDate" >= NOW() - INTERVAL '28 days'
+        AND o."amazonAccountId" = '${amazonAccountId}'
         AND NOT EXISTS (
           SELECT 1 FROM "AmazonSettlementTransaction" st
           WHERE st."orderId" = o."amazonOrderId"
             AND st."amountType" = 'Principal' AND st."transactionType" = 'Order'
+            AND st."amazonAccountId" = '${amazonAccountId}'
         )
       GROUP BY o.marketplace, ls.last_end, ls.last_deposit
       ORDER BY gross DESC
@@ -134,7 +139,7 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
           MIN("startDate")::date AS cov_from,
           MAX("endDate")::date   AS cov_to
         FROM "AmazonSettlement"
-        WHERE marketplace NOT IN ('EU')
+        WHERE marketplace NOT IN ('EU') AND "amazonAccountId" = '${amazonAccountId}'
         GROUP BY marketplace
       )
       SELECT
@@ -146,10 +151,12 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
       WHERE o."orderStatus" NOT IN ('Cancelled','Pending')
         AND o."purchaseDate"::date >= mc.cov_from
         AND o."purchaseDate"::date <= mc.cov_to - INTERVAL '45 days'
+        AND o."amazonAccountId" = '${amazonAccountId}'
         AND NOT EXISTS (
           SELECT 1 FROM "AmazonSettlementTransaction" st
           WHERE st."orderId" = o."amazonOrderId"
             AND st."amountType" = 'Principal' AND st."transactionType" = 'Order'
+            AND st."amazonAccountId" = '${amazonAccountId}'
         )
       GROUP BY o.marketplace
       ORDER BY gross DESC
@@ -166,7 +173,7 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
         MAX("endDate")::date::text     AS end_date,
         (MAX("endDate") + INTERVAL '14 days')::date::text AS next_expected
       FROM "AmazonSettlement"
-      WHERE marketplace IN ('IT','DE','FR','ES')
+      WHERE marketplace IN ('IT','DE','FR','ES') AND "amazonAccountId" = '${amazonAccountId}'
       GROUP BY marketplace
       ORDER BY marketplace
     `);
@@ -275,6 +282,7 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
 // ─── GET /payments ────────────────────────────────────────────────────────────
 settlementRouter.get("/payments", async (req: Request, res: Response) => {
   try {
+    const amazonAccountId = getCurrentAccountId();
     const { marketplace } = req.query as Record<string, string>;
     const mpFilterParam = marketplace && marketplace !== "all" ? marketplace.replace(/'/g, "") : null;
 
@@ -289,7 +297,9 @@ settlementRouter.get("/payments", async (req: Request, res: Response) => {
       has_data_warning: boolean;
     };
 
-    const mpWhereSettlement = mpFilterParam ? `WHERE s.marketplace = '${mpFilterParam}'` : "";
+    const mpWhereSettlement = mpFilterParam
+      ? `WHERE s.marketplace = '${mpFilterParam}' AND s."amazonAccountId" = '${amazonAccountId}'`
+      : `WHERE s."amazonAccountId" = '${amazonAccountId}'`;
     const mpWhereJoin       = mpFilterParam ? `AND t.marketplace = '${mpFilterParam}'` : "";
 
     const settlements = await prisma.$queryRawUnsafe<SettRow[]>(`
@@ -341,7 +351,7 @@ settlementRouter.get("/payments", async (req: Request, res: Response) => {
         COUNT(DISTINCT CASE WHEN t."transactionType" = 'Order' AND t."orderId" IS NOT NULL
                             THEN t."orderId" END)::INTEGER                                             AS order_count
       FROM "AmazonSettlement" s
-      LEFT JOIN "AmazonSettlementTransaction" t ON t."settlementId" = s."settlementId"
+      LEFT JOIN "AmazonSettlementTransaction" t ON t."settlementId" = s."settlementId" AND t."amazonAccountId" = s."amazonAccountId"
       ${mpWhereSettlement}
       GROUP BY s."settlementId", s.marketplace, s."startDate", s."endDate", s."depositDate", s."totalAmount", s.currency
       ORDER BY s."endDate" DESC
@@ -367,7 +377,8 @@ settlementRouter.get("/payments", async (req: Request, res: Response) => {
         COALESCE(SUM(CASE WHEN t."amountType"='Commission' AND t."transactionType"='Order' THEN t.amount ELSE 0 END),0)::FLOAT8 AS commission,
         COALESCE(SUM(CASE WHEN t."transactionType"='Refund' THEN t.amount ELSE 0 END),0)::FLOAT8 AS refunds_total
       FROM "AmazonSettlementTransaction" t
-      WHERE t."settlementId" NOT IN (SELECT "settlementId" FROM "AmazonSettlement")
+      WHERE t."amazonAccountId" = '${amazonAccountId}'
+        AND t."settlementId" NOT IN (SELECT "settlementId" FROM "AmazonSettlement" WHERE "amazonAccountId" = '${amazonAccountId}')
         ${mpFilterParam ? `AND t.marketplace = '${mpFilterParam}'` : ""}
       GROUP BY t."settlementId"
       HAVING MAX(CASE WHEN t.marketplace NOT IN ('EU') THEN t.marketplace END) IS NOT NULL
@@ -480,7 +491,8 @@ settlementRouter.get("/payments", async (req: Request, res: Response) => {
         DATE_TRUNC('month', "snapshotDate")::date::text AS month,
         COALESCE(SUM(spend),0)::FLOAT8 AS spend
       FROM "AmazonAdSnapshot"
-      ${mpFilterParam ? `WHERE marketplace = '${mpFilterParam}'` : ""}
+      WHERE "amazonAccountId" = '${amazonAccountId}'
+        ${mpFilterParam ? `AND marketplace = '${mpFilterParam}'` : ""}
       GROUP BY DATE_TRUNC('month', "snapshotDate")
       ORDER BY month DESC
       LIMIT 12

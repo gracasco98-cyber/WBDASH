@@ -6,15 +6,15 @@
 
 Dare visibilità affidabile e aggiornata su vendite e profitto reale su Amazon, multi-marketplace (IT, DE, FR, ES), con aggiornamento almeno ogni 30 minuti.
 
-**Stato: raggiunto, con una limitazione.** Il sync ordini Amazon gira ogni 5 minuti (batte il requisito), copre IT/DE/FR/ES/ALL_EU. La limitazione è il **multi seller-account**: l'obiettivo originale lo richiedeva fin da Release 1, ma il codebase importato è single-account (un solo set di credenziali SP-API in `.env`). Vedi §3.
+**Stato: raggiunto.** Il sync ordini Amazon gira ogni 5 minuti (batte il requisito), copre IT/DE/FR/ES/ALL_EU. Il **multi seller-account**, gap principale rispetto all'obiettivo originale, è stato implementato il 2026-07-31 (backend completo; selettore account in UI ancora da fare) — vedi §3.
 
 ## 2. Funzionalità — stato reale
 
 | Funzionalità | Stato | Dove |
 |---|---|---|
 | Collegamento account Amazon SP-API (OAuth) | ✅ fatto | `amazon-auth.js`, `backend/src/amazon/token.service.ts`, `backend/src/amazon/sp-api.service.ts` |
-| Gestione credenziali cifrate | ⚠️ parziale — credenziali in `.env`, non cifrate a riposo in DB | — |
-| Gestione multi seller-account | ❌ non fatto (single-account) | vedi §3 |
+| Gestione credenziali cifrate | ✅ fatto (2026-07-31) — AES-256-GCM, `AmazonAccount.*Enc` | `backend/src/utils/crypto.ts`, `repositories/amazon/accounts.repo.ts` |
+| Gestione multi seller-account | ✅ fatto (2026-07-31), backend completo | vedi §3 |
 | Gestione multi-marketplace (IT, DE, FR, ES) | ✅ fatto | campo `marketplace` su quasi tutti i modelli Amazon |
 | Sincronizzazione ordini ogni 30 minuti | ✅ superato (ogni 5 min) | `backend/src/amazon/sync.job.ts` |
 | Sincronizzazione transazioni finanziarie | ✅ fatto (settlement ogni 4h) | `AmazonSettlement`, `AmazonSettlementTransaction`, `backend/src/amazon/settlement.service.ts` |
@@ -23,18 +23,18 @@ Dare visibilità affidabile e aggiornata su vendite e profitto reale su Amazon, 
 | Caricamento costi advertising | ✅ fatto | `backend/src/amazon/ads-api.service.ts`, `ads-sync.service.ts` |
 | Calcolo profitto stimato e consolidato | ⚠️ parziale — P&L calcolato a query-time, non versionato/riproducibile | `frontend/src/app/amazon/pl/page.tsx` — manca un vero profit engine (vedi `PROJECT_SPEC.md` §4) |
 | Dashboard giornaliera + confronti (ieri/settimana/mese) | ✅ fatto | `frontend/src/components/dashboard/**`, `PeriodContext`, `usePeriodFilter` |
-| Filtri (marketplace, brand, prodotto/SKU/ASIN, periodo, valuta) | ✅ fatto (account escluso, non esiste ancora il concetto) | `AmazonFilterBar`, `FilterBar` |
+| Filtri (marketplace, brand, prodotto/SKU/ASIN, periodo, valuta) | ⚠️ account ancora da aggiungere in UI | `AmazonFilterBar`, `FilterBar` |
 
-## 3. Multi seller-account: perché manca e come chiuderlo
+## 3. Multi seller-account — fatto (2026-07-31), resta il selettore in UI
 
-Il codebase adottato è nato come dashboard per un singolo account Amazon + singolo store Shopify. Introdurre multi-account richiede:
+Implementato sul branch `migration/multi-account-amazon`:
 
-1. Un modello `AmazonAccount` (o riuso di `User`/nuova tabella) con credenziali SP-API proprie, oggi in `.env` globali.
-2. Aggiungere `amazonAccountId` a tutti i modelli Amazon (`AmazonOrder`, `AmazonSyncJob`, `AmazonSettlement`, ecc.) — migrazione non banale su tabelle già popolate in produzione.
-3. Aggiornare ogni query/repository per filtrare per account, non solo per marketplace.
-4. UI: selettore account in `AmazonFilterBar` e simili.
+1. ✅ Modello `AmazonAccount` con credenziali SP-API/Ads cifrate (AES-256-GCM).
+2. ✅ `amazonAccountId` aggiunto a tutti i 15 modelli del dominio Amazon, vincoli di unicità ricalcolati per account. Database era vuoto → nessun backfill necessario.
+3. ✅ Ogni query/repository filtra per account (via contesto `AsyncLocalStorage`, non parametro esplicito — vedi `docs/tech-debt.md` F.1).
+4. ❌ **UI: selettore account** — non ancora fatto. `AmazonFilterBar` e componenti simili non hanno ancora un modo per l'utente di scegliere/cambiare account quando ce n'è più di uno attivo. Prossimo passo naturale per chiudere completamente questo punto.
 
-Questo è il gap più grande rispetto all'obiettivo originale di Release 1. Va trattato come una migrazione dedicata (branch `migration/multi-account-amazon`), pianificata a parte, non come un side-effect di un altro task — tocca dati economici reali già in produzione.
+Vedi `docs/tech-debt.md` sezione F per il dettaglio completo (bug di cache cross-account trovato e corretto, gap noti su region NA e su alcuni JOIN non a chiave composita).
 
 ## 4. Stati dei dati (obbligatorio in UI)
 
@@ -57,7 +57,7 @@ Non più uno scaffolding da zero: sono estensioni incrementali su un sistema gi�
 2. `feature/profit-engine` — estrarre la logica di calcolo P&L da `frontend/src/app/amazon/pl/page.tsx` e dalle query dirette in un modulo backend dedicato, versionato (formula version, input snapshot, stati stimato/consolidato/riconciliato), con fixture di test sui casi limite economici (vendita con sconto, rimborso parziale, fee tardiva, cambio valuta, ordine cancellato).
 3. `feature/data-completeness-state` — aggiungere il flag di completezza dati a livello di risposta API e mostrarlo in ogni KPI card.
 4. ~~`migration/decimal-money`~~ — **fatto e verificato il 2026-07-30** (database vuoto, nessun backfill dati). Vedi `../tech-debt.md` E.2. Verifica end-to-end con Testcontainers su Postgres reale: 250 test passati.
-5. `migration/multi-account-amazon` — vedi §3. Migrazione maggiore, da discutere e pianificare a parte prima di iniziare.
+5. ~~`migration/multi-account-amazon`~~ — **backend fatto il 2026-07-31**, vedi §3 e `../tech-debt.md` F. Resta `feature/multi-account-ui-selector` (frontend).
 6. `feature/raw-payload-persistence` — introdurre una tabella (o storage esterno) per conservare il payload raw ricevuto da Amazon/Shopify prima della normalizzazione, per permettere ricalcoli futuri senza re-fetch.
 7. `refactor/settlement-reconciliation` — chiudere il gap di `docs/tech-debt.md` A.8 (delta tra `AmazonSettlement.totalAmount` e somma delle transazioni) con un widget di riconciliazione esplicito.
 8. Voci minori già tracciate in `docs/tech-debt.md` sezione A (cutoff date disallineati, AOV su gross invece di net, ordini cancellati trattati diversamente tra Shopify e Amazon) — da valutare caso per caso, sono comportamenti lockati nei test attuali.

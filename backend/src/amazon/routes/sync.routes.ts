@@ -19,6 +19,7 @@ import {
   countSyncJobsByStatus,
 } from "../../repositories/amazon/sync-jobs.repo";
 import { countSettlementTransactions } from "../../repositories/amazon/settlement.repo";
+import { getCurrentAccountId } from "../../context/account-context";
 import { runAmazonBackfill, runAmazonIncrementalSync, syncAdsBackfill, runFullAmazonDatabaseSync, getFullSyncProgress } from "../sync.job";
 import { runAmazonSnapshotJob, computeAllAmazonHistoricalSnapshots, computeSnapshotRange } from "../snapshot.service";
 import { syncSettlementReports } from "../settlement.service";
@@ -101,6 +102,7 @@ syncRouter.post("/sync/snapshot", async (_req: Request, res: Response) => {
 // Returns row counts and date ranges for all Amazon tables (Phase 3 verification)
 syncRouter.get("/sync/db-stats", async (_req: Request, res: Response) => {
   try {
+    const amazonAccountId = getCurrentAccountId();
     const [
       orderCount,
       itemCount,
@@ -119,11 +121,11 @@ syncRouter.get("/sync/db-stats", async (_req: Request, res: Response) => {
       countSyncJobsByStatus(prisma, "done"),
       countSyncJobsByStatus(prisma, "failed"),
       prisma.$queryRaw<[{ min: Date | null; max: Date | null }]>`
-        SELECT MIN("purchaseDate") AS min, MAX("purchaseDate") AS max FROM "AmazonOrder"`,
+        SELECT MIN("purchaseDate") AS min, MAX("purchaseDate") AS max FROM "AmazonOrder" WHERE "amazonAccountId" = ${amazonAccountId}`,
       prisma.$queryRaw<[{ min: Date | null; max: Date | null }]>`
-        SELECT MIN("snapshotDate") AS min, MAX("snapshotDate") AS max FROM "AmazonProductSnapshot"`,
+        SELECT MIN("snapshotDate") AS min, MAX("snapshotDate") AS max FROM "AmazonProductSnapshot" WHERE "amazonAccountId" = ${amazonAccountId}`,
       prisma.$queryRaw<[{ min: Date | null; max: Date | null }]>`
-        SELECT MIN("snapshotDate") AS min, MAX("snapshotDate") AS max FROM "AmazonAdSnapshot"`,
+        SELECT MIN("snapshotDate") AS min, MAX("snapshotDate") AS max FROM "AmazonAdSnapshot" WHERE "amazonAccountId" = ${amazonAccountId}`,
     ]);
 
     // Settlement table

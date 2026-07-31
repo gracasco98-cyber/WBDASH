@@ -2,6 +2,7 @@ import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers
 import { PrismaClient } from '@prisma/client';
 import { execSync } from 'node:child_process';
 import { convertDecimalsDeep } from '../../src/utils/decimal';
+import { encryptSecret } from '../../src/utils/crypto';
 
 export interface TestDb {
   prisma: PrismaClient;
@@ -62,6 +63,50 @@ export async function setupTestDb(): Promise<TestDb> {
       await container.stop();
     },
   };
+}
+
+/**
+ * Crea un AmazonAccount minimo per i test (multi-account migration, 2026-07-31).
+ * `sellerId` è @unique quindi generato random per evitare collisioni tra test.
+ * NOTA: truncateAll() cancella anche AmazonAccount (CASCADE) — va richiamato
+ * dentro beforeEach DOPO truncateAll, non in beforeAll, altrimenti il primo
+ * truncateAll del test successivo lo cancella e ogni FK amazonAccountId
+ * successivo punterebbe a un record inesistente.
+ */
+export async function createTestAmazonAccount(
+  prisma: PrismaClient,
+  overrides?: {
+    name?: string;
+    sellerId?: string;
+    region?: string;
+    // Credential overrides (plaintext in — encrypted at rest, mirrors
+    // repositories/amazon/accounts.repo.ts's createAccount() params).
+    // Requires process.env.CREDENTIALS_ENCRYPTION_KEY to be set (tests/setup.ts
+    // sets a fixed test key at module load time).
+    lwaClientId?: string;
+    lwaClientSecret?: string;
+    spApiRefreshToken?: string;
+    adsClientId?: string;
+    adsClientSecret?: string;
+    adsRefreshToken?: string;
+    adsProfileIds?: Record<string, string>;
+  }
+): Promise<string> {
+  const account = await prisma.amazonAccount.create({
+    data: {
+      name: overrides?.name ?? 'Test Account',
+      sellerId: overrides?.sellerId ?? `TEST-SELLER-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      region: overrides?.region ?? 'EU',
+      lwaClientId: overrides?.lwaClientId ?? null,
+      lwaClientSecretEnc: overrides?.lwaClientSecret ? encryptSecret(overrides.lwaClientSecret) : null,
+      spApiRefreshTokenEnc: overrides?.spApiRefreshToken ? encryptSecret(overrides.spApiRefreshToken) : null,
+      adsClientId: overrides?.adsClientId ?? null,
+      adsClientSecretEnc: overrides?.adsClientSecret ? encryptSecret(overrides.adsClientSecret) : null,
+      adsRefreshTokenEnc: overrides?.adsRefreshToken ? encryptSecret(overrides.adsRefreshToken) : null,
+      adsProfileIds: overrides?.adsProfileIds ?? undefined,
+    },
+  });
+  return account.id;
 }
 
 /**

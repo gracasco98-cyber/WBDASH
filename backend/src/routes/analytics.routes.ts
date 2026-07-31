@@ -4,6 +4,7 @@
 
 import { Router, Request, Response } from "express";
 import { prisma } from "../db";
+import { getCurrentAccountId } from "../context/account-context";
 
 const router = Router();
 
@@ -20,6 +21,10 @@ function isoDate(d: Date) {
 
 router.get("/forecast", async (_req: Request, res: Response) => {
   try {
+    // Amazon-only endpoint (no Shopify data) — let "No Amazon account in
+    // scope" propagate to the outer catch below, which already returns a
+    // clear 500 with the error message.
+    const accountId = getCurrentAccountId();
     const since90 = daysAgo(90);
     const since7  = daysAgo(7);
 
@@ -32,6 +37,7 @@ router.get("/forecast", async (_req: Request, res: Response) => {
         SUM("unitsSold")::FLOAT8      AS units
       FROM "AmazonProductSnapshot"
       WHERE "snapshotDate" >= ${since90}
+        AND "amazonAccountId" = ${accountId}
       GROUP BY asin, "snapshotDate"
       ORDER BY asin, "snapshotDate"
     `;
@@ -51,6 +57,8 @@ router.get("/forecast", async (_req: Request, res: Response) => {
       JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
       WHERE i."purchaseDate" >= ${daysAgo(30)}
         AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+        AND o."amazonAccountId" = ${accountId}
+        AND i."amazonAccountId" = ${accountId}
       GROUP BY i.asin
     `;
     const velMap = new Map(velRows.map((r: any) => [r.asin, Number(r.dailyVel)]));
@@ -116,6 +124,9 @@ router.get("/forecast", async (_req: Request, res: Response) => {
 
 router.get("/anomalies", async (_req: Request, res: Response) => {
   try {
+    // Amazon-only endpoint (no Shopify data) — let "No Amazon account in
+    // scope" propagate to the outer catch below.
+    const accountId = getCurrentAccountId();
     const since60 = daysAgo(60);
 
     // Aggregate by ASIN + day
@@ -126,6 +137,7 @@ router.get("/anomalies", async (_req: Request, res: Response) => {
              SUM("grossRevenue")::FLOAT8 AS revenue
       FROM "AmazonProductSnapshot"
       WHERE "snapshotDate" >= ${since60}
+        AND "amazonAccountId" = ${accountId}
       GROUP BY asin, "snapshotDate"
       ORDER BY asin, "snapshotDate"
     `;
@@ -201,6 +213,9 @@ router.get("/anomalies", async (_req: Request, res: Response) => {
 
 router.get("/ppc-optimizer", async (req: Request, res: Response) => {
   try {
+    // Amazon-only endpoint (no Shopify data) — let "No Amazon account in
+    // scope" propagate to the outer catch below.
+    const accountId = getCurrentAccountId();
     const days  = Number((req.query.days as string) ?? 30);
     const since = daysAgo(days);
 
@@ -222,6 +237,7 @@ router.get("/ppc-optimizer", async (req: Request, res: Response) => {
           THEN ROUND((SUM("sales")/SUM("spend"))::NUMERIC,2) END AS roas
       FROM "AmazonAdSnapshot"
       WHERE "snapshotDate" >= ${since}
+        AND "amazonAccountId" = ${accountId}
       GROUP BY "campaignId"
       HAVING SUM("spend") > 0
       ORDER BY SUM("spend") DESC
@@ -236,6 +252,7 @@ router.get("/ppc-optimizer", async (req: Request, res: Response) => {
         ROUND(SUM(CASE WHEN "snapshotDate" <  ${daysAgo(7)} AND "snapshotDate" >= ${daysAgo(14)} THEN sales ELSE 0 END)::NUMERIC,2) AS "salesPrev7d"
       FROM "AmazonAdSnapshot"
       WHERE "snapshotDate" >= ${daysAgo(14)}
+        AND "amazonAccountId" = ${accountId}
       GROUP BY "campaignId"
     `;
     const trendMap = new Map(trendRows.map((r: any) => [r.campaignId, r]));
@@ -319,6 +336,9 @@ router.get("/ppc-optimizer", async (req: Request, res: Response) => {
 
 router.get("/margin-predictor", async (_req: Request, res: Response) => {
   try {
+    // Amazon-only endpoint (no Shopify data) — let "No Amazon account in
+    // scope" propagate to the outer catch below.
+    const accountId = getCurrentAccountId();
     const since90 = daysAgo(90);
     const since30 = daysAgo(30);
     const since60 = daysAgo(60);
@@ -350,8 +370,9 @@ router.get("/margin-predictor", async (_req: Request, res: Response) => {
                , 2)
              ELSE 0 END AS "marginEur"
       FROM "AmazonProductSnapshot" s
-      LEFT JOIN "AmazonProductCogs" c ON c.asin = s.asin
+      LEFT JOIN "AmazonProductCogs" c ON c.asin = s.asin AND c."amazonAccountId" = '${accountId}'
       WHERE s."snapshotDate" >= '${isoDate(since90)}'
+        AND s."amazonAccountId" = '${accountId}'
       GROUP BY s.asin, TO_CHAR("snapshotDate",'YYYY-MM')
       ORDER BY s.asin, month
     `);
@@ -364,6 +385,8 @@ router.get("/margin-predictor", async (_req: Request, res: Response) => {
       JOIN "AmazonOrder" o ON o."amazonOrderId"=i."amazonOrderId"
       WHERE i."purchaseDate" >= ${since30}
         AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+        AND o."amazonAccountId" = ${accountId}
+        AND i."amazonAccountId" = ${accountId}
       GROUP BY i.asin
     `;
     const velMap = new Map(velRows.map((r: any) => [r.asin, Number(r.vel)]));

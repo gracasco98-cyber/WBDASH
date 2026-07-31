@@ -1,15 +1,29 @@
 // amazon/token.service.ts — LWA token cache for SP-API and Advertising API
+//
+// Credentials are per AmazonAccount (encrypted at rest, see
+// repositories/amazon/accounts.repo.ts), not global env vars anymore — the
+// token cache is keyed by accountId so two accounts never share a token.
+//
+// KNOWN GAP: the NA-region SP-API token (getSpApiTokenNA) still reads from
+// the legacy AMAZON_US_REFRESH_TOKEN env var, not from AmazonAccount. The
+// current schema models one SP-API refresh token per account (one region);
+// properly supporting an account that sells in both EU and NA would need a
+// second encrypted token field on AmazonAccount. Out of scope for this
+// migration — see docs/tech-debt.md.
 
 import { TOKEN_ENDPOINT } from "./config";
+import { prisma } from "../db";
+import { getCurrentAccountId } from "../context/account-context";
+import { getAccountCredentials } from "../repositories/amazon/accounts.repo";
 
 interface CachedToken {
   accessToken: string;
   expiresAt: number; // epoch ms
 }
 
-let spApiCache:   CachedToken | null = null;
+const spApiCacheByAccount = new Map<string, CachedToken>();
+const adsApiCacheByAccount = new Map<string, CachedToken>();
 let spApiCacheNA: CachedToken | null = null;
-let adsApiCache:  CachedToken | null = null;
 
 async function fetchToken(clientId: string, clientSecret: string, refreshToken: string): Promise<CachedToken> {
   const params = new URLSearchParams({
@@ -38,26 +52,31 @@ async function fetchToken(clientId: string, clientSecret: string, refreshToken: 
   };
 }
 
-/** Get SP-API access token (cached, auto-refreshed) */
+/** Get SP-API access token for the current account (cached, auto-refreshed) */
 export async function getSpApiToken(): Promise<string> {
-  if (spApiCache && spApiCache.expiresAt > Date.now()) {
-    return spApiCache.accessToken;
+  const accountId = getCurrentAccountId();
+  const cached = spApiCacheByAccount.get(accountId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.accessToken;
   }
 
-  const clientId     = process.env.AMAZON_LWA_CLIENT_ID;
-  const clientSecret = process.env.AMAZON_LWA_CLIENT_SECRET;
-  const refreshToken = process.env.AMAZON_EU_REFRESH_TOKEN;
-
-  if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error("[Amazon] Missing AMAZON_LWA_CLIENT_ID / AMAZON_LWA_CLIENT_SECRET / AMAZON_EU_REFRESH_TOKEN");
+  const creds = await getAccountCredentials(prisma, accountId);
+  if (!creds.lwaClientId || !creds.lwaClientSecret || !creds.spApiRefreshToken) {
+    throw new Error(
+      `[Amazon] AmazonAccount ${accountId} is missing LWA client id/secret or SP-API refresh token`
+    );
   }
 
-  spApiCache = await fetchToken(clientId, clientSecret, refreshToken);
-  console.log("[Amazon Token] SP-API token refreshed, expires in ~55 min");
-  return spApiCache.accessToken;
+  const token = await fetchToken(creds.lwaClientId, creds.lwaClientSecret, creds.spApiRefreshToken);
+  spApiCacheByAccount.set(accountId, token);
+  console.log(`[Amazon Token] SP-API token refreshed for account ${accountId}, expires in ~55 min`);
+  return token.accessToken;
 }
 
-/** Get SP-API access token for North America (cached, auto-refreshed) */
+/**
+ * Get SP-API access token for North America (cached, auto-refreshed).
+ * KNOWN GAP: still reads from the legacy global env vars — see file header.
+ */
 export async function getSpApiTokenNA(): Promise<string> {
   if (spApiCacheNA && spApiCacheNA.expiresAt > Date.now()) {
     return spApiCacheNA.accessToken;
@@ -76,28 +95,33 @@ export async function getSpApiTokenNA(): Promise<string> {
   return spApiCacheNA.accessToken;
 }
 
-/** Get Advertising API access token (cached, auto-refreshed) */
+/** Get Advertising API access token for the current account (cached, auto-refreshed) */
 export async function getAdsApiToken(): Promise<string> {
-  if (adsApiCache && adsApiCache.expiresAt > Date.now()) {
-    return adsApiCache.accessToken;
+  const accountId = getCurrentAccountId();
+  const cached = adsApiCacheByAccount.get(accountId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.accessToken;
   }
 
-  const clientId     = process.env.AMAZON_ADVERTISING_CLIENT_ID || process.env.AMAZON_LWA_CLIENT_ID;
-  const clientSecret = process.env.AMAZON_ADVERTISING_CLIENT_SECRET || process.env.AMAZON_LWA_CLIENT_SECRET;
-  const refreshToken = process.env.AMAZON_ADVERTISING_REFRESH_TOKEN || process.env.AMAZON_EU_REFRESH_TOKEN;
+  const creds = await getAccountCredentials(prisma, accountId);
+  const clientId     = creds.adsClientId ?? creds.lwaClientId;
+  const clientSecret = creds.adsClientSecret ?? creds.lwaClientSecret;
+  const refreshToken = creds.adsRefreshToken ?? creds.spApiRefreshToken;
 
   if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error("[Amazon] Missing Advertising API credentials");
+    throw new Error(`[Amazon] AmazonAccount ${accountId} is missing Advertising API credentials`);
   }
 
-  adsApiCache = await fetchToken(clientId, clientSecret, refreshToken);
-  console.log("[Amazon Token] Ads API token refreshed, expires in ~55 min");
-  return adsApiCache.accessToken;
+  const token = await fetchToken(clientId, clientSecret, refreshToken);
+  adsApiCacheByAccount.set(accountId, token);
+  console.log(`[Amazon Token] Ads API token refreshed for account ${accountId}, expires in ~55 min`);
+  return token.accessToken;
 }
 
-/** Invalidate cached tokens (e.g. on 401 response) */
+/** Invalidate cached tokens for the current account (e.g. on 401 response) */
 export function invalidateTokens(): void {
-  spApiCache   = null;
+  const accountId = getCurrentAccountId();
+  spApiCacheByAccount.delete(accountId);
+  adsApiCacheByAccount.delete(accountId);
   spApiCacheNA = null;
-  adsApiCache  = null;
 }

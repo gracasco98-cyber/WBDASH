@@ -1,6 +1,7 @@
 // amazon/ads-sync.service.ts — Fetch SP campaign daily metrics and store in AmazonAdSnapshot
 
 import { prisma } from "../db";
+import { getCurrentAccountId } from "../context/account-context";
 import {
   getConfiguredProfiles,
   fetchSPCampaignReport,
@@ -25,15 +26,20 @@ interface LiveCampaign extends SpCampaign {
   marketplace: string;
 }
 
-let _liveCampaignCache: LiveCampaign[] | null = null;
-let _liveCampaignCacheExpiry = 0;
+// Keyed by amazonAccountId — a plain module-level array here would leak one
+// account's campaigns into another account's response (discovered during the
+// multi-account migration, see docs/tech-debt.md).
+const _liveCampaignCache = new Map<string, { data: LiveCampaign[]; expiresAt: number }>();
 
-/** Fetch all live campaigns from all configured profiles (2-min cache) */
+/** Fetch all live campaigns from all configured profiles (2-min cache, per account) */
 export async function getLiveCampaigns(filterMarketplace?: string): Promise<LiveCampaign[]> {
+  const accountId = getCurrentAccountId();
+  const cached = _liveCampaignCache.get(accountId);
+
   // Refresh cache if expired
-  if (!_liveCampaignCache || Date.now() > _liveCampaignCacheExpiry) {
-    if (!isAdsConfigured()) return [];
-    const profiles = getConfiguredProfiles();
+  if (!cached || Date.now() > cached.expiresAt) {
+    if (!(await isAdsConfigured())) return [];
+    const profiles = await getConfiguredProfiles();
     const result: LiveCampaign[] = [];
     for (const p of profiles) {
       try {
@@ -43,21 +49,20 @@ export async function getLiveCampaigns(filterMarketplace?: string): Promise<Live
         console.warn(`[Ads] getLiveCampaigns ${p.marketplace} failed:`, String(e).slice(0, 80));
       }
     }
-    _liveCampaignCache = result;
-    _liveCampaignCacheExpiry = Date.now() + 2 * 60_000; // 2-min TTL
-    console.log(`[Ads] Live campaign cache refreshed: ${result.length} campaigns`);
+    _liveCampaignCache.set(accountId, { data: result, expiresAt: Date.now() + 2 * 60_000 });
+    console.log(`[Ads] Live campaign cache refreshed for account ${accountId}: ${result.length} campaigns`);
   }
 
+  const data = _liveCampaignCache.get(accountId)!.data;
   if (filterMarketplace && filterMarketplace !== "all") {
-    return _liveCampaignCache!.filter((c) => c.marketplace === filterMarketplace);
+    return data.filter((c) => c.marketplace === filterMarketplace);
   }
-  return _liveCampaignCache!;
+  return data;
 }
 
-/** Force-refresh the live campaign cache (call from background job) */
+/** Force-refresh the live campaign cache for the current account (call from background job) */
 export async function refreshLiveCampaignCache(): Promise<void> {
-  _liveCampaignCache = null;
-  _liveCampaignCacheExpiry = 0;
+  _liveCampaignCache.delete(getCurrentAccountId());
   await getLiveCampaigns().catch((e) =>
     console.warn("[Ads] Cache refresh failed:", String(e).slice(0, 120))
   );
@@ -75,6 +80,7 @@ export async function saveSnapshots(
   rows: Awaited<ReturnType<typeof fetchSPCampaignReport>>
 ): Promise<number> {
   let saved = 0;
+  const amazonAccountId = getCurrentAccountId();
   for (const row of rows) {
     const rowDate   = row.date ?? defaultDate;
     const snapDate  = new Date(rowDate);
@@ -84,6 +90,7 @@ export async function saveSnapshots(
     // findFirst avoids Prisma's compound-null-unique upsert limitation
     const existing = await (prisma as any).amazonAdSnapshot.findFirst({
       where: {
+        amazonAccountId,
         snapshotDate: snapDate,
         marketplace,
         campaignId:   row.campaignId,
@@ -108,6 +115,7 @@ export async function saveSnapshots(
     } else {
       await (prisma as any).amazonAdSnapshot.create({
         data: {
+          amazonAccountId,
           snapshotDate: snapDate,
           marketplace,
           campaignId:   row.campaignId,
@@ -188,7 +196,7 @@ export async function syncMarketplaceDateRange(
 
 /** Sync all configured marketplaces for yesterday (run daily) */
 export async function syncAdsDaily(): Promise<void> {
-  if (!isAdsConfigured()) {
+  if (!(await isAdsConfigured())) {
     console.log("[Ads Sync] Advertising API not configured — skipping");
     return;
   }
@@ -197,7 +205,7 @@ export async function syncAdsDaily(): Promise<void> {
   yesterday.setDate(yesterday.getDate() - 1);
   const date = dateStr(yesterday);
 
-  const profiles = getConfiguredProfiles();
+  const profiles = await getConfiguredProfiles();
   console.log(`[Ads Sync] Daily sync for ${date} — ${profiles.length} marketplaces`);
 
   for (const profile of profiles) {
@@ -213,12 +221,12 @@ export async function syncAdsDaily(): Promise<void> {
  * vs 120 reports for the day-by-day approach.
  */
 export async function syncAdsBackfill(days = 30): Promise<void> {
-  if (!isAdsConfigured()) {
+  if (!(await isAdsConfigured())) {
     console.log("[Ads Sync] Advertising API not configured — skipping backfill");
     return;
   }
 
-  const profiles = getConfiguredProfiles();
+  const profiles = await getConfiguredProfiles();
   const today = new Date();
   const startFrom = new Date(today);
   startFrom.setDate(startFrom.getDate() - days);
@@ -247,12 +255,12 @@ export async function syncAdsBackfill(days = 30): Promise<void> {
 
 /** Sync any missing days between last snapshot date and yesterday */
 export async function syncAdsCatchUp(): Promise<void> {
-  if (!isAdsConfigured()) return;
-  const profiles = getConfiguredProfiles();
+  if (!(await isAdsConfigured())) return;
+  const profiles = await getConfiguredProfiles();
 
-  // Find latest snapshot date in DB
+  // Find latest snapshot date in DB (scoped to the current account)
   const latest = await prisma.$queryRawUnsafe<{ d: string }[]>(
-    `SELECT MAX("snapshotDate")::text AS d FROM "AmazonAdSnapshot"`
+    `SELECT MAX("snapshotDate")::text AS d FROM "AmazonAdSnapshot" WHERE "amazonAccountId" = '${getCurrentAccountId()}'`
   );
   const latestDate = latest[0]?.d;
   if (!latestDate) return;
@@ -292,7 +300,7 @@ export async function verifyAdsConnection(): Promise<{ ok: boolean; profiles: an
 /** Get a quick campaign list (no reports — instant) for a marketplace */
 export async function quickCampaignList(marketplace: string): Promise<any[]> {
   const { getProfileId } = await import("./ads-api.service");
-  const profileId = getProfileId(marketplace);
+  const profileId = await getProfileId(marketplace);
   return listSPCampaigns(profileId);
 }
 
@@ -302,16 +310,20 @@ interface CachedStructure {
   adGroups:  (SpAdGroup  & { marketplace: string })[];
   expiresAt: number;
 }
-let _structureCache: CachedStructure | null = null;
+// Keyed by amazonAccountId — see _liveCampaignCache above for why.
+const _structureCache = new Map<string, CachedStructure>();
 
-/** Fetch all ad groups + keywords from all configured profiles (5-min cache) */
+/** Fetch all ad groups + keywords from all configured profiles (5-min cache, per account) */
 export async function getLiveStructure(filterMarketplace?: string): Promise<{
   adGroups: (SpAdGroup & { marketplace: string })[];
   keywords: (SpKeyword & { marketplace: string })[];
 }> {
-  if (!_structureCache || Date.now() > _structureCache.expiresAt) {
-    if (!isAdsConfigured()) return { adGroups: [], keywords: [] };
-    const profiles = getConfiguredProfiles();
+  const accountId = getCurrentAccountId();
+  const cached = _structureCache.get(accountId);
+
+  if (!cached || Date.now() > cached.expiresAt) {
+    if (!(await isAdsConfigured())) return { adGroups: [], keywords: [] };
+    const profiles = await getConfiguredProfiles();
     const adGroups: (SpAdGroup & { marketplace: string })[] = [];
     const keywords: (SpKeyword & { marketplace: string })[] = [];
 
@@ -329,11 +341,11 @@ export async function getLiveStructure(filterMarketplace?: string): Promise<{
       await sleep(500);
     }
 
-    _structureCache = { adGroups, keywords, expiresAt: Date.now() + 5 * 60_000 };
-    console.log(`[Ads Structure] Cache: ${adGroups.length} adGroups, ${keywords.length} keywords`);
+    _structureCache.set(accountId, { adGroups, keywords, expiresAt: Date.now() + 5 * 60_000 });
+    console.log(`[Ads Structure] Cache for account ${accountId}: ${adGroups.length} adGroups, ${keywords.length} keywords`);
   }
 
-  const { adGroups, keywords } = _structureCache!;
+  const { adGroups, keywords } = _structureCache.get(accountId)!;
   if (filterMarketplace && filterMarketplace !== "all") {
     return {
       adGroups: adGroups.filter((g) => g.marketplace === filterMarketplace),
@@ -345,8 +357,9 @@ export async function getLiveStructure(filterMarketplace?: string): Promise<{
 
 /** Sync keyword metrics for all configured profiles */
 export async function syncKeywordMetrics(days = 30): Promise<void> {
-  if (!isAdsConfigured()) return;
-  const profiles = getConfiguredProfiles();
+  if (!(await isAdsConfigured())) return;
+  const profiles = await getConfiguredProfiles();
+  const amazonAccountId = getCurrentAccountId();
   const today = new Date();
   const start = new Date(today); start.setDate(today.getDate() - days);
   const startDate = dateStr(start);
@@ -377,6 +390,7 @@ export async function syncKeywordMetrics(days = 30): Promise<void> {
         // Use findFirst + create/update to avoid compound-key issues
         const existing = await (prisma as any).amazonAdKeywordSnapshot.findFirst({
           where: {
+            amazonAccountId,
             snapshotDate: snapDate,
             marketplace:  p.marketplace,
             keywordId:    row.keywordId,
@@ -401,6 +415,7 @@ export async function syncKeywordMetrics(days = 30): Promise<void> {
         } else {
           await (prisma as any).amazonAdKeywordSnapshot.create({
             data: {
+              amazonAccountId,
               snapshotDate: snapDate,
               marketplace:  p.marketplace,
               campaignId:   campaignId,

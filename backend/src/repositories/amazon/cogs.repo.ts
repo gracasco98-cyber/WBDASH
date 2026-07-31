@@ -1,8 +1,10 @@
 // cogs.repo.ts — Repository layer for AmazonProductCogs + AmazonCogsPriceEntry.
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
+// Every operation is scoped to the current Amazon account (context/account-context.ts).
 import type { PrismaClient } from "@prisma/client";
 import { toNum } from "../../utils/decimal";
+import { getCurrentAccountId } from "../../context/account-context";
 
 /** Converts the Decimal-typed monetary fields on a raw COGS row to plain numbers. */
 function normalizeCogsRow(row: any): any {
@@ -27,15 +29,18 @@ function normalizePriceEntryRow(row: any): any {
 // ─── AmazonProductCogs ────────────────────────────────────────────────────────
 
 /**
- * Find all COGS records, ordered by updatedAt DESC.
+ * Find all COGS records for the current account, ordered by updatedAt DESC.
  */
 export async function findAllCogs(prisma: PrismaClient): Promise<any[]> {
-  const rows = await (prisma as any).amazonProductCogs.findMany({ orderBy: { updatedAt: "desc" } });
+  const rows = await (prisma as any).amazonProductCogs.findMany({
+    where: { amazonAccountId: getCurrentAccountId() },
+    orderBy: { updatedAt: "desc" },
+  });
   return rows.map(normalizeCogsRow);
 }
 
 /**
- * Find COGS records for a list of ASINs, optionally filtered by marketplace.
+ * Find COGS records for a list of ASINs (current account only), optionally filtered by marketplace.
  * Returns both the requested marketplace and "ALL" records so the caller can
  * apply priority logic.
  */
@@ -46,6 +51,7 @@ export async function findCogsForAsins(
   const { asins, marketplace } = params;
   const rows = await (prisma as any).amazonProductCogs.findMany({
     where: {
+      amazonAccountId: getCurrentAccountId(),
       asin: { in: asins },
       OR: (marketplace && marketplace !== "all")
         ? [{ marketplace }, { marketplace: "ALL" }]
@@ -56,19 +62,19 @@ export async function findCogsForAsins(
 }
 
 /**
- * Find COGS records that have a non-null imageUrl (used for inventory enrichment).
+ * Find COGS records for the current account that have a non-null imageUrl (used for inventory enrichment).
  */
 export async function findCogsImages(
   prisma: PrismaClient
 ): Promise<{ asin: string; imageUrl: string }[]> {
   return (prisma as any).amazonProductCogs.findMany({
     select: { asin: true, imageUrl: true },
-    where: { imageUrl: { not: null } },
+    where: { amazonAccountId: getCurrentAccountId(), imageUrl: { not: null } },
   });
 }
 
 /**
- * Upsert a single COGS record by asin+marketplace.
+ * Upsert a single COGS record by asin+marketplace, scoped to the current account.
  * Used by POST /cogs, POST /cogs/bulk, and the catalog image cache.
  */
 export async function upsertCogs(
@@ -87,9 +93,13 @@ export async function upsertCogs(
     imageUrl?: string | null;
   }
 ): Promise<any> {
+  const amazonAccountId = getCurrentAccountId();
   const row = await (prisma as any).amazonProductCogs.upsert({
-    where: { asin_marketplace: { asin: params.asin, marketplace: params.marketplace } },
+    where: {
+      amazonAccountId_asin_marketplace: { amazonAccountId, asin: params.asin, marketplace: params.marketplace },
+    },
     create: {
+      amazonAccountId,
       asin:         params.asin,
       marketplace:  params.marketplace,
       cogsPerUnit:  params.cogsPerUnit,
@@ -118,23 +128,24 @@ export async function upsertCogs(
 }
 
 /**
- * Upsert only the imageUrl on a COGS record. Creates a placeholder record if none exists.
- * Fire-and-forget — errors are swallowed by the caller.
+ * Upsert only the imageUrl on a COGS record, scoped to the current account.
+ * Creates a placeholder record if none exists. Fire-and-forget — errors are swallowed by the caller.
  */
 export async function upsertCogsImageUrl(
   prisma: PrismaClient,
   asin: string,
   imageUrl: string
 ): Promise<void> {
+  const amazonAccountId = getCurrentAccountId();
   await (prisma as any).amazonProductCogs.upsert({
-    where: { asin_marketplace: { asin, marketplace: "ALL" } },
-    create: { asin, marketplace: "ALL", imageUrl, cogsPerUnit: 0, shippingCost: 0, vatRate: 0 },
+    where: { amazonAccountId_asin_marketplace: { amazonAccountId, asin, marketplace: "ALL" } },
+    create: { amazonAccountId, asin, marketplace: "ALL", imageUrl, cogsPerUnit: 0, shippingCost: 0, vatRate: 0 },
     update: { imageUrl },
   });
 }
 
 /**
- * Update cogsPerUnit (and optionally shippingCost) for all records matching an ASIN.
+ * Update cogsPerUnit (and optionally shippingCost) for all records matching an ASIN, current account only.
  * Used after deleting the most recent price entry to re-sync to previous.
  */
 export async function updateCogsForAsin(
@@ -142,7 +153,7 @@ export async function updateCogsForAsin(
   params: { asin: string; cogsPerUnit: number; shippingCost?: number }
 ): Promise<void> {
   await (prisma as any).amazonProductCogs.updateMany({
-    where: { asin: params.asin },
+    where: { asin: params.asin, amazonAccountId: getCurrentAccountId() },
     data: {
       cogsPerUnit:  params.cogsPerUnit,
       ...(params.shippingCost !== undefined && { shippingCost: params.shippingCost }),
@@ -151,7 +162,8 @@ export async function updateCogsForAsin(
 }
 
 /**
- * Delete a COGS record by ID.
+ * Delete a COGS record by ID. `id` is the record's own primary key (globally
+ * unique), so no account filter is needed here.
  */
 export async function deleteCogs(prisma: PrismaClient, id: string): Promise<void> {
   await (prisma as any).amazonProductCogs.delete({ where: { id } });
@@ -160,14 +172,15 @@ export async function deleteCogs(prisma: PrismaClient, id: string): Promise<void
 // ─── AmazonCogsPriceEntry ─────────────────────────────────────────────────────
 
 /**
- * Find all price history entries, optionally filtered by ASIN.
+ * Find all price history entries for the current account, optionally filtered by ASIN.
  * Ordered by asin ASC, purchaseDate DESC.
  */
 export async function findPriceEntries(
   prisma: PrismaClient,
   params?: { asin?: string }
 ): Promise<any[]> {
-  const where = params?.asin ? { asin: params.asin } : {};
+  const where: Record<string, unknown> = { amazonAccountId: getCurrentAccountId() };
+  if (params?.asin) where.asin = params.asin;
   const rows = await (prisma as any).amazonCogsPriceEntry.findMany({
     where,
     orderBy: [{ asin: "asc" }, { purchaseDate: "desc" }],
@@ -176,7 +189,7 @@ export async function findPriceEntries(
 }
 
 /**
- * Find the most recent price entry for an ASIN.
+ * Find the most recent price entry for an ASIN, within the current account.
  * Returns null if no entries exist.
  */
 export async function findMostRecentPriceEntry(
@@ -184,14 +197,14 @@ export async function findMostRecentPriceEntry(
   asin: string
 ): Promise<any | null> {
   const row = await (prisma as any).amazonCogsPriceEntry.findFirst({
-    where: { asin },
+    where: { asin, amazonAccountId: getCurrentAccountId() },
     orderBy: { purchaseDate: "desc" },
   });
   return normalizePriceEntryRow(row);
 }
 
 /**
- * Create a new price history entry.
+ * Create a new price history entry for the current account.
  */
 export async function createPriceEntry(
   prisma: PrismaClient,
@@ -210,12 +223,15 @@ export async function createPriceEntry(
     currency: string;
   }
 ): Promise<any> {
-  const row = await (prisma as any).amazonCogsPriceEntry.create({ data });
+  const row = await (prisma as any).amazonCogsPriceEntry.create({
+    data: { ...data, amazonAccountId: getCurrentAccountId() },
+  });
   return normalizePriceEntryRow(row);
 }
 
 /**
- * Update a price history entry by ID.
+ * Update a price history entry by ID. `id` is the record's own primary key
+ * (globally unique), so no account filter is needed here.
  */
 export async function updatePriceEntry(
   prisma: PrismaClient,
@@ -228,6 +244,7 @@ export async function updatePriceEntry(
 
 /**
  * Delete a price history entry by ID, returning the deleted record.
+ * `id` is the record's own primary key (globally unique), so no account filter is needed here.
  */
 export async function deletePriceEntry(prisma: PrismaClient, id: string): Promise<any> {
   const row = await (prisma as any).amazonCogsPriceEntry.delete({ where: { id } });

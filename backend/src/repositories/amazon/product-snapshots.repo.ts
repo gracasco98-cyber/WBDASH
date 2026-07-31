@@ -3,6 +3,7 @@
 // No business logic here — only typed data access.
 import type { PrismaClient, AmazonProductSnapshot, Prisma } from "@prisma/client";
 import { toNum } from "../../utils/decimal";
+import { getCurrentAccountId } from "../../context/account-context";
 
 /** Same shape as AmazonProductSnapshot but with monetary fields as plain numbers. */
 export type AmazonProductSnapshotDTO = Omit<
@@ -35,6 +36,7 @@ export async function findProductSnapshotHistory(
   params: { asin: string; from: Date; marketplace?: string }
 ): Promise<AmazonProductSnapshotDTO[]> {
   const where: Prisma.AmazonProductSnapshotWhereInput = {
+    amazonAccountId: getCurrentAccountId(),
     asin: params.asin,
     snapshotDate: { gte: params.from },
   };
@@ -58,7 +60,7 @@ export async function findProductSnapshotHistory(
  * Count all AmazonProductSnapshot rows (no filter). Used for DB stats / verification.
  */
 export async function countAllAmazonProductSnapshots(prisma: PrismaClient): Promise<number> {
-  return prisma.amazonProductSnapshot.count();
+  return prisma.amazonProductSnapshot.count({ where: { amazonAccountId: getCurrentAccountId() } });
 }
 
 // ─── Write operations ─────────────────────────────────────────────────────────
@@ -70,15 +72,18 @@ export async function upsertAmazonProductSnapshot(
   prisma: PrismaClient,
   params: UpsertSnapshotParams
 ): Promise<void> {
+  const amazonAccountId = getCurrentAccountId();
   await prisma.amazonProductSnapshot.upsert({
     where: {
-      snapshotDate_asin_marketplace: {
+      amazonAccountId_snapshotDate_asin_marketplace: {
+        amazonAccountId,
         snapshotDate: params.snapshotDate,
         asin: params.asin,
         marketplace: params.marketplace,
       },
     },
     create: {
+      amazonAccountId,
       snapshotDate:  params.snapshotDate,
       asin:          params.asin,
       sku:           params.sku ?? null,

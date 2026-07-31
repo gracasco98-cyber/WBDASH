@@ -2,6 +2,7 @@
 // Split from ads.routes.ts to keep each file ≤500 LOC.
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
+import { getCurrentAccountId } from "../../context/account-context";
 import {
   deleteAdSearchTerms,
   createAdSearchTerms,
@@ -21,14 +22,18 @@ interface SearchTermCache {
   dateTo:        string;
   marketplace:   string;
 }
-export const _stCache = new Map<string, SearchTermCache>();     // key = marketplace
+// key = `${amazonAccountId}:${marketplace}` — plain marketplace would leak one
+// account's search terms into another account's response (see
+// docs/tech-debt.md, discovered during the multi-account migration).
+export const _stCache = new Map<string, SearchTermCache>();
 export let _stSyncing = false;
 
 export async function runSearchTermSync(days = 30, mpFilter?: string): Promise<void> {
-  if (!isAdsConfigured()) return;
+  if (!(await isAdsConfigured())) return;
+  const amazonAccountId = getCurrentAccountId();
   _stSyncing = true;
   try {
-    const profiles = getConfiguredProfiles().filter(p => !mpFilter || p.marketplace === mpFilter);
+    const profiles = (await getConfiguredProfiles()).filter(p => !mpFilter || p.marketplace === mpFilter);
     const today = new Date();
     const start = new Date(today); start.setDate(today.getDate() - days);
     const startDate = start.toISOString().split("T")[0];
@@ -86,7 +91,7 @@ export async function runSearchTermSync(days = 30, mpFilter?: string): Promise<v
         })));
 
         // Also update in-memory cache for instant reads
-        _stCache.set(p.marketplace, {
+        _stCache.set(`${amazonAccountId}:${p.marketplace}`, {
           data: mapped,
           generatedAt: Date.now(),
           dateFrom: startDate,
@@ -147,7 +152,8 @@ ppcExtraRouter.get("/ppc/products", async (req: Request, res: Response) => {
       SELECT DISTINCT ON ("campaignId", marketplace)
         "campaignId", marketplace, "campaignName"
       FROM "AmazonAdSnapshot"
-      ${mpFilter ? `WHERE marketplace = '${mpFilter.replace(/'/g, "")}'` : ""}
+      WHERE "amazonAccountId" = '${getCurrentAccountId()}'
+      ${mpFilter ? `AND marketplace = '${mpFilter.replace(/'/g, "")}'` : ""}
       ORDER BY "campaignId", marketplace, "snapshotDate" DESC
     `);
     const nameMap = new Map<string, string>();
@@ -248,6 +254,7 @@ ppcExtraRouter.get("/ppc/search-terms", async (req: Request, res: Response) => {
     const mpFilter   = marketplace && marketplace !== "all" ? marketplace : undefined;
     const limitN     = Math.min(Number(limit) || 500, 2000);
     const offsetN    = Number(offset) || 0;
+    const amazonAccountId = getCurrentAccountId();
 
     // ── 1. Try in-memory cache first (freshest data) ──────────────────────────
     let rows: any[] = [];
@@ -256,8 +263,9 @@ ppcExtraRouter.get("/ppc/search-terms", async (req: Request, res: Response) => {
     let dateTo: string | null      = null;
     let source: "cache" | "db"     = "cache";
 
-    for (const [mp, entry] of _stCache.entries()) {
-      if (mpFilter && mp !== mpFilter) continue;
+    for (const [key, entry] of _stCache.entries()) {
+      if (!key.startsWith(`${amazonAccountId}:`)) continue;
+      if (mpFilter && entry.marketplace !== mpFilter) continue;
       rows = rows.concat(entry.data);
       if (!generatedAt || entry.generatedAt > generatedAt) {
         generatedAt = entry.generatedAt;
@@ -269,13 +277,13 @@ ppcExtraRouter.get("/ppc/search-terms", async (req: Request, res: Response) => {
     // ── 2. Fall back to DB if cache is empty ──────────────────────────────────
     if (rows.length === 0) {
       source = "db";
-      const where: any = {};
+      const where: any = { amazonAccountId };
       if (mpFilter)   where.marketplace = mpFilter;
       if (campaignId) where.campaignId  = campaignId;
       if (wastedOnly === "true") where.isWasted = true;
 
       const latest = await (prisma as any).amazonAdSearchTerm.findFirst({
-        where: mpFilter ? { marketplace: mpFilter } : {},
+        where: mpFilter ? { amazonAccountId, marketplace: mpFilter } : { amazonAccountId },
         orderBy: { syncedAt: "desc" },
         select: { dateFrom: true, dateTo: true, syncedAt: true },
       });

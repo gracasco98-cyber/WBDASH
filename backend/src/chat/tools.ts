@@ -2,6 +2,20 @@
 // All DB queries run server-side. No secrets are exposed to the frontend.
 
 import { prisma } from "../db";
+import { getCurrentAccountId } from "../context/account-context";
+
+// ─── Multi-account helpers ─────────────────────────────────────────────────────
+// These chat tools mix Shopify + Amazon data in a single response. The account
+// middleware (server.ts) is lenient on /api/chat: if 0 or 2+ Amazon accounts
+// exist and none was specified, getCurrentAccountId() throws rather than guess.
+// For endpoints that report Shopify-only data too, we catch specifically that
+// error and degrade the Amazon portion gracefully instead of failing the whole
+// tool call — the Shopify numbers are still useful to the user even if Amazon
+// scope is ambiguous. Endpoints that are Amazon-only in practice (inventory,
+// PPC, margin) let the error propagate since there is nothing else to show.
+function isNoAccountError(e: unknown): boolean {
+  return e instanceof Error && e.message.includes("No Amazon account in scope");
+}
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -45,22 +59,30 @@ export async function getSalesSummary(args: {
   }
 
   if (ch === "all" || ch === "amazon") {
-    const mpFilter = args.marketplace && args.marketplace !== "all"
-      ? `AND i.marketplace = '${args.marketplace.toUpperCase().slice(0, 2)}'`
-      : "";
-    const [row] = await prisma.$queryRawUnsafe<any[]>(`
-      SELECT
-        COUNT(DISTINCT o."amazonOrderId")::INTEGER  AS "orders",
-        COALESCE(SUM(i."itemPrice"),     0)::FLOAT8 AS "grossRevenue",
-        COALESCE(SUM(i."quantityOrdered"),0)::INTEGER AS "units",
-        COUNT(DISTINCT i.asin)::INTEGER             AS "uniqueProducts"
-      FROM "AmazonOrderItem" i
-      JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
-      WHERE i."purchaseDate" BETWEEN '${from.toISOString()}' AND '${to.toISOString()}'
-        AND o."orderStatus" NOT IN ('Canceled','Cancelled')
-        ${mpFilter}
-    `);
-    result.amazon = row;
+    try {
+      const accountId = getCurrentAccountId();
+      const mpFilter = args.marketplace && args.marketplace !== "all"
+        ? `AND i.marketplace = '${args.marketplace.toUpperCase().slice(0, 2)}'`
+        : "";
+      const [row] = await prisma.$queryRawUnsafe<any[]>(`
+        SELECT
+          COUNT(DISTINCT o."amazonOrderId")::INTEGER  AS "orders",
+          COALESCE(SUM(i."itemPrice"),     0)::FLOAT8 AS "grossRevenue",
+          COALESCE(SUM(i."quantityOrdered"),0)::INTEGER AS "units",
+          COUNT(DISTINCT i.asin)::INTEGER             AS "uniqueProducts"
+        FROM "AmazonOrderItem" i
+        JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+        WHERE i."purchaseDate" BETWEEN '${from.toISOString()}' AND '${to.toISOString()}'
+          AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+          AND o."amazonAccountId" = '${accountId}'
+          AND i."amazonAccountId" = '${accountId}'
+          ${mpFilter}
+      `);
+      result.amazon = row;
+    } catch (e) {
+      if (!isNoAccountError(e)) throw e;
+      result.amazon = { unavailable: true, note: "Dati Amazon non disponibili: nessun account Amazon univoco selezionato per questa richiesta." };
+    }
   }
 
   result.totalGrossRevenue =
@@ -106,17 +128,24 @@ export async function getTopProducts(args: {
   }
 
   if (!args.channel || args.channel === "all" || args.channel === "amazon") {
-    result.amazon = await prisma.$queryRawUnsafe<any[]>(`
-      SELECT asin, MAX(sku) AS sku, MAX("productTitle") AS "productTitle",
-             SUM("unitsSold")::INTEGER   AS "unitsSold",
-             ROUND(SUM("grossRevenue")::NUMERIC, 2) AS "grossRevenue",
-             ROUND(SUM("netRevenue")::NUMERIC, 2)   AS "netRevenue",
-             SUM("orderCount")::INTEGER  AS "orderCount"
-      FROM "AmazonProductSnapshot"
-      WHERE "snapshotDate" BETWEEN '${isoDate(from)}' AND '${isoDate(to)}'
-      GROUP BY asin
-      ORDER BY ${col} ${dir} LIMIT ${limit}
-    `);
+    try {
+      const accountId = getCurrentAccountId();
+      result.amazon = await prisma.$queryRawUnsafe<any[]>(`
+        SELECT asin, MAX(sku) AS sku, MAX("productTitle") AS "productTitle",
+               SUM("unitsSold")::INTEGER   AS "unitsSold",
+               ROUND(SUM("grossRevenue")::NUMERIC, 2) AS "grossRevenue",
+               ROUND(SUM("netRevenue")::NUMERIC, 2)   AS "netRevenue",
+               SUM("orderCount")::INTEGER  AS "orderCount"
+        FROM "AmazonProductSnapshot"
+        WHERE "snapshotDate" BETWEEN '${isoDate(from)}' AND '${isoDate(to)}'
+          AND "amazonAccountId" = '${accountId}'
+        GROUP BY asin
+        ORDER BY ${col} ${dir} LIMIT ${limit}
+      `);
+    } catch (e) {
+      if (!isNoAccountError(e)) throw e;
+      result.amazon = { unavailable: true, note: "Dati Amazon non disponibili: nessun account Amazon univoco selezionato per questa richiesta." };
+    }
   }
 
   return result;
@@ -149,25 +178,38 @@ export async function getChannelComparison(args: {
     GROUP BY "marketplaceDetected" ORDER BY "revenue" DESC
   `;
 
-  const [am] = await prisma.$queryRaw<any[]>`
-    SELECT COUNT(DISTINCT o."amazonOrderId")::INTEGER           AS "orders",
-           ROUND(COALESCE(SUM(i."itemPrice"),      0)::NUMERIC,2) AS "grossRevenue",
-           COALESCE(SUM(i."quantityOrdered"),       0)::INTEGER AS "units"
-    FROM "AmazonOrderItem" i
-    JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
-    WHERE i."purchaseDate" BETWEEN ${from} AND ${to}
-      AND o."orderStatus" NOT IN ('Canceled','Cancelled')
-  `;
-  const amByMp = await prisma.$queryRaw<any[]>`
-    SELECT i.marketplace,
-           COUNT(DISTINCT o."amazonOrderId")::INTEGER           AS "orders",
-           ROUND(COALESCE(SUM(i."itemPrice"),0)::NUMERIC,2)     AS "revenue"
-    FROM "AmazonOrderItem" i
-    JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
-    WHERE i."purchaseDate" BETWEEN ${from} AND ${to}
-      AND o."orderStatus" NOT IN ('Canceled','Cancelled')
-    GROUP BY i.marketplace ORDER BY "revenue" DESC
-  `;
+  let am: any = null;
+  let amByMp: any[] = [];
+  let amazonNote: string | undefined;
+  try {
+    const accountId = getCurrentAccountId();
+    [am] = await prisma.$queryRaw<any[]>`
+      SELECT COUNT(DISTINCT o."amazonOrderId")::INTEGER           AS "orders",
+             ROUND(COALESCE(SUM(i."itemPrice"),      0)::NUMERIC,2) AS "grossRevenue",
+             COALESCE(SUM(i."quantityOrdered"),       0)::INTEGER AS "units"
+      FROM "AmazonOrderItem" i
+      JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+      WHERE i."purchaseDate" BETWEEN ${from} AND ${to}
+        AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+        AND o."amazonAccountId" = ${accountId}
+        AND i."amazonAccountId" = ${accountId}
+    `;
+    amByMp = await prisma.$queryRaw<any[]>`
+      SELECT i.marketplace,
+             COUNT(DISTINCT o."amazonOrderId")::INTEGER           AS "orders",
+             ROUND(COALESCE(SUM(i."itemPrice"),0)::NUMERIC,2)     AS "revenue"
+      FROM "AmazonOrderItem" i
+      JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+      WHERE i."purchaseDate" BETWEEN ${from} AND ${to}
+        AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+        AND o."amazonAccountId" = ${accountId}
+        AND i."amazonAccountId" = ${accountId}
+      GROUP BY i.marketplace ORDER BY "revenue" DESC
+    `;
+  } catch (e) {
+    if (!isNoAccountError(e)) throw e;
+    amazonNote = "Dati Amazon non disponibili: nessun account Amazon univoco selezionato per questa richiesta.";
+  }
 
   const shRev  = Number(sh?.grossRevenue ?? 0);
   const amRev  = Number(am?.grossRevenue ?? 0);
@@ -177,7 +219,7 @@ export async function getChannelComparison(args: {
     period: { from: isoDate(from), to: isoDate(to) },
     totalRevenue: total,
     shopify: { ...sh, sharePct: total > 0 ? Math.round(shRev / total * 100) : 0, byMarketplace: shByMp },
-    amazon:  { ...am, sharePct: total > 0 ? Math.round(amRev / total * 100) : 0, byMarketplace: amByMp },
+    amazon:  { ...am, sharePct: total > 0 ? Math.round(amRev / total * 100) : 0, byMarketplace: amByMp, ...(amazonNote ? { note: amazonNote } : {}) },
   };
 }
 
@@ -198,14 +240,24 @@ export async function getPeriodComparison(args: {
       WHERE "createdAt" BETWEEN ${from} AND ${to}
         AND "isTest"=false AND "financialStatus"!='voided'
     `;
-    const [am] = await prisma.$queryRaw<any[]>`
-      SELECT COUNT(DISTINCT o."amazonOrderId")::INTEGER AS "orders",
-             ROUND(COALESCE(SUM(i."itemPrice"),0)::NUMERIC,2) AS "revenue"
-      FROM "AmazonOrderItem" i
-      JOIN "AmazonOrder" o ON o."amazonOrderId"=i."amazonOrderId"
-      WHERE i."purchaseDate" BETWEEN ${from} AND ${to}
-        AND o."orderStatus" NOT IN ('Canceled','Cancelled')
-    `;
+    let am: any = null;
+    try {
+      const accountId = getCurrentAccountId();
+      [am] = await prisma.$queryRaw<any[]>`
+        SELECT COUNT(DISTINCT o."amazonOrderId")::INTEGER AS "orders",
+               ROUND(COALESCE(SUM(i."itemPrice"),0)::NUMERIC,2) AS "revenue"
+        FROM "AmazonOrderItem" i
+        JOIN "AmazonOrder" o ON o."amazonOrderId"=i."amazonOrderId"
+        WHERE i."purchaseDate" BETWEEN ${from} AND ${to}
+          AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+          AND o."amazonAccountId" = ${accountId}
+          AND i."amazonAccountId" = ${accountId}
+      `;
+    } catch (e) {
+      if (!isNoAccountError(e)) throw e;
+      // Amazon scope ambiguous/unavailable — degrade to 0 so the Shopify-only
+      // comparison (which the caller can still act on) doesn't fail entirely.
+    }
     const shRev = Number(sh?.revenue ?? 0);
     const amRev = Number(am?.revenue ?? 0);
     return {
@@ -240,9 +292,15 @@ export async function getPeriodComparison(args: {
 // velocity-based insights from recent order data.
 
 export async function getAmazonInventorySummary(): Promise<any> {
+  // Amazon-only tool (no Shopify data mixed in) — resolve the account once up
+  // front so a "No Amazon account in scope" error propagates clearly to the
+  // caller instead of being silently absorbed by the `catch {}` below, which
+  // exists only to trigger the velocity fallback on genuine query failures.
+  const accountId = getCurrentAccountId();
+
   // Try the AmazonInventory table first
   try {
-    const [count] = await prisma.$queryRaw<any[]>`SELECT COUNT(*)::INTEGER AS n FROM "AmazonInventory"`;
+    const [count] = await prisma.$queryRaw<any[]>`SELECT COUNT(*)::INTEGER AS n FROM "AmazonInventory" WHERE "amazonAccountId" = ${accountId}`;
     if (Number(count?.n ?? 0) > 0) {
       const [summary] = await prisma.$queryRaw<any[]>`
         SELECT
@@ -252,10 +310,11 @@ export async function getAmazonInventorySummary(): Promise<any> {
           COUNT(CASE WHEN "qtyAfn"=0 THEN 1 END)::INTEGER          AS "outOfStock",
           COUNT(CASE WHEN "qtyAfn">0 AND "qtyAfn"<15 THEN 1 END)::INTEGER AS "criticalStock"
         FROM "AmazonInventory"
+        WHERE "amazonAccountId" = ${accountId}
       `;
       const critical = await prisma.$queryRaw<any[]>`
         SELECT asin, sku, "qtyAfn" AS fulfillable, "qtyInbound" AS inbound
-        FROM "AmazonInventory" WHERE "qtyAfn" < 20
+        FROM "AmazonInventory" WHERE "qtyAfn" < 20 AND "amazonAccountId" = ${accountId}
         ORDER BY "qtyAfn" ASC LIMIT 10
       `;
       return { source: "AmazonInventory", summary, criticalProducts: critical };
@@ -272,6 +331,8 @@ export async function getAmazonInventorySummary(): Promise<any> {
     JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
     WHERE i."purchaseDate" >= ${since}
       AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+      AND o."amazonAccountId" = ${accountId}
+      AND i."amazonAccountId" = ${accountId}
     GROUP BY i.asin
     ORDER BY "unitsSold30d" DESC
     LIMIT 20
@@ -283,6 +344,8 @@ export async function getAmazonInventorySummary(): Promise<any> {
     JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
     WHERE i."purchaseDate" >= ${since}
       AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+      AND o."amazonAccountId" = ${accountId}
+      AND i."amazonAccountId" = ${accountId}
   `;
 
   return {
@@ -301,6 +364,9 @@ export async function getAmazonPpcSummary(args: {
   dateFrom?: string; dateTo?: string;
 }): Promise<any> {
   const { from, to } = datePair(args.dateFrom, args.dateTo);
+  // Amazon-only tool (no Shopify data mixed in) — let "No Amazon account in
+  // scope" propagate to the caller, there's nothing else to show.
+  const accountId = getCurrentAccountId();
   const [summary] = await prisma.$queryRaw<any[]>`
     SELECT
       COUNT(DISTINCT "campaignId")::INTEGER          AS "campaigns",
@@ -316,6 +382,7 @@ export async function getAmazonPpcSummary(args: {
         ELSE NULL END AS "roas"
     FROM "AmazonAdSnapshot"
     WHERE "snapshotDate" BETWEEN ${from} AND ${to}
+      AND "amazonAccountId" = ${accountId}
   `;
   const topCampaigns = await prisma.$queryRaw<any[]>`
     SELECT "campaignName",
@@ -326,6 +393,7 @@ export async function getAmazonPpcSummary(args: {
              ELSE NULL END AS "acos"
     FROM "AmazonAdSnapshot"
     WHERE "snapshotDate" BETWEEN ${from} AND ${to}
+      AND "amazonAccountId" = ${accountId}
     GROUP BY "campaignName"
     ORDER BY "spend" DESC LIMIT 8
   `;
@@ -339,6 +407,9 @@ export async function getMarginAnalysis(args: {
 }): Promise<any> {
   const { from, to } = datePair(args.dateFrom, args.dateTo);
   const limit = Math.min(Number(args.limit) || 10, 20);
+  // Amazon-only tool (no Shopify data mixed in) — let "No Amazon account in
+  // scope" propagate to the caller, there's nothing else to show.
+  const accountId = getCurrentAccountId();
   // Amazon fee model: 15% referral + €3.80/unit FBA
   const products = await prisma.$queryRawUnsafe<any[]>(`
     SELECT s.asin,
@@ -358,8 +429,9 @@ export async function getMarginAnalysis(args: {
            ELSE NULL END AS "marginPct",
            CASE WHEN MAX(c."cogsPerUnit") IS NULL THEN true ELSE false END AS "missingCogs"
     FROM "AmazonProductSnapshot" s
-    LEFT JOIN "AmazonProductCogs" c ON c.asin = s.asin
+    LEFT JOIN "AmazonProductCogs" c ON c.asin = s.asin AND c."amazonAccountId" = '${accountId}'
     WHERE s."snapshotDate" BETWEEN '${isoDate(from)}' AND '${isoDate(to)}'
+      AND s."amazonAccountId" = '${accountId}'
     GROUP BY s.asin
     HAVING SUM(s."grossRevenue") > 0
     ORDER BY "grossRevenue" DESC
@@ -374,21 +446,36 @@ export async function getDashboardContext(): Promise<any> {
   const [shopifyCount] = await prisma.$queryRaw<any[]>`
     SELECT COUNT(*)::INTEGER AS n FROM "ShopifyOrder" WHERE "isTest"=false
   `;
-  const [amazonCount] = await prisma.$queryRaw<any[]>`
-    SELECT COUNT(*)::INTEGER AS n FROM "AmazonOrder"
-  `;
   const [lastSync] = await prisma.$queryRaw<any[]>`
     SELECT "lastSyncAt" FROM "SyncState" WHERE id='main' LIMIT 1
-  `;
-  const [lastAmz] = await prisma.$queryRaw<any[]>`
-    SELECT MAX("completedAt") AS "lastSync" FROM "AmazonSyncJob" WHERE status='done'
   `;
   const [shopifyFirst] = await prisma.$queryRaw<any[]>`
     SELECT MIN("createdAt") AS "firstOrder" FROM "ShopifyOrder" WHERE "isTest"=false
   `;
-  const [amazonFirst] = await prisma.$queryRaw<any[]>`
-    SELECT MIN("purchaseDate") AS "firstOrder" FROM "AmazonOrder"
-  `;
+
+  // This is "always called first" for chat context and mixes Shopify + Amazon
+  // data — degrade the Amazon portion gracefully rather than blocking the
+  // whole dashboard context if no single Amazon account is in scope.
+  let amazonCount: any = null;
+  let lastAmz: any = null;
+  let amazonFirst: any = null;
+  let amazonNote: string | undefined;
+  try {
+    const accountId = getCurrentAccountId();
+    [amazonCount] = await prisma.$queryRaw<any[]>`
+      SELECT COUNT(*)::INTEGER AS n FROM "AmazonOrder" WHERE "amazonAccountId" = ${accountId}
+    `;
+    [lastAmz] = await prisma.$queryRaw<any[]>`
+      SELECT MAX("completedAt") AS "lastSync" FROM "AmazonSyncJob" WHERE status='done' AND "amazonAccountId" = ${accountId}
+    `;
+    [amazonFirst] = await prisma.$queryRaw<any[]>`
+      SELECT MIN("purchaseDate") AS "firstOrder" FROM "AmazonOrder" WHERE "amazonAccountId" = ${accountId}
+    `;
+  } catch (e) {
+    if (!isNoAccountError(e)) throw e;
+    amazonNote = "Dati Amazon non disponibili: nessun account Amazon univoco selezionato per questa richiesta.";
+  }
+
   return {
     today:              new Date().toISOString().slice(0, 10),
     shopifyTotalOrders: Number(shopifyCount?.n ?? 0),
@@ -397,5 +484,6 @@ export async function getDashboardContext(): Promise<any> {
     amazonFirstOrder:   amazonFirst?.firstOrder  ?? null,
     lastShopifySync:    lastSync?.lastSyncAt     ?? null,
     lastAmazonSync:     lastAmz?.lastSync        ?? null,
+    ...(amazonNote ? { amazonDataNote: amazonNote } : {}),
   };
 }
