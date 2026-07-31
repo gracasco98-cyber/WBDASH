@@ -1,6 +1,7 @@
 // amazon/routes/forecast.routes.ts — Forecast snapshots + calibration view
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
+import { getCurrentAccountId } from "../../context/account-context";
 import { getCalibration, saveForecastSnapshot, getCalibrationStatus, computeComponentBreakdown } from "../forecast";
 
 export const forecastRouter = Router();
@@ -14,6 +15,7 @@ export const forecastRouter = Router();
 // Returns gross breakdown, fee waterfall, and estimated net per marketplace.
 forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) => {
   try {
+    const amazonAccountId = getCurrentAccountId();
     const MARKETPLACES = ["IT", "DE", "ES", "FR"];
     const ALL_EU_MARKETPLACES = ["IT", "DE", "ES", "FR", "NL", "PL", "UK", "SE"];
 
@@ -31,7 +33,7 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
     }[]>(`
       WITH sett AS (
         SELECT marketplace, SUM("totalAmount") AS real_payout, COUNT(*) AS n_sett
-        FROM "AmazonSettlement" WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR'])
+        FROM "AmazonSettlement" WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR']) AND "amazonAccountId" = '${amazonAccountId}'
         GROUP BY marketplace
       ),
       txn AS (
@@ -56,8 +58,8 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
               THEN t.amount ELSE 0 END) AS reimb,
           COUNT(DISTINCT t."settlementId") AS n_sett
         FROM "AmazonSettlementTransaction" t
-        JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId"
-        WHERE s.marketplace = ANY(ARRAY['IT','DE','ES','FR'])
+        JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId" AND s."amazonAccountId" = t."amazonAccountId"
+        WHERE s.marketplace = ANY(ARRAY['IT','DE','ES','FR']) AND s."amazonAccountId" = '${amazonAccountId}'
         GROUP BY s.marketplace
       )
       SELECT
@@ -101,7 +103,7 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
         (MAX("endDate") + INTERVAL '14 days')::date::text   AS next_period_end,
         (MAX("depositDate") + INTERVAL '14 days')::date::text AS next_deposit_est
       FROM "AmazonSettlement"
-      WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR'])
+      WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR']) AND "amazonAccountId" = '${amazonAccountId}'
       GROUP BY marketplace
     `);
     const cycleMap = new Map(cycleRows.map(r => [r.marketplace, r]));
@@ -115,7 +117,7 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
         SELECT marketplace, "totalAmount",
           ROW_NUMBER() OVER (PARTITION BY marketplace ORDER BY "endDate" DESC) AS rn
         FROM "AmazonSettlement"
-        WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR'])
+        WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR']) AND "amazonAccountId" = '${amazonAccountId}'
       )
       SELECT marketplace,
         MAX(CASE WHEN rn=1 THEN "totalAmount" END)::FLOAT8 AS net_c1,
@@ -136,7 +138,7 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
         SELECT marketplace, currency, "totalAmount", "endDate", "depositDate",
           ROW_NUMBER() OVER (PARTITION BY marketplace ORDER BY "endDate" DESC) AS rn
         FROM "AmazonSettlement"
-        WHERE marketplace = ANY(ARRAY['NL','PL','UK','SE'])
+        WHERE marketplace = ANY(ARRAY['NL','PL','UK','SE']) AND "amazonAccountId" = '${amazonAccountId}'
       )
       SELECT marketplace,
         MAX(currency) AS currency,
@@ -160,7 +162,7 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
     }[]>(`
       WITH last_sett AS (
         SELECT marketplace, MAX("startDate") AS last_start, MAX("endDate") AS last_end
-        FROM "AmazonSettlement" WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR']) GROUP BY marketplace
+        FROM "AmazonSettlement" WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR']) AND "amazonAccountId" = '${amazonAccountId}' GROUP BY marketplace
       ),
       current_p AS (
         SELECT o.marketplace,
@@ -170,8 +172,10 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
         WHERE o."orderStatus" NOT IN ('Cancelled','Pending')
           AND o."purchaseDate" > ls.last_end
           AND o."purchaseDate" <= NOW()
+          AND o."amazonAccountId" = '${amazonAccountId}'
           AND NOT EXISTS (SELECT 1 FROM "AmazonSettlementTransaction" st
-            WHERE st."orderId" = o."amazonOrderId" AND st."amountType"='Principal' AND st."transactionType"='Order')
+            WHERE st."orderId" = o."amazonOrderId" AND st."amountType"='Principal' AND st."transactionType"='Order'
+              AND st."amazonAccountId" = '${amazonAccountId}')
         GROUP BY o.marketplace
       ),
       straggler_p AS (
@@ -181,8 +185,10 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
         WHERE o."orderStatus" NOT IN ('Cancelled','Pending')
           AND o."purchaseDate" >= ls.last_end - INTERVAL '8 days'
           AND o."purchaseDate" <= ls.last_end
+          AND o."amazonAccountId" = '${amazonAccountId}'
           AND NOT EXISTS (SELECT 1 FROM "AmazonSettlementTransaction" st
-            WHERE st."orderId" = o."amazonOrderId" AND st."amountType"='Principal' AND st."transactionType"='Order')
+            WHERE st."orderId" = o."amazonOrderId" AND st."amountType"='Principal' AND st."transactionType"='Order'
+              AND st."amazonAccountId" = '${amazonAccountId}')
         GROUP BY o.marketplace
       )
       SELECT
@@ -201,16 +207,17 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
     // ── 3b. Previous settlement gross (for refund lag model) ──────────────────
     const prevSettGrossRows = await prisma.$queryRawUnsafe<{ marketplace: string; prev_gross: number }[]>(`
       WITH ranked AS (
-        SELECT s.marketplace, s."settlementId", s."endDate",
-          ROW_NUMBER() OVER (PARTITION BY s.marketplace ORDER BY s."endDate" DESC) AS rn
+        SELECT s.marketplace, s."settlementId", s."endDate"
+        , ROW_NUMBER() OVER (PARTITION BY s.marketplace ORDER BY s."endDate" DESC) AS rn
         FROM "AmazonSettlement" s
-        WHERE s.marketplace = ANY(ARRAY['IT','DE','ES','FR'])
+        WHERE s.marketplace = ANY(ARRAY['IT','DE','ES','FR']) AND s."amazonAccountId" = '${amazonAccountId}'
       )
       SELECT r.marketplace,
         SUM(CASE WHEN t."amountType"='Principal' AND t."transactionType"='Order' THEN t.amount ELSE 0 END)::FLOAT8 AS prev_gross
       FROM ranked r
       JOIN "AmazonSettlementTransaction" t ON t."settlementId" = r."settlementId"
       WHERE r.rn = 1
+        AND t."amazonAccountId" = '${amazonAccountId}'
       GROUP BY r.marketplace
     `);
     const prevSettGrossMap = new Map(prevSettGrossRows.map(r => [r.marketplace, Number(r.prev_gross)]));
@@ -219,18 +226,20 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
     const openUnitsRows = await prisma.$queryRawUnsafe<{ marketplace: string; total_units: number }[]>(`
       WITH last_sett AS (
         SELECT marketplace, MAX("startDate") AS last_start, MAX("endDate") AS last_end
-        FROM "AmazonSettlement" WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR']) GROUP BY marketplace
+        FROM "AmazonSettlement" WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR']) AND "amazonAccountId" = '${amazonAccountId}' GROUP BY marketplace
       )
       SELECT o.marketplace,
         SUM(oi."quantityOrdered")::INTEGER AS total_units
       FROM "AmazonOrder" o
-      JOIN "AmazonOrderItem" oi ON oi."amazonOrderId" = o."amazonOrderId"
+      JOIN "AmazonOrderItem" oi ON oi."amazonOrderId" = o."amazonOrderId" AND oi."amazonAccountId" = o."amazonAccountId"
       JOIN last_sett ls ON ls.marketplace = o.marketplace
       WHERE o."orderStatus" NOT IN ('Cancelled','Pending')
         AND o."purchaseDate" > ls.last_end
         AND o."purchaseDate" <= NOW()
+        AND o."amazonAccountId" = '${amazonAccountId}'
         AND NOT EXISTS (SELECT 1 FROM "AmazonSettlementTransaction" st
-          WHERE st."orderId" = o."amazonOrderId" AND st."amountType"='Principal' AND st."transactionType"='Order')
+          WHERE st."orderId" = o."amazonOrderId" AND st."amountType"='Principal' AND st."transactionType"='Order'
+            AND st."amazonAccountId" = '${amazonAccountId}')
       GROUP BY o.marketplace
     `);
     const openUnitsMap = new Map(openUnitsRows.map(r => [r.marketplace, Number(r.total_units)]));
@@ -245,7 +254,7 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
       WITH last_sett AS (
         SELECT marketplace, MAX("endDate") AS last_end,
           (MAX("endDate") + INTERVAL '14 days') AS cycle_end
-        FROM "AmazonSettlement" WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR'])
+        FROM "AmazonSettlement" WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR']) AND "amazonAccountId" = '${amazonAccountId}'
         GROUP BY marketplace
       )
       SELECT o.marketplace,
@@ -266,6 +275,7 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
       JOIN last_sett ls ON ls.marketplace = o.marketplace
       WHERE o."purchaseDate" > ls.last_end
         AND o."orderStatus" NOT IN ('Cancelled','Pending')
+        AND o."amazonAccountId" = '${amazonAccountId}'
       GROUP BY o.marketplace
     `);
     const payableSplitMap = new Map(payableSplitRows.map(r => [r.marketplace, r]));

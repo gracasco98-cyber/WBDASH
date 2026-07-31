@@ -2,6 +2,7 @@
 // Search terms cache, /ppc/products, /ppc/adgroups, /ppc/search-terms are in ppc-extra.routes.ts.
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
+import { getCurrentAccountId } from "../../context/account-context";
 import {
   countAdSnapshotsByDateRange,
   groupAdSnapshotsByCampaign,
@@ -45,7 +46,7 @@ adsRouter.get("/ppc", async (req: Request, res: Response) => {
       });
       if (hasData === 0) {
         const latestSnap = await prisma.$queryRawUnsafe<{ d: string }[]>(
-          `SELECT MAX("snapshotDate")::text AS d FROM "AmazonAdSnapshot"${mpFilter ? ` WHERE marketplace = '${mpFilter.replace(/'/g, "")}'` : ""}`
+          `SELECT MAX("snapshotDate")::text AS d FROM "AmazonAdSnapshot" WHERE "amazonAccountId" = '${getCurrentAccountId()}'${mpFilter ? ` AND marketplace = '${mpFilter.replace(/'/g, "")}'` : ""}`
         );
         if (latestSnap[0]?.d) {
           const fallbackDate = new Date(latestSnap[0].d);
@@ -58,7 +59,8 @@ adsRouter.get("/ppc", async (req: Request, res: Response) => {
       } else {
         const actualMax = await prisma.$queryRawUnsafe<{ d: string }[]>(
           `SELECT MAX("snapshotDate")::text AS d FROM "AmazonAdSnapshot"
-           WHERE "snapshotDate" >= '${dfStr}'::date AND "snapshotDate" <= '${dtStr}'::date
+           WHERE "amazonAccountId" = '${getCurrentAccountId()}'
+           AND "snapshotDate" >= '${dfStr}'::date AND "snapshotDate" <= '${dtStr}'::date
            ${mpFilter ? `AND marketplace = '${mpFilter.replace(/'/g, "")}'` : ""}`
         );
         dataDate = actualMax[0]?.d ?? dfStr;
@@ -76,7 +78,8 @@ adsRouter.get("/ppc", async (req: Request, res: Response) => {
       SELECT DISTINCT ON ("campaignId", marketplace)
         "campaignId", marketplace, "campaignName", "campaignType"
       FROM "AmazonAdSnapshot"
-      ${mpFilter ? `WHERE marketplace = '${mpFilter.replace(/'/g,"")}'` : ""}
+      WHERE "amazonAccountId" = '${getCurrentAccountId()}'
+      ${mpFilter ? `AND marketplace = '${mpFilter.replace(/'/g,"")}'` : ""}
       ORDER BY "campaignId", marketplace, "snapshotDate" DESC
     `);
     const nameMap = new Map<string, string>();
@@ -177,7 +180,8 @@ adsRouter.get("/ppc/timeseries", async (req: Request, res: Response) => {
         COALESCE(SUM(spend), 0)::FLOAT8 AS spend,
         COALESCE(SUM(sales), 0)::FLOAT8 AS sales
       FROM "AmazonAdSnapshot"
-      WHERE "snapshotDate" >= '${tsFrom}'::date
+      WHERE "amazonAccountId" = '${getCurrentAccountId()}'
+        AND "snapshotDate" >= '${tsFrom}'::date
         AND "snapshotDate" <= '${tsTo}'::date
         ${mpFilter}
       GROUP BY "snapshotDate"
@@ -208,6 +212,7 @@ adsRouter.get("/ppc/keywords", async (req: Request, res: Response) => {
     const mpFilter = marketplace && marketplace !== "all" ? marketplace : undefined;
 
     const snapWhere: any = {
+      amazonAccountId: getCurrentAccountId(),
       snapshotDate: {
         gte: new Date(dateFrom.toISOString().split("T")[0]),
         lte: new Date(dateTo.toISOString().split("T")[0]),
@@ -233,7 +238,8 @@ adsRouter.get("/ppc/keywords", async (req: Request, res: Response) => {
       SELECT DISTINCT ON ("keywordId", marketplace, "campaignId")
         "keywordId", marketplace, "campaignId", "keywordText", "matchType"
       FROM "AmazonAdKeywordSnapshot"
-      WHERE "snapshotDate" >= '${dateFrom.toISOString().split("T")[0]}'::date
+      WHERE "amazonAccountId" = '${getCurrentAccountId()}'
+        AND "snapshotDate" >= '${dateFrom.toISOString().split("T")[0]}'::date
         AND "snapshotDate" <= '${dateTo.toISOString().split("T")[0]}'::date
         ${mpSql} ${cidSql}
       ORDER BY "keywordId", marketplace, "campaignId", "snapshotDate" DESC
@@ -299,7 +305,8 @@ adsRouter.get("/ppc/campaigns/:id", async (req: Request, res: Response) => {
         COALESCE(SUM(impressions), 0)::INTEGER AS impressions,
         COALESCE(SUM(orders), 0)::INTEGER      AS orders
       FROM "AmazonAdSnapshot"
-      WHERE "campaignId" = '${id.replace(/'/g,"")}'
+      WHERE "amazonAccountId" = '${getCurrentAccountId()}'
+        AND "campaignId" = '${id.replace(/'/g,"")}'
         AND "snapshotDate" >= '${dateFromStr}'::date
         AND "snapshotDate" <= '${dateToStr}'::date
         ${mpSql}
@@ -310,6 +317,7 @@ adsRouter.get("/ppc/campaigns/:id", async (req: Request, res: Response) => {
     const kwGroups = await (prisma as any).amazonAdKeywordSnapshot.groupBy({
       by: ["keywordId", "marketplace"],
       where: {
+        amazonAccountId: getCurrentAccountId(),
         campaignId:   id,
         snapshotDate: { gte: new Date(dateFromStr), lte: new Date(dateToStr) },
         ...(marketplace && marketplace !== "all" ? { marketplace } : {}),
@@ -322,7 +330,8 @@ adsRouter.get("/ppc/campaigns/:id", async (req: Request, res: Response) => {
       SELECT DISTINCT ON ("keywordId", marketplace)
         "keywordId", marketplace, "keywordText", "matchType"
       FROM "AmazonAdKeywordSnapshot"
-      WHERE "campaignId" = '${id.replace(/'/g,"")}'
+      WHERE "amazonAccountId" = '${getCurrentAccountId()}'
+        AND "campaignId" = '${id.replace(/'/g,"")}'
       ORDER BY "keywordId", marketplace, "snapshotDate" DESC
     `);
     const kwTextMap = new Map<string, KwRow2>();
@@ -419,7 +428,8 @@ adsRouter.get("/ads/daily", async (req: Request, res: Response) => {
         COALESCE(SUM(impressions), 0)::INTEGER AS impressions,
         COALESCE(SUM(orders), 0)::INTEGER     AS orders
       FROM "AmazonAdSnapshot"
-      WHERE "snapshotDate" >= '${_dailyFrom}'::date
+      WHERE "amazonAccountId" = '${getCurrentAccountId()}'
+        AND "snapshotDate" >= '${_dailyFrom}'::date
         AND "snapshotDate" <= '${_dailyTo}'::date
         ${marketplace && marketplace !== "all" ? `AND marketplace = '${marketplace.replace(/'/g,"")}'` : ""}
       GROUP BY "snapshotDate"

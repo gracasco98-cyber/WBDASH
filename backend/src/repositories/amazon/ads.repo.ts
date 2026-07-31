@@ -2,16 +2,18 @@
 //               AmazonAdSearchTerm, and AmazonAdKeyword entities.
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
+// Every operation is scoped to the current Amazon account (context/account-context.ts).
 import type { PrismaClient, Prisma } from "@prisma/client";
 import { toNum } from "../../utils/decimal";
+import { getCurrentAccountId } from "../../context/account-context";
 
 // ─── AmazonAdSnapshot — Read ──────────────────────────────────────────────────
 
 /**
- * Count all AmazonAdSnapshot rows (no filter). Used for DB stats / verification.
+ * Count all AmazonAdSnapshot rows for the current account. Used for DB stats / verification.
  */
 export async function countAllAdSnapshots(prisma: PrismaClient): Promise<number> {
-  return prisma.amazonAdSnapshot.count();
+  return prisma.amazonAdSnapshot.count({ where: { amazonAccountId: getCurrentAccountId() } });
 }
 
 /**
@@ -24,6 +26,7 @@ export async function countAdSnapshotsByDateRange(
 ): Promise<number> {
   return prisma.amazonAdSnapshot.count({
     where: {
+      amazonAccountId: getCurrentAccountId(),
       snapshotDate: { gte: params.from, lte: params.to },
       ...(params.marketplace ? { marketplace: params.marketplace } : {}),
     },
@@ -31,7 +34,7 @@ export async function countAdSnapshotsByDateRange(
 }
 
 /**
- * Group ad snapshots by campaignId + marketplace for aggregated metrics.
+ * Group ad snapshots by campaignId + marketplace for aggregated metrics, within the current account.
  * Used by GET /ppc and GET /ppc/products.
  */
 export async function groupAdSnapshotsByCampaign(
@@ -47,6 +50,7 @@ export async function groupAdSnapshotsByCampaign(
   _sum: { impressions: number | null; clicks: number | null; spend: number | null; sales: number | null; orders: number | null };
 }>> {
   const where: Prisma.AmazonAdSnapshotWhereInput = {
+    amazonAccountId: getCurrentAccountId(),
     snapshotDate: { gte: params.from, lte: params.to },
   };
   if (params.marketplace) where.marketplace = params.marketplace;
@@ -73,7 +77,7 @@ export async function groupAdSnapshotsByCampaign(
 // ─── AmazonAdSearchTerm ───────────────────────────────────────────────────────
 
 /**
- * Delete all search term rows for a given marketplace + period.
+ * Delete all search term rows for the current account + a given marketplace + period.
  * Used before re-inserting fresh data (idempotent).
  */
 export async function deleteAdSearchTerms(
@@ -82,6 +86,7 @@ export async function deleteAdSearchTerms(
 ): Promise<void> {
   await (prisma as any).amazonAdSearchTerm.deleteMany({
     where: {
+      amazonAccountId: getCurrentAccountId(),
       marketplace: params.marketplace,
       dateFrom:    params.dateFrom,
       dateTo:      params.dateTo,
@@ -90,7 +95,7 @@ export async function deleteAdSearchTerms(
 }
 
 /**
- * Batch-insert ad search terms (skipDuplicates = true).
+ * Batch-insert ad search terms (skipDuplicates = true) for the current account.
  * Accepts the same data shape that routes.ts previously built inline.
  */
 export async function createAdSearchTerms(
@@ -118,11 +123,12 @@ export async function createAdSearchTerms(
     syncedAt:     Date;
   }>
 ): Promise<number> {
+  const amazonAccountId = getCurrentAccountId();
   const BATCH = 500;
   let total = 0;
   for (let i = 0; i < data.length; i += BATCH) {
     const res = await (prisma as any).amazonAdSearchTerm.createMany({
-      data: data.slice(i, i + BATCH),
+      data: data.slice(i, i + BATCH).map((d) => ({ ...d, amazonAccountId })),
       skipDuplicates: true,
     });
     total += res.count;

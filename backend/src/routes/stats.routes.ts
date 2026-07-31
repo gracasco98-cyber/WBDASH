@@ -1,6 +1,7 @@
 // stats.routes.ts — REST API for dashboard metrics
 import { Router, Request, Response } from "express";
 import { prisma } from "../db";
+import { getCurrentAccountId } from "../context/account-context";
 import { runInitialSync, runIncrementalSync } from "../jobs/sync.job";
 import { detectMarketplace } from "../config/marketplace-rules";
 import {
@@ -170,6 +171,21 @@ router.get("/product-overview", async (req: Request, res: Response) => {
 
     if (!asin && !productId) return res.status(400).json({ error: "asin or productId required" });
 
+    // This endpoint merges Amazon (AmazonProductSnapshot) + Shopify
+    // (ProductDailySnapshot) data per product. If no single Amazon account is
+    // in scope (0 or 2+ accounts, none specified), degrade gracefully: the
+    // Amazon side of the merge returns zero rather than failing the whole
+    // request, so the Shopify-only numbers for this product still come back.
+    let amazonAccountId: string | null = null;
+    let amazonDataNote: string | undefined;
+    try {
+      amazonAccountId = getCurrentAccountId();
+    } catch (e) {
+      if (!(e instanceof Error && e.message.includes("No Amazon account in scope"))) throw e;
+      amazonDataNote = "Dati Amazon non disponibili: nessun account Amazon univoco selezionato per questa richiesta.";
+    }
+    const safeAccountId = (amazonAccountId ?? "").replace(/'/g, "");
+
     // ── Italy date helpers ─────────────────────────────────────────────────────
     const now    = new Date();
     const offset = italyOffsetHours();
@@ -203,7 +219,7 @@ router.get("/product-overview", async (req: Request, res: Response) => {
     type ShopRow = { grossRevenue: number; unitsSold: number; orderCount: number; refundedAmount: number; marketplace?: string };
 
     const qAmz = async (from: string, to: string, split = false): Promise<AmzRow[]> => {
-      if (!asin) return [];
+      if (!asin || !amazonAccountId) return [];
       return prisma.$queryRawUnsafe<AmzRow[]>(`
         SELECT ${split ? '"marketplace",' : ''}
           COALESCE(SUM("grossRevenue"),    0)::FLOAT8  AS "grossRevenue",
@@ -215,6 +231,7 @@ router.get("/product-overview", async (req: Request, res: Response) => {
         WHERE asin = '${safeAsin}'
           AND "snapshotDate" >= '${from}'::date
           AND "snapshotDate" <= '${to}'::date
+          AND "amazonAccountId" = '${safeAccountId}'
         ${split ? 'GROUP BY "marketplace"' : ''}
       `);
     };
@@ -291,6 +308,7 @@ router.get("/product-overview", async (req: Request, res: Response) => {
       forecast:  { ...forecast, pctChange: pct(fcastGross,         lmS.grossRevenue) },
       lastMonth: { ...lmS,    pctChange: null },
       meta: { daysElapsed, daysInMonth },
+      ...(amazonDataNote ? { amazonDataNote } : {}),
     };
 
     // Optional per-marketplace split (MTD + all periods)

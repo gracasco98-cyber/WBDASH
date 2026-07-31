@@ -13,6 +13,7 @@ import { cogsRouter } from "./cogs.routes";
 import { inventoryRouter } from "./inventory.routes";
 import { forecastRouter } from "./forecast.routes";
 import { syncRouter } from "./sync.routes";
+import { accountsRouter } from "./accounts.routes";
 
 // Re-export runSearchTermSync so sync.job.ts dynamic import("./routes") still works
 export { runSearchTermSync };
@@ -54,6 +55,9 @@ amazonRouter.use("/", forecastRouter);
 
 // Sync/Admin domain: /sync/*, /auth/*
 amazonRouter.use("/", syncRouter);
+
+// Account management: /accounts (list/create AmazonAccount)
+amazonRouter.use("/", accountsRouter);
 
 // Export default for backwards compatibility with server.ts import style
 export default amazonRouter;

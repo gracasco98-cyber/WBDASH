@@ -9,6 +9,7 @@ import {
   findRepresentativeItem,
 } from "../repositories/amazon/orders.repo";
 import { upsertAmazonProductSnapshot } from "../repositories/amazon/product-snapshots.repo";
+import { getCurrentAccountId } from "../context/account-context";
 
 // ─── Italy timezone helpers ───────────────────────────────────────────────────
 
@@ -90,16 +91,18 @@ export async function computeAmazonDailySnapshot(italyDateStr: string): Promise<
     if (!sample) continue;
 
     // Distinct orders for this product on this day
+    const accountId = getCurrentAccountId();
     type DistinctRow = { distinctOrders: bigint | number };
     const [distRow] = await prisma.$queryRaw<DistinctRow[]>`
       SELECT COUNT(DISTINCT i."amazonOrderId")::INTEGER AS "distinctOrders"
       FROM "AmazonOrderItem" i
-      JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+      JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
       WHERE i.asin = ${group.asin}
         AND i.marketplace = ${group.marketplace}
         AND i."purchaseDate" >= ${start}::timestamp
         AND i."purchaseDate" <= ${end}::timestamp
         AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+        AND i."amazonAccountId" = ${accountId}
     `;
 
     const unitsSold    = group._sum.quantityOrdered ?? 0;

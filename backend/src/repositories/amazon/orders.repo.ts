@@ -3,6 +3,7 @@
 // No business logic here — only typed data access.
 import type { PrismaClient, AmazonOrder, AmazonOrderItem, Prisma } from "@prisma/client";
 import { toNum } from "../../utils/decimal";
+import { getCurrentAccountId } from "../../context/account-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,17 +71,18 @@ export async function countAmazonOrders(
  * Count all AmazonOrder rows (no filter). Used for DB stats / verification.
  */
 export async function countAllAmazonOrders(prisma: PrismaClient): Promise<number> {
-  return prisma.amazonOrder.count();
+  return prisma.amazonOrder.count({ where: { amazonAccountId: getCurrentAccountId() } });
 }
 
 /**
- * Group orders by marketplace with count. Used for DB stats marketplace breakdown.
+ * Group orders by marketplace with count, for the current account. Used for DB stats marketplace breakdown.
  */
 export async function groupAmazonOrdersByMarketplace(
   prisma: PrismaClient
 ): Promise<{ marketplace: string; _count: number }[]> {
   const groups = await prisma.amazonOrder.groupBy({
     by: ["marketplace"],
+    where: { amazonAccountId: getCurrentAccountId() },
     _count: true,
     orderBy: { _count: { marketplace: "desc" } },
   });
@@ -90,10 +92,10 @@ export async function groupAmazonOrdersByMarketplace(
 // ─── Read operations — AmazonOrderItem ────────────────────────────────────────
 
 /**
- * Count all AmazonOrderItem rows (no filter). Used for DB stats / verification.
+ * Count all AmazonOrderItem rows for the current account. Used for DB stats / verification.
  */
 export async function countAllAmazonOrderItems(prisma: PrismaClient): Promise<number> {
-  return prisma.amazonOrderItem.count();
+  return prisma.amazonOrderItem.count({ where: { amazonAccountId: getCurrentAccountId() } });
 }
 
 /**
@@ -113,6 +115,7 @@ export async function groupAmazonItemsForSnapshot(
   const rows = (await (prisma.amazonOrderItem.groupBy as any)({
     by: ["asin", "marketplace"],
     where: {
+      amazonAccountId: getCurrentAccountId(),
       purchaseDate: { gte: params.from, lte: params.to },
       order: { orderStatus: { notIn: ["Canceled", "Cancelled"] } },
     },
@@ -140,6 +143,7 @@ export async function findRepresentativeItem(
 ): Promise<Pick<AmazonOrderItem, "productTitle" | "sku"> | null> {
   return prisma.amazonOrderItem.findFirst({
     where: {
+      amazonAccountId: getCurrentAccountId(),
       asin: params.asin,
       marketplace: params.marketplace,
       purchaseDate: { gte: params.from, lte: params.to },
@@ -167,6 +171,7 @@ export async function groupAmazonItemsByAsin(
   _count: { id: number };
 }>> {
   const where: Prisma.AmazonOrderItemWhereInput = {
+    amazonAccountId: getCurrentAccountId(),
     purchaseDate: params.purchaseDateRange,
     order: { salesChannel: { not: "Non-Amazon" } },
   };
@@ -201,7 +206,7 @@ export async function groupAmazonItemsByAsin(
 // ─── Private helpers ──────────────────────────────────────────────────────────
 
 function buildOrderWhere(params: FindAmazonOrdersParams): Prisma.AmazonOrderWhereInput {
-  const where: Prisma.AmazonOrderWhereInput = {};
+  const where: Prisma.AmazonOrderWhereInput = { amazonAccountId: getCurrentAccountId() };
 
   if (params.from || params.to) {
     where.purchaseDate = {};

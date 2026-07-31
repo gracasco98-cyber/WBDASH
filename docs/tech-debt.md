@@ -323,6 +323,37 @@ I file sotto sono **sopra i limiti documentati** in CONTRIBUTING.md ma **non in 
 
 ---
 
+## F. Migrazione multi seller-account Amazon (2026-07-31)
+
+### F.1 — Cosa è cambiato
+
+- Nuovo modello `AmazonAccount` (credenziali cifrate con AES-256-GCM via `backend/src/utils/crypto.ts`, chiave in `CREDENTIALS_ENCRYPTION_KEY`).
+- `amazonAccountId` aggiunto come campo obbligatorio a tutte le 13 tabelle del dominio Amazon (`AmazonSyncJob`, `AmazonOrder`, `AmazonOrderItem`, `AmazonProductSnapshot`, `AmazonSettlement`, `AmazonSettlementTransaction`, `AmazonProductCogs`, `AmazonCogsPriceEntry`, `AmazonInventory`, `AmazonAdSnapshot`, `AmazonAdKeywordSnapshot`, `AmazonAdSearchTerm`, `AmazonAdKeyword`, `AmazonForecastCalibration`, `AmazonForecastSnapshot`), con i vincoli di unicità ricalcolati per includere l'account (es. `AmazonOrder.amazonOrderId` non è più `@unique` da solo, ora è `@@unique([amazonAccountId, amazonOrderId])`).
+- **Meccanismo scelto**: `backend/src/context/account-context.ts` (`AsyncLocalStorage`) invece di threading esplicito di un parametro `accountId` attraverso ogni funzione. `getCurrentAccountId()` legge l'account corrente dal contesto; lancia un errore chiaro ("No Amazon account in scope") se chiamato fuori scope. Scelto per limitare l'invasività: non serve cambiare la firma di decine di funzioni, solo aggiungere `getCurrentAccountId()` nei punti che leggono/scrivono le tabelle Amazon.
+- Il contesto viene stabilito: (a) da `backend/src/middleware/amazon-account.middleware.ts` per ogni richiesta HTTP su `/api/amazon`, `/api/stats`, `/api/products`, `/api/chat`, `/api/analytics`; (b) da `forEachActiveAccount()` in `amazon/sync.job.ts` per i job schedulati (`setInterval`/`setTimeout`), che non ereditano alcun contesto di richiesta e devono iterare esplicitamente su tutti gli account attivi.
+- Il middleware è deliberatamente permissivo: se zero o 2+ account esistono senza uno specificato in query/header, NON blocca la richiesta (niente 412/400 globale) — lascia il contesto vuoto, così le parti Shopify-only di endpoint misti continuano a funzionare; solo il codice che chiama davvero `getCurrentAccountId()` fallisce, con un messaggio chiaro.
+- Migrazione delle credenziali esistenti: `backend/src/seed-amazon-account.ts` (idempotente, gira all'avvio via `entrypoint.sh`) crea il primo `AmazonAccount` dalle env var legacy (`AMAZON_SELLER_ID`, `AMAZON_LWA_CLIENT_ID`, ecc.) se non esiste già.
+- Nuove route: `GET/POST /api/amazon/accounts` (lista/crea account — le uniche che non richiedono un account già risolto, dato che servono a crearne uno).
+
+### F.2 — Bug reale trovato e corretto durante la migrazione: cache in-memory cross-account
+
+- **File**: `amazon/ads-sync.service.ts` (`_liveCampaignCache`, `_structureCache`), `amazon/routes/ppc-extra.routes.ts` (`_stCache`)
+- **Problema**: queste cache in-memory (campagne PPC live, struttura ad group/keyword, search term) erano chiavi solo per `marketplace`, non per account. Con due account attivi che vendono entrambi in "IT", il secondo avrebbe potuto ricevere i dati di cache del primo.
+- **Impatto**: se non corretto, violazione reale di isolamento dati tra account (non solo query lente/ridondanti).
+- **Fix**: tutte e tre le cache ora sono chiavi per account (`Map<amazonAccountId, ...>` o `` `${amazonAccountId}:${marketplace}` `` per `_stCache`).
+- **Origine**: scoperto autonomamente da uno dei sub-agent paralleli usati per applicare `getCurrentAccountId()` a ~25 file di service/route; corretto subito dopo il rientro dell'agente, non lasciato come nota.
+
+### F.3 — Gap noti, non risolti in questa sessione
+
+- **NA region non multi-account**: `token.service.ts`'s `getSpApiTokenNA()` legge ancora da `AMAZON_US_REFRESH_TOKEN` (env var globale), non da `AmazonAccount`. Lo schema attuale modella un solo refresh token SP-API per account (una region); un account che vende sia in EU che NA richiederebbe un secondo campo cifrato dedicato — non implementato.
+- **Cache `validMarketplaceIds`/`validMarketplaceIdsNA` in `sync.job.ts`**: condivisa tra tutti gli account (non per-account). Rischio basso (nel peggiore dei casi probe ridondanti o uno skip transitorio, non dati sbagliati — `fetchReportRobust` ha comunque un fallback per-marketplace su `InvalidInput`), ma non corretta al 100% se due account avessero insiemi di marketplace validi davvero divergenti.
+- **Join non sempre su chiave composita**: in alcuni punti (`chat/tools.ts`, `products.routes.ts` `/aggregated`, `stats.routes.ts` `/product-overview`) i JOIN tra `AmazonOrder`/`AmazonOrderItem` restano su `amazonOrderId` con un filtro `WHERE amazonAccountId` aggiunto su entrambi gli alias, invece di riscrivere la condizione di JOIN come composita. Rischio di collisione quasi nullo (gli order ID Amazon sono di fatto globalmente unici), ma è una differenza strutturale rispetto al resto della codebase, segnalata dagli agent che hanno fatto il fix.
+- **E.1 (repo layer non rispettato) resta il problema di fondo**: la migrazione multi-account ha dovuto toccare ~25 file di service/route esattamente per lo stesso motivo della migrazione Decimal (E.2) — nessuno spostamento verso il repository layer è stato fatto, solo l'aggiunta di `getCurrentAccountId()` nei punti diretti.
+- **Migrazione dati per deployment esistenti a singolo account**: se questo codebase venisse mai deployato con dati reali PRIMA di questa migrazione, sarebbe necessario un backfill di `amazonAccountId` su tutte le righe esistenti prima di rendere il campo `NOT NULL` — non rilevante qui perché il database resta vuoto (nessun dato reale mai sincronizzato).
+- **Origine**: richiesta esplicita dell'utente (2026-07-31) di procedere con la migrazione multi-account "tutto in un colpo".
+
+---
+
 ## Voci risolte
 
 (nessuna voce ancora — quando una voce viene fixata, va spostata qui con la PR di fix)

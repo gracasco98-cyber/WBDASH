@@ -3,12 +3,14 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
 import { toCsv } from "./orders.routes";
 import { getDateRange } from "../utils/datetime";
+import { getCurrentAccountId } from "../../context/account-context";
 
 export const paymentsAuxRouter = Router();
 
 // ─── GET /payments/dd7-reserve ────────────────────────────────────────────────
 paymentsAuxRouter.get("/payments/dd7-reserve", async (_req: Request, res: Response) => {
   try {
+    const accountId = getCurrentAccountId();
     const rows = await prisma.$queryRawUnsafe<{
       marketplace: string;
       in_dd7_hold: bigint;
@@ -26,9 +28,11 @@ paymentsAuxRouter.get("/payments/dd7-reserve", async (_req: Request, res: Respon
         FROM "AmazonOrder" o
         WHERE o."orderStatus" IN ('Shipped','Delivered')
           AND o."purchaseDate" >= NOW() - INTERVAL '21 days'
+          AND o."amazonAccountId" = '${accountId}'
           AND NOT EXISTS (
             SELECT 1 FROM "AmazonSettlementTransaction" st
             WHERE st."orderId" = o."amazonOrderId"
+              AND st."amazonAccountId" = o."amazonAccountId"
               AND st."amountType"='Principal' AND st."transactionType"='Order'
           )
       )
@@ -50,9 +54,10 @@ paymentsAuxRouter.get("/payments/dd7-reserve", async (_req: Request, res: Respon
       SELECT s.marketplace,
         SUM(CASE WHEN t."transactionType"='Current Reserve Amount' THEN t.amount ELSE 0 END)::FLOAT8 AS current_reserve
       FROM "AmazonSettlementTransaction" t
-      JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId"
+      JOIN "AmazonSettlement" s ON s."amazonAccountId" = t."amazonAccountId" AND s."settlementId" = t."settlementId"
       WHERE s.marketplace IN ('IT','DE','ES','FR')
         AND t."transactionType" IN ('Current Reserve Amount','Previous Reserve Amount Balance')
+        AND t."amazonAccountId" = '${accountId}'
       GROUP BY s.marketplace
     `);
     const reserveMap = new Map(reserveRows.map(r => [r.marketplace, Number(r.current_reserve)]));
@@ -95,6 +100,7 @@ paymentsAuxRouter.get("/payments/dd7-reserve", async (_req: Request, res: Respon
 // Unreconciled orders. By default uses per-marketplace settlement coverage.
 paymentsAuxRouter.get("/payments/unreconciled", async (req: Request, res: Response) => {
   try {
+    const accountId = getCurrentAccountId();
     const { marketplace, search, page: pageQ, limit: limitQ, from, to } = req.query as Record<string, string>;
     const page     = Math.max(1, parseInt(pageQ ?? "1", 10));
     const limit    = Math.min(parseInt(limitQ ?? "50", 10), 500);
@@ -115,7 +121,8 @@ paymentsAuxRouter.get("/payments/unreconciled", async (req: Request, res: Respon
             '${customFrom ?? "2020-01-01"}'::date AS cov_from,
             '${customTo   ?? new Date().toISOString().split("T")[0]}'::date AS cov_to
           FROM "AmazonOrder" o
-          ${mpWhere ? `WHERE ${mpWhere.replace("AND ", "")}` : ""}
+          WHERE o."amazonAccountId" = '${accountId}'
+          ${mpWhere}
         )`
       : `WITH mp_coverage AS (
           SELECT marketplace,
@@ -123,6 +130,7 @@ paymentsAuxRouter.get("/payments/unreconciled", async (req: Request, res: Respon
             MAX("endDate")::date   AS cov_to
           FROM "AmazonSettlement"
           WHERE marketplace NOT IN ('EU')
+            AND "amazonAccountId" = '${accountId}'
           GROUP BY marketplace
         )`;
 
@@ -132,11 +140,13 @@ paymentsAuxRouter.get("/payments/unreconciled", async (req: Request, res: Respon
       WHERE o."orderStatus" NOT IN ('Cancelled', 'Pending')
         AND o."purchaseDate"::date >= mc.cov_from
         AND o."purchaseDate"::date <= mc.cov_to
+        AND o."amazonAccountId" = '${accountId}'
         ${mpWhere}
         ${srchWhere}
         AND NOT EXISTS (
           SELECT 1 FROM "AmazonSettlementTransaction" st
           WHERE st."orderId" = o."amazonOrderId"
+            AND st."amazonAccountId" = o."amazonAccountId"
             AND st."amountType" = 'Principal'
             AND st."transactionType" = 'Order'
         )`;
@@ -179,6 +189,7 @@ paymentsAuxRouter.get("/payments/unreconciled", async (req: Request, res: Respon
           COUNT(*)::BIGINT             AS settlement_count
         FROM "AmazonSettlement"
         WHERE marketplace NOT IN ('EU')
+          AND "amazonAccountId" = '${accountId}'
         GROUP BY marketplace
         ORDER BY marketplace
       `),
@@ -213,6 +224,7 @@ paymentsAuxRouter.get("/payments/unreconciled", async (req: Request, res: Respon
 // ─── GET /payments/unreconciled/export ────────────────────────────────────────
 paymentsAuxRouter.get("/payments/unreconciled/export", async (req: Request, res: Response) => {
   try {
+    const accountId = getCurrentAccountId();
     const { marketplace, from, to } = req.query as Record<string, string>;
     const mpFilter   = marketplace && marketplace !== "all" ? marketplace.replace(/'/g,"''") : null;
     const mpWhere    = mpFilter ? `AND o.marketplace = '${mpFilter}'` : "";
@@ -226,7 +238,8 @@ paymentsAuxRouter.get("/payments/unreconciled/export", async (req: Request, res:
             '${customFrom ?? "2020-01-01"}'::date AS cov_from,
             '${customTo   ?? new Date().toISOString().split("T")[0]}'::date AS cov_to
           FROM "AmazonOrder" o
-          ${mpWhere ? `WHERE ${mpWhere.replace("AND ", "")}` : ""}
+          WHERE o."amazonAccountId" = '${accountId}'
+          ${mpWhere}
         )`
       : `WITH mp_coverage AS (
           SELECT marketplace,
@@ -234,6 +247,7 @@ paymentsAuxRouter.get("/payments/unreconciled/export", async (req: Request, res:
             MAX("endDate")::date   AS cov_to
           FROM "AmazonSettlement"
           WHERE marketplace NOT IN ('EU')
+            AND "amazonAccountId" = '${accountId}'
           GROUP BY marketplace
         )`;
 
@@ -253,10 +267,12 @@ paymentsAuxRouter.get("/payments/unreconciled/export", async (req: Request, res:
       WHERE o."purchaseDate"::date >= mc.cov_from
         AND o."purchaseDate"::date <= mc.cov_to
         AND o."orderStatus" NOT IN ('Cancelled', 'Pending')
+        AND o."amazonAccountId" = '${accountId}'
         ${mpWhere}
         AND NOT EXISTS (
           SELECT 1 FROM "AmazonSettlementTransaction" st
           WHERE st."orderId" = o."amazonOrderId"
+            AND st."amazonAccountId" = o."amazonAccountId"
             AND st."amountType" = 'Principal'
             AND st."transactionType" = 'Order'
         )
@@ -291,9 +307,12 @@ paymentsAuxRouter.get("/payments/unreconciled/export", async (req: Request, res:
 // Download settlements list as CSV
 paymentsAuxRouter.get("/payments/export", async (req: Request, res: Response) => {
   try {
+    const accountId = getCurrentAccountId();
     const { marketplace } = req.query as Record<string, string>;
     const mpFilter = marketplace && marketplace !== "all" ? marketplace : null;
-    const mpWhere = mpFilter ? `WHERE s.marketplace = '${mpFilter.replace(/'/g,"''")}' ` : "";
+    const mpWhere = mpFilter
+      ? `WHERE s."amazonAccountId" = '${accountId}' AND s.marketplace = '${mpFilter.replace(/'/g,"''")}' `
+      : `WHERE s."amazonAccountId" = '${accountId}' `;
 
     type SRow = {
       settlementId: string; marketplace: string; start_date: string; end_date: string;
@@ -318,7 +337,7 @@ paymentsAuxRouter.get("/payments/export", async (req: Request, res: Response) =>
         COALESCE(SUM(t.amount),0)::FLOAT8 AS computed_net,
         COUNT(DISTINCT CASE WHEN t."transactionType"='Order' AND t."orderId" IS NOT NULL THEN t."orderId" END)::INTEGER AS order_count
       FROM "AmazonSettlement" s
-      LEFT JOIN "AmazonSettlementTransaction" t ON t."settlementId" = s."settlementId"
+      LEFT JOIN "AmazonSettlementTransaction" t ON t."amazonAccountId" = s."amazonAccountId" AND t."settlementId" = s."settlementId"
       ${mpWhere}
       GROUP BY s."settlementId", s.marketplace, s."startDate", s."endDate", s."depositDate", s."totalAmount", s.currency
       ORDER BY s."endDate" DESC
@@ -347,6 +366,7 @@ paymentsAuxRouter.get("/payments/export", async (req: Request, res: Response) =>
 // Real fee breakdown from settlement transactions
 paymentsAuxRouter.get("/fees", async (req: Request, res: Response) => {
   try {
+    const accountId = getCurrentAccountId();
     const { filter = "last30", from, to, marketplace } = req.query as Record<string, string>;
     const range = getDateRange(filter, from, to);
     const dateFrom = range.gte ?? new Date(Date.now() - 30 * 86400000);
@@ -362,6 +382,7 @@ paymentsAuxRouter.get("/fees", async (req: Request, res: Response) => {
       FROM "AmazonSettlementTransaction"
       WHERE "postedDate" >= '${dateFrom.toISOString()}'::timestamp
         AND "postedDate" <= '${dateTo.toISOString()}'::timestamp
+        AND "amazonAccountId" = '${accountId}'
         ${mpW}
       GROUP BY "amountType"
       ORDER BY total DESC
@@ -385,6 +406,7 @@ paymentsAuxRouter.get("/fees", async (req: Request, res: Response) => {
 // ─── GET /reimbursements ───────────────────────────────────────────────────────
 paymentsAuxRouter.get("/reimbursements", async (req: Request, res: Response) => {
   try {
+    const accountId = getCurrentAccountId();
     const { marketplace } = req.query as Record<string, string>;
     const mpW = marketplace && marketplace !== "all" ? ` AND marketplace = '${marketplace.replace(/'/g,"")}'` : "";
 
@@ -395,7 +417,8 @@ paymentsAuxRouter.get("/reimbursements", async (req: Request, res: Response) => 
         COALESCE(SUM(amount), 0)::FLOAT8 AS amount,
         COUNT(*)::INTEGER AS count
       FROM "AmazonSettlementTransaction"
-      WHERE "amountType" ILIKE '%reimburse%' OR "amountType" ILIKE '%compensat%'
+      WHERE ("amountType" ILIKE '%reimburse%' OR "amountType" ILIKE '%compensat%')
+        AND "amazonAccountId" = '${accountId}'
         ${mpW}
       GROUP BY DATE_TRUNC('month', "postedDate")
       ORDER BY 1 DESC

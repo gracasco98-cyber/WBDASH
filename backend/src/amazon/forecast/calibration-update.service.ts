@@ -15,6 +15,7 @@
  */
 
 import { prisma } from "../../db";
+import { getCurrentAccountId } from "../../context/account-context";
 import {
   findCalibrationByMarketplace,
   updateCalibrationRecord,
@@ -91,6 +92,7 @@ interface SettlementRatios extends SettlementForSeasonality {
 // ─── Compute per-settlement ratios from DB ────────────────────────────────────
 
 async function computeSettlementRatios(marketplace: string, lastN = 30): Promise<SettlementRatios[]> {
+  const amazonAccountId = getCurrentAccountId();
   const rows = await prisma.$queryRawUnsafe<{
     settlement_id: string;
     settlement_date: string;
@@ -121,8 +123,8 @@ async function computeSettlementRatios(marketplace: string, lastN = 30): Promise
           AND t."transactionType" IN ('REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST','WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND')
           THEN t.amount ELSE 0 END)::FLOAT8 AS reimb
     FROM "AmazonSettlement" s
-    JOIN "AmazonSettlementTransaction" t ON t."settlementId" = s."settlementId"
-    WHERE s.marketplace = '${marketplace}'
+    JOIN "AmazonSettlementTransaction" t ON t."settlementId" = s."settlementId" AND t."amazonAccountId" = s."amazonAccountId"
+    WHERE s.marketplace = '${marketplace}' AND s."amazonAccountId" = '${amazonAccountId}'
     GROUP BY s."settlementId", s."endDate", s."totalAmount"
     ORDER BY s."endDate" ASC
     LIMIT ${lastN}

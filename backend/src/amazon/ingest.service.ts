@@ -3,6 +3,7 @@
 
 import { prisma } from "../db";
 import { SALES_CHANNEL_TO_MARKETPLACE } from "./config";
+import { getCurrentAccountId } from "../context/account-context";
 
 export interface IngestStats {
   recordsIn: number;
@@ -101,10 +102,12 @@ interface ItemRecord {
 async function bulkUpsertOrders(orders: OrderRecord[]): Promise<{ imported: number; updated: number }> {
   if (orders.length === 0) return { imported: 0, updated: 0 };
 
-  // Find which orders already exist (for stats)
+  const amazonAccountId = getCurrentAccountId();
+
+  // Find which orders already exist (for stats), scoped to the current account
   const ids = orders.map(o => `'${o.amazonOrderId.replace(/'/g, "''")}'`).join(",");
   const existing = await prisma.$queryRawUnsafe<{ amazonorderid: string }[]>(
-    `SELECT "amazonOrderId" AS amazonorderid FROM "AmazonOrder" WHERE "amazonOrderId" IN (${ids})`
+    `SELECT "amazonOrderId" AS amazonorderid FROM "AmazonOrder" WHERE "amazonOrderId" IN (${ids}) AND "amazonAccountId" = ${esc(amazonAccountId)}`
   );
   const existingSet = new Set(existing.map(r => r.amazonorderid));
 
@@ -112,6 +115,7 @@ async function bulkUpsertOrders(orders: OrderRecord[]): Promise<{ imported: numb
   // (Prisma's @default(cuid()) is app-level; DB has no default, so we must supply it)
   const values = orders.map(o => `(
     gen_random_uuid()::text,
+    ${esc(amazonAccountId)},
     ${esc(o.amazonOrderId)},
     ${escDate(o.purchaseDate)},
     ${escDate(o.lastUpdatedDate)},
@@ -129,11 +133,11 @@ async function bulkUpsertOrders(orders: OrderRecord[]): Promise<{ imported: numb
 
   await prisma.$executeRawUnsafe(`
     INSERT INTO "AmazonOrder" (
-      "id", "amazonOrderId", "purchaseDate", "lastUpdatedDate", "orderStatus",
+      "id", "amazonAccountId", "amazonOrderId", "purchaseDate", "lastUpdatedDate", "orderStatus",
       "salesChannel", "marketplace", "fulfillmentChannel", "shipCountry",
       "currency", "itemTotal", "isBusinessOrder", "syncedAt", "updatedAt"
     ) VALUES ${values}
-    ON CONFLICT ("amazonOrderId") DO UPDATE SET
+    ON CONFLICT ("amazonAccountId", "amazonOrderId") DO UPDATE SET
       "lastUpdatedDate"    = EXCLUDED."lastUpdatedDate",
       "orderStatus"        = EXCLUDED."orderStatus",
       "itemTotal"          = EXCLUDED."itemTotal",
@@ -149,8 +153,11 @@ async function bulkUpsertOrders(orders: OrderRecord[]): Promise<{ imported: numb
 async function bulkUpsertItems(items: ItemRecord[]): Promise<void> {
   if (items.length === 0) return;
 
+  const amazonAccountId = getCurrentAccountId();
+
   const values = items.map(i => `(
     gen_random_uuid()::text,
+    ${esc(amazonAccountId)},
     ${esc(i.orderItemId)},
     ${esc(i.amazonOrderId)},
     ${esc(i.asin)},
@@ -168,11 +175,11 @@ async function bulkUpsertItems(items: ItemRecord[]): Promise<void> {
 
   await prisma.$executeRawUnsafe(`
     INSERT INTO "AmazonOrderItem" (
-      "id", "orderItemId", "amazonOrderId", "asin", "sku", "productTitle",
+      "id", "amazonAccountId", "orderItemId", "amazonOrderId", "asin", "sku", "productTitle",
       "quantityOrdered", "quantityShipped", "itemPrice", "itemTax",
       "promotionDiscount", "currency", "marketplace", "purchaseDate"
     ) VALUES ${values}
-    ON CONFLICT ("orderItemId") DO UPDATE SET
+    ON CONFLICT ("amazonAccountId", "orderItemId") DO UPDATE SET
       "quantityShipped"    = EXCLUDED."quantityShipped",
       "itemPrice"          = EXCLUDED."itemPrice",
       "itemTax"            = EXCLUDED."itemTax",

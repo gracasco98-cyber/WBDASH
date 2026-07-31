@@ -4,6 +4,7 @@ import { prisma } from "../../db";
 import { upsertAmazonInventory } from "../../repositories/amazon/inventory.repo";
 import { findCogsImages } from "../../repositories/amazon/cogs.repo";
 import { MARKETPLACE_IDS } from "../config";
+import { getCurrentAccountId } from "../../context/account-context";
 
 export const inventoryRouter = Router();
 
@@ -11,7 +12,8 @@ export const inventoryRouter = Router();
 inventoryRouter.get("/inventory", async (req: Request, res: Response) => {
   try {
     const { marketplace } = req.query as Record<string, string>;
-    const where: any = {};
+    const accountId = getCurrentAccountId();
+    const where: any = { amazonAccountId: accountId };
     if (marketplace && marketplace !== "all") where.marketplace = marketplace;
 
     const inv = await (prisma as any).amazonInventory.findMany({
@@ -28,9 +30,10 @@ inventoryRouter.get("/inventory", async (req: Request, res: Response) => {
         i.asin,
         COALESCE(SUM(i."quantityOrdered"), 0)::FLOAT8 / 30.0 AS "dailyVelocity"
       FROM "AmazonOrderItem" i
-      JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+      JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
       WHERE i."purchaseDate" >= '${since30.toISOString()}'::timestamp
         AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+        AND i."amazonAccountId" = '${accountId}'
         ${mpW}
       GROUP BY i.asin
     `);
@@ -51,8 +54,9 @@ inventoryRouter.get("/inventory", async (req: Request, res: Response) => {
     // Also include products with COGS but no inventory record yet
     const cogsProducts = await (prisma as any).amazonProductCogs.findMany({
       where: marketplace && marketplace !== "all" ? {
+        amazonAccountId: accountId,
         OR: [{ marketplace }, { marketplace: "ALL" }]
-      } : {},
+      } : { amazonAccountId: accountId },
     });
     const invAsins = new Set(enriched.map((i: any) => i.asin));
     const noInvProducts = cogsProducts
@@ -118,6 +122,7 @@ inventoryRouter.get("/fba-inventory", async (req: Request, res: Response) => {
     }));
 
     // ── Combined EU sales velocity per ASIN (30d, ALL channels) ────────────────
+    const accountId = getCurrentAccountId();
     const since30 = new Date(Date.now() - 30 * 86400000);
     type VelRow = { asin: string; market: string; dailyVelocity: number };
     const velRows = await prisma.$queryRawUnsafe<VelRow[]>(`
@@ -132,10 +137,11 @@ inventoryRouter.get("/fba-inventory", async (req: Request, res: Response) => {
         END AS market,
         COALESCE(SUM(i."quantityOrdered"), 0)::FLOAT8 / 30.0 AS "dailyVelocity"
       FROM "AmazonOrderItem" i
-      JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+      JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
       WHERE i."purchaseDate" >= '${since30.toISOString()}'::timestamp
         AND o."orderStatus" NOT IN ('Canceled','Cancelled')
         AND o."salesChannel" != 'Non-Amazon'
+        AND i."amazonAccountId" = '${accountId}'
       GROUP BY i.asin, market
     `);
 

@@ -2,11 +2,12 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 import type { PrismaClient } from "@prisma/client";
+import { getCurrentAccountId } from "../../context/account-context";
 
 // ─── Write operations ─────────────────────────────────────────────────────────
 
 /**
- * Upsert an inventory record by asin+sku+marketplace.
+ * Upsert an inventory record by asin+sku+marketplace, scoped to the current account.
  */
 export async function upsertAmazonInventory(
   prisma: PrismaClient,
@@ -26,15 +27,18 @@ export async function upsertAmazonInventory(
     leadTimeDays: number;
   }
 ): Promise<any> {
+  const amazonAccountId = getCurrentAccountId();
   return (prisma as any).amazonInventory.upsert({
     where: {
-      asin_sku_marketplace: {
+      amazonAccountId_asin_sku_marketplace: {
+        amazonAccountId,
         asin: params.asin,
         sku:  params.sku ?? "",
         marketplace: params.marketplace,
       },
     },
     create: {
+      amazonAccountId,
       asin:          params.asin,
       sku:           params.sku ?? null,
       marketplace:   params.marketplace,

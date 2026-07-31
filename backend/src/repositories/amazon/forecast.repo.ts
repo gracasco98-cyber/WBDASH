@@ -2,27 +2,32 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 // The EWMA math, bias detection, and structural break logic STAY in forecast-calibration.service.ts.
+// Every operation is scoped to the current Amazon account (context/account-context.ts).
 import type { PrismaClient } from "@prisma/client";
+import { getCurrentAccountId } from "../../context/account-context";
 
 // ─── AmazonForecastCalibration ────────────────────────────────────────────────
 
 /**
- * Find the calibration record for a marketplace.
- * NOTE: marketplace is UNIQUE — there is exactly one record per marketplace.
+ * Find the calibration record for a marketplace, within the current account.
+ * NOTE: (amazonAccountId, marketplace) is UNIQUE — at most one record per pair.
  */
 export async function findCalibrationByMarketplace(
   prisma: PrismaClient,
   marketplace: string
 ): Promise<any | null> {
-  return prisma.amazonForecastCalibration.findUnique({ where: { marketplace } });
+  return prisma.amazonForecastCalibration.findUnique({
+    where: { amazonAccountId_marketplace: { amazonAccountId: getCurrentAccountId(), marketplace } },
+  });
 }
 
 /**
- * Find all calibration records, ordered by marketplace ASC.
+ * Find all calibration records for the current account, ordered by marketplace ASC.
  * Used by the calibration status endpoint.
  */
 export async function findAllCalibrations(prisma: PrismaClient): Promise<any[]> {
   return prisma.amazonForecastCalibration.findMany({
+    where: { amazonAccountId: getCurrentAccountId() },
     orderBy: { marketplace: "asc" },
   });
 }
@@ -42,7 +47,7 @@ export async function updateCalibrationComponents(
   }
 ): Promise<{ count: number }> {
   return prisma.amazonForecastCalibration.updateMany({
-    where: { marketplace },
+    where: { marketplace, amazonAccountId: getCurrentAccountId() },
     data,
   });
 }
@@ -57,13 +62,13 @@ export async function updateCalibrationRecord(
   data: Record<string, unknown>
 ): Promise<void> {
   await prisma.amazonForecastCalibration.update({
-    where: { marketplace },
+    where: { amazonAccountId_marketplace: { amazonAccountId: getCurrentAccountId(), marketplace } },
     data: data as any,
   });
 }
 
 /**
- * Upsert a calibration record by marketplace (unique key).
+ * Upsert a calibration record by marketplace (unique key), scoped to the current account.
  * Used by bootstrapCalibration and bootstrapFromExcel.
  */
 export async function upsertCalibration(
@@ -72,9 +77,10 @@ export async function upsertCalibration(
   create: Record<string, unknown>,
   update: Record<string, unknown>
 ): Promise<void> {
+  const amazonAccountId = getCurrentAccountId();
   await prisma.amazonForecastCalibration.upsert({
-    where:  { marketplace },
-    create: create as any,
+    where:  { amazonAccountId_marketplace: { amazonAccountId, marketplace } },
+    create: { ...create, amazonAccountId, marketplace } as any,
     update: update as any,
   });
 }
@@ -91,6 +97,7 @@ export async function findRecentForecastSnapshot(
 ): Promise<{ id: string } | null> {
   return prisma.amazonForecastSnapshot.findFirst({
     where: {
+      amazonAccountId: getCurrentAccountId(),
       marketplace:  params.marketplace,
       periodEnd:    params.periodEnd,
       reconciledAt: null,
@@ -101,7 +108,7 @@ export async function findRecentForecastSnapshot(
 }
 
 /**
- * Create a new forecast snapshot.
+ * Create a new forecast snapshot for the current account.
  */
 export async function createForecastSnapshot(
   prisma: PrismaClient,
@@ -117,11 +124,14 @@ export async function createForecastSnapshot(
     totalOrders:    number;
   }
 ): Promise<void> {
-  await prisma.amazonForecastSnapshot.create({ data });
+  await prisma.amazonForecastSnapshot.create({
+    data: { ...data, amazonAccountId: getCurrentAccountId() },
+  });
 }
 
 /**
  * Update an existing forecast snapshot by ID.
+ * `id` is the snapshot's own primary key (globally unique), so no account filter is needed here.
  */
 export async function updateForecastSnapshot(
   prisma: PrismaClient,
@@ -135,7 +145,7 @@ export async function updateForecastSnapshot(
 }
 
 /**
- * Find all unreconciled snapshots whose periodEnd <= today.
+ * Find all unreconciled snapshots for the current account whose periodEnd <= today.
  * Used by reconcileForecastSnapshots().
  */
 export async function findPendingReconciliationSnapshots(
@@ -143,6 +153,10 @@ export async function findPendingReconciliationSnapshots(
   today: string
 ): Promise<any[]> {
   return prisma.amazonForecastSnapshot.findMany({
-    where: { reconciledAt: null, periodEnd: { lte: today } },
+    where: {
+      amazonAccountId: getCurrentAccountId(),
+      reconciledAt: null,
+      periodEnd: { lte: today },
+    },
   });
 }

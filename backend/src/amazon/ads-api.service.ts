@@ -7,6 +7,9 @@
 
 import { ADS_ENDPOINT } from "./config";
 import { getAdsApiToken, invalidateTokens } from "./token.service";
+import { getAccountCredentials } from "../repositories/amazon/accounts.repo";
+import { prisma } from "../db";
+import { getCurrentAccountId } from "../context/account-context";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -75,30 +78,21 @@ export interface AdsProfileInfo {
   currency: string;
 }
 
-const PROFILE_ENV_MAP: Record<string, string> = {
-  IT: "AMAZON_ADVERTISING_PROFILE_IT",
-  DE: "AMAZON_ADVERTISING_PROFILE_DE",
-  FR: "AMAZON_ADVERTISING_PROFILE_FR",
-  ES: "AMAZON_ADVERTISING_PROFILE_ES",
-  UK: "AMAZON_ADVERTISING_PROFILE_UK",
-  NL: "AMAZON_ADVERTISING_PROFILE_NL",
-  BE: "AMAZON_ADVERTISING_PROFILE_BE",
-  SE: "AMAZON_ADVERTISING_PROFILE_SE",
-  PL: "AMAZON_ADVERTISING_PROFILE_PL",
-};
-
-export function getProfileId(marketplace: string): string {
-  const envVar = PROFILE_ENV_MAP[marketplace];
-  const pid = envVar ? process.env[envVar] : "";
-  if (!pid) throw new Error(`[Ads API] No profile ID configured for ${marketplace} (set ${envVar})`);
+/** Resolve the Ads API profile ID for a marketplace from the current account's credentials
+ *  (AmazonAccount.adsProfileIds, a JSON map of marketplace code → profile ID) instead of
+ *  from global env vars — see repositories/amazon/accounts.repo.ts. */
+export async function getProfileId(marketplace: string): Promise<string> {
+  const creds = await getAccountCredentials(prisma, getCurrentAccountId());
+  const pid = creds.adsProfileIds[marketplace];
+  if (!pid) throw new Error(`[Ads API] No profile ID configured for ${marketplace} on this Amazon account`);
   return pid;
 }
 
-/** All configured EU marketplaces and their profile IDs */
-export function getConfiguredProfiles(): AdsProfileInfo[] {
+/** All configured marketplaces and their profile IDs for the current account */
+export async function getConfiguredProfiles(): Promise<AdsProfileInfo[]> {
+  const creds = await getAccountCredentials(prisma, getCurrentAccountId());
   const profiles: AdsProfileInfo[] = [];
-  for (const [mp, envVar] of Object.entries(PROFILE_ENV_MAP)) {
-    const pid = process.env[envVar];
+  for (const [mp, pid] of Object.entries(creds.adsProfileIds)) {
     if (pid) profiles.push({ profileId: pid, marketplace: mp, countryCode: mp, currency: mp === "UK" ? "GBP" : mp === "SE" ? "SEK" : mp === "PL" ? "PLN" : "EUR" });
   }
   return profiles;
@@ -283,13 +277,18 @@ export async function fetchSPCampaignReport(
   }));
 }
 
-/** Check if Advertising API is configured */
-export function isAdsConfigured(): boolean {
-  return !!(
-    process.env.AMAZON_ADVERTISING_CLIENT_ID &&
-    process.env.AMAZON_ADVERTISING_REFRESH_TOKEN &&
-    process.env.AMAZON_ADVERTISING_PROFILE_IT
-  );
+/** Check if Advertising API is configured for the current account */
+export async function isAdsConfigured(): Promise<boolean> {
+  try {
+    const creds = await getAccountCredentials(prisma, getCurrentAccountId());
+    return !!(
+      (creds.adsClientId || creds.lwaClientId) &&
+      (creds.adsRefreshToken || creds.spApiRefreshToken) &&
+      Object.keys(creds.adsProfileIds).length > 0
+    );
+  } catch {
+    return false;
+  }
 }
 
 // ── SP Ad Groups (v3 listing) ─────────────────────────────────────────────────

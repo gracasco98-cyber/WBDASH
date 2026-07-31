@@ -14,8 +14,34 @@ import { countAllAdSnapshots } from "../repositories/amazon/ads.repo";
 import { countAllAmazonOrders, countAllAmazonOrderItems } from "../repositories/amazon/orders.repo";
 import { countAllAmazonProductSnapshots } from "../repositories/amazon/product-snapshots.repo";
 import { countSyncJobsByStatus } from "../repositories/amazon/sync-jobs.repo";
+import { runWithAccount } from "../context/account-context";
+import { findActiveAccounts } from "../repositories/amazon/accounts.repo";
 
 export { syncAdsBackfill };
+
+// ─── Multi-account iteration ───────────────────────────────────────────────────
+// setInterval/setTimeout callbacks run outside any HTTP request, so they don't
+// inherit an AsyncLocalStorage account scope the way route handlers do (see
+// context/account-context.ts) — they must resolve the account list themselves
+// and run each account's sync sequentially (safer for SP-API rate limits than
+// running all accounts concurrently).
+async function forEachActiveAccount(
+  label: string,
+  fn: () => Promise<void>
+): Promise<void> {
+  const accounts = await findActiveAccounts(prisma);
+  if (accounts.length === 0) {
+    console.warn(`[Amazon Sync] ${label}: no active AmazonAccount configured — skipping`);
+    return;
+  }
+  for (const account of accounts) {
+    try {
+      await runWithAccount(account.id, fn);
+    } catch (err) {
+      console.error(`[Amazon Sync] ${label} failed for account ${account.id} (${account.name}):`, err);
+    }
+  }
+}
 
 /** Create a sync job record */
 async function createJob(
@@ -51,7 +77,16 @@ function splitDateRange(from: Date, to: Date, chunkDays: number): Array<[Date, D
   return chunks;
 }
 
-/** Cache of marketplace IDs confirmed working per region */
+/**
+ * Cache of marketplace IDs confirmed working per region.
+ * KNOWN GAP (multi-account migration): this cache is shared across ALL
+ * accounts, not keyed by amazonAccountId. If two accounts have genuinely
+ * different valid marketplaces, one account's probe result can be reused for
+ * another — worst case is a few unnecessary probe requests or a transient
+ * skip, not wrong data (fetchReportRobust still falls back to per-marketplace
+ * probing on InvalidInput). Acceptable for now; revisit if multi-account use
+ * shows real accounts with divergent marketplace sets. See docs/tech-debt.md.
+ */
 let validMarketplaceIds:   string[] | null = null;
 let validMarketplaceIdsNA: string[] | null = null;
 
@@ -251,26 +286,28 @@ export async function runAmazonIncrementalSync(): Promise<void> {
   await runAmazonSnapshotJob();
 }
 
-/** Start 5-minute incremental polling */
+/** Start 5-minute incremental polling (all active Amazon accounts, sequentially) */
 export function startAmazonPolling(): void {
   const INTERVAL_MS = 5 * 60 * 1_000; // 5 minuti
   console.log("[Amazon Sync] Starting 5-min incremental polling...");
+  const run = () => forEachActiveAccount("incremental sync", runAmazonIncrementalSync);
   // First run after 15s to let DB settle
-  setTimeout(() => {
-    runAmazonIncrementalSync().catch(console.error);
-  }, 15_000);
-  setInterval(() => {
-    runAmazonIncrementalSync().catch(console.error);
-  }, INTERVAL_MS);
+  setTimeout(() => { run().catch(console.error); }, 15_000);
+  setInterval(() => { run().catch(console.error); }, INTERVAL_MS);
 }
 
-/** Start daily snapshot cron (runs at 01:00 and also every hour for today's data) */
+/**
+ * Start daily snapshot cron (runs at 01:00 and also every hour for today's data).
+ * Every scheduled job here runs once per active Amazon account, sequentially
+ * (see forEachActiveAccount) — none of these callbacks have an inherited
+ * request-scoped account context to fall back on.
+ */
 export function startAmazonSnapshotPolling(): void {
   console.log("[Amazon Sync] Starting snapshot polling...");
 
   // Hourly refresh of today + yesterday snapshots
   setInterval(() => {
-    runAmazonSnapshotJob().catch(console.error);
+    forEachActiveAccount("hourly snapshot refresh", runAmazonSnapshotJob).catch(console.error);
   }, 3_600_000);
 
   // Daily full rebuild at 01:00 local time
@@ -282,7 +319,7 @@ export function startAmazonSnapshotPolling(): void {
     const msUntil = next1am.getTime() - now.getTime();
     setTimeout(() => {
       console.log("[Amazon Sync] Daily snapshot rebuild starting...");
-      computeAllAmazonHistoricalSnapshots(180).catch(console.error);
+      forEachActiveAccount("daily snapshot rebuild", () => computeAllAmazonHistoricalSnapshots(180)).catch(console.error);
       scheduleDailyRebuild(); // re-schedule for next day
     }, msUntil);
     console.log(`[Amazon Sync] Daily rebuild scheduled in ${Math.round(msUntil / 3600000)}h`);
@@ -290,81 +327,82 @@ export function startAmazonSnapshotPolling(): void {
   scheduleDailyRebuild();
 
   // Settlement sync: every 4 hours + reconcile forecast snapshots after each run
-  const runSettlementAndReconcile = async () => {
-    await syncSettlementReports().catch(console.error);
-    reconcileForecastSnapshots().catch(err =>
-      console.warn("[Calibration] reconcile after settlement sync:", err)
-    );
-  };
+  const runSettlementAndReconcile = () =>
+    forEachActiveAccount("settlement sync + reconcile", async () => {
+      await syncSettlementReports().catch(console.error);
+      await reconcileForecastSnapshots().catch(err =>
+        console.warn("[Calibration] reconcile after settlement sync:", err)
+      );
+    });
   setInterval(() => {
     console.log("[Amazon Sync] Running scheduled settlement sync...");
-    runSettlementAndReconcile();
+    runSettlementAndReconcile().catch(console.error);
   }, 4 * 3_600_000);
 
   // First settlement sync after 30s on startup
   setTimeout(() => {
-    runSettlementAndReconcile();
+    runSettlementAndReconcile().catch(console.error);
   }, 30_000);
 
   // Automatic forecast snapshots: every 6h (independent of page loads)
   const runForecastSnapshots = () =>
-    computeAndSaveForecasts().catch(err =>
-      console.warn("[Calibration] Auto forecast snapshot error:", err)
+    forEachActiveAccount("forecast snapshot", () =>
+      computeAndSaveForecasts().catch(err =>
+        console.warn("[Calibration] Auto forecast snapshot error:", err)
+      )
     );
-  setInterval(runForecastSnapshots, 6 * 3_600_000);
+  setInterval(() => { runForecastSnapshots().catch(console.error); }, 6 * 3_600_000);
   // First run after 5 minutes (let settlement sync complete first)
-  setTimeout(runForecastSnapshots, 5 * 60_000);
+  setTimeout(() => { runForecastSnapshots().catch(console.error); }, 5 * 60_000);
 
   // ── Ads campaign live-list cache: refresh every 2 minutes ──────────────────
   setInterval(() => {
-    refreshLiveCampaignCache().catch(console.error);
+    forEachActiveAccount("ads campaign cache refresh", refreshLiveCampaignCache).catch(console.error);
   }, 2 * 60_000);
 
   // Pre-warm the campaign cache 10s after startup (non-blocking)
   setTimeout(() => {
-    refreshLiveCampaignCache().catch(console.error);
+    forEachActiveAccount("ads campaign cache pre-warm", refreshLiveCampaignCache).catch(console.error);
   }, 10_000);
 
   // ── Ads daily metrics sync: every 24h ────────────────────────────────────
   setInterval(() => {
     console.log("[Amazon Sync] Running scheduled ads daily sync...");
-    syncAdsDaily().catch(console.error);
+    forEachActiveAccount("ads daily sync", syncAdsDaily).catch(console.error);
   }, 24 * 3_600_000);
 
   // Ads daily sync: run 90s after startup
   setTimeout(() => {
-    syncAdsDaily().catch(console.error);
+    forEachActiveAccount("ads daily sync", syncAdsDaily).catch(console.error);
   }, 90_000);
 
   // ── Keyword metrics sync: every 3 hours ──────────────────────────────────
   setInterval(() => {
     console.log("[Amazon Sync] Running 3h keyword metrics sync...");
-    syncKeywordMetrics(30).catch(console.error);
+    forEachActiveAccount("keyword metrics sync", () => syncKeywordMetrics(30)).catch(console.error);
   }, 3 * 3_600_000);
 
   // First keyword sync: 3 min after startup (let other syncs settle first)
   setTimeout(() => {
-    syncKeywordMetrics(30).catch(console.error);
+    forEachActiveAccount("keyword metrics sync", () => syncKeywordMetrics(30)).catch(console.error);
   }, 3 * 60_000);
 
   // ── Auto-backfill ads if AmazonAdSnapshot is empty ────────────────────────
-  setTimeout(async () => {
-    try {
+  setTimeout(() => {
+    forEachActiveAccount("ads auto-backfill check", async () => {
       const count = await countAllAdSnapshots(prisma);
       if (count === 0) {
         console.log("[Amazon Sync] No AmazonAdSnapshot data — auto-triggering 30-day ads backfill...");
-        syncAdsBackfill(30).catch(console.error);
+        await syncAdsBackfill(30).catch(console.error);
       }
-    } catch (e) {
-      console.warn("[Amazon Sync] Auto-backfill check failed:", e);
-    }
+    }).catch((e) => console.warn("[Amazon Sync] Auto-backfill check failed:", e));
   }, 5_000);
 
   // ── Ads catch-up: on startup, sync any missing days from last snapshot to yesterday ──
-  setTimeout(async () => {
-    try {
-      await syncAdsCatchUp();
-    } catch(e) { console.warn("[Ads CatchUp] startup failed:", e); }
+  setTimeout(() => {
+    forEachActiveAccount("ads catch-up", syncAdsCatchUp).catch((e) =>
+      console.warn("[Ads CatchUp] startup failed:", e)
+    );
   }, 60_000); // 60s after startup
 
   // ── Search term auto-sync: every night at 02:00 ──────────────────────────
@@ -376,10 +414,10 @@ export function startAmazonSnapshotPolling(): void {
     const msUntil = next2am.getTime() - now.getTime();
     setTimeout(async () => {
       console.log("[Search Terms] Nightly auto-sync starting...");
-      try {
+      await forEachActiveAccount("nightly search term sync", async () => {
         const { runSearchTermSync } = await import("./routes");
         await runSearchTermSync(30);
-      } catch(e) { console.warn("[Search Terms] Nightly sync failed:", e); }
+      }).catch((e) => console.warn("[Search Terms] Nightly sync failed:", e));
       scheduleNightlySearchTermSync(); // re-schedule
     }, msUntil);
     console.log(`[Search Terms] Nightly sync scheduled in ${Math.round(msUntil / 3600000)}h`);

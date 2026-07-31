@@ -21,6 +21,7 @@ import analyticsRouter from "./routes/analytics.routes";
 import authRouter from "./auth/auth.routes";
 import adminRouter from "./auth/admin.routes";
 import { requireAuth } from "./middleware/auth.middleware";
+import { amazonAccountMiddleware } from "./middleware/amazon-account.middleware";
 import { addSSEClient, sseClientCount } from "./sse/sse";
 
 const app = express();
@@ -133,11 +134,14 @@ app.get("/api/sse/events", requireAuth, (req, res) => {
 });
 
 // ─── Protected routes (requireAuth applied globally below) ───────────────────
-app.use("/api/stats",      requireAuth, statsRouter);
-app.use("/api/products",   requireAuth, productsRouter);
-app.use("/api/amazon",     requireAuth, amazonRouter);
-app.use("/api/chat",       requireAuth, chatRouter);
-app.use("/api/analytics",  requireAuth, analyticsRouter);
+// amazonAccountMiddleware runs on every router that may touch Amazon-scoped
+// tables (some, like stats/products, mix Shopify + Amazon in one response) —
+// see middleware/amazon-account.middleware.ts for resolution rules.
+app.use("/api/stats",      requireAuth, amazonAccountMiddleware, statsRouter);
+app.use("/api/products",   requireAuth, amazonAccountMiddleware, productsRouter);
+app.use("/api/amazon",     requireAuth, amazonAccountMiddleware, amazonRouter);
+app.use("/api/chat",       requireAuth, amazonAccountMiddleware, chatRouter);
+app.use("/api/analytics",  requireAuth, amazonAccountMiddleware, analyticsRouter);
 app.use("/api/auth/admin", requireAuth, adminRouter);
 
 // ─── 404 / error handler ─────────────────────────────────────────────────────

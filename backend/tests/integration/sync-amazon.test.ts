@@ -43,8 +43,9 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { setupServer } from 'msw/node';
-import { setupTestDb, truncateAll, type TestDb } from '../helpers/db';
+import { setupTestDb, truncateAll, createTestAmazonAccount, type TestDb } from '../helpers/db';
 import { amazonMocks, http, HttpResponse } from '../helpers/msw-server';
+import { runWithAccount } from '../../src/context/account-context';
 
 // ─── MSW server (no default handlers — anything unmatched = error) ─────────────
 const server = setupServer();
@@ -160,6 +161,11 @@ function makeSettlementRows(opts: {
 // ─── Test suite ───────────────────────────────────────────────────────────────
 describe('Amazon Sync — integration (PR 9)', () => {
   let db: TestDb;
+  // Multi-account migration (2026-07-31): every Amazon-domain function reads
+  // getCurrentAccountId() from AsyncLocalStorage — created fresh in beforeEach
+  // (after truncateAll, which CASCADEs AmazonAccount away) and threaded through
+  // runWithAccount() around every call into ingest/settlement/forecast/token/ads code.
+  let accountId: string;
 
   // Lazily-imported module exports (set after env is ready)
   let parseTsv:                 typeof import('../../src/amazon/ingest.service').parseTsv;
@@ -218,8 +224,24 @@ describe('Amazon Sync — integration (PR 9)', () => {
 
   beforeEach(async () => {
     await truncateAll(db.prisma);
+    // Recreate the test account AFTER truncateAll (CASCADE wipes it too).
+    // Credential fields populated so the token-service tests (15/16) can
+    // decrypt real values via getAccountCredentials() — the mocked LWA
+    // endpoint below doesn't assert on the posted client_id/secret, so any
+    // non-null values satisfy token.service.ts's presence checks.
+    accountId = await createTestAmazonAccount(db.prisma, {
+      lwaClientId: 'mock_lwa_id',
+      lwaClientSecret: 'mock_lwa_secret',
+      spApiRefreshToken: 'mock_refresh_eu',
+      adsClientId: 'mock_ads_id',
+      adsClientSecret: 'mock_ads_secret',
+      adsRefreshToken: 'mock_ads_refresh',
+      adsProfileIds: { IT: '12345', DE: '23456' },
+    });
     // Invalidate token cache between tests so each test is independent
-    invalidateTokens();
+    await runWithAccount(accountId, async () => {
+      invalidateTokens();
+    });
   });
 
   afterEach(() => {
@@ -232,134 +254,146 @@ describe('Amazon Sync — integration (PR 9)', () => {
 
   // ── 1. Happy path: 5 orders → 5 AmazonOrder + items ──────────────────────
   it('happy path: 5 TSV rows → 5 AmazonOrder rows and AmazonOrderItem children', async () => {
-    const rows = Array.from({ length: 5 }, (_, i) =>
-      makeOrderRow({
-        'amazon-order-id': `111-ORDER${i + 1}-${i + 1}`,
-        'item-price': String((i + 1) * 10),
-        asin: `ASIN000${i + 1}`,
-      }),
-    );
+    await runWithAccount(accountId, async () => {
+      const rows = Array.from({ length: 5 }, (_, i) =>
+        makeOrderRow({
+          'amazon-order-id': `111-ORDER${i + 1}-${i + 1}`,
+          'item-price': String((i + 1) * 10),
+          asin: `ASIN000${i + 1}`,
+        }),
+      );
 
-    const stats = await ingestOrderRows(rows);
+      const stats = await ingestOrderRows(rows);
 
-    expect(stats.recordsIn).toBe(5);
-    expect(stats.recordsImported).toBe(5);
-    expect(stats.recordsUpdated).toBe(0);
-    expect(stats.recordsRejected).toBe(0);
+      expect(stats.recordsIn).toBe(5);
+      expect(stats.recordsImported).toBe(5);
+      expect(stats.recordsUpdated).toBe(0);
+      expect(stats.recordsRejected).toBe(0);
 
-    const orderCount = await db.prisma.amazonOrder.count();
-    expect(orderCount).toBe(5);
+      const orderCount = await db.prisma.amazonOrder.count();
+      expect(orderCount).toBe(5);
 
-    const itemCount = await db.prisma.amazonOrderItem.count();
-    expect(itemCount).toBe(5); // 1 item per order
+      const itemCount = await db.prisma.amazonOrderItem.count();
+      expect(itemCount).toBe(5); // 1 item per order
+    });
   });
 
   // ── 2. Dedup: same amazonOrderId → no duplicates ──────────────────────────
   it('dedup: re-ingesting same orders does not create duplicates', async () => {
-    // LOCK-IN: ingest.service uses INSERT ON CONFLICT("amazonOrderId") DO UPDATE
-    // so a second call with the same IDs produces updates, not new rows.
-    const rows = [
-      makeOrderRow({ 'amazon-order-id': '111-DUP0001-0001' }),
-      makeOrderRow({ 'amazon-order-id': '111-DUP0002-0002' }),
-    ];
+    await runWithAccount(accountId, async () => {
+      // LOCK-IN: ingest.service uses INSERT ON CONFLICT("amazonOrderId") DO UPDATE
+      // so a second call with the same IDs produces updates, not new rows.
+      const rows = [
+        makeOrderRow({ 'amazon-order-id': '111-DUP0001-0001' }),
+        makeOrderRow({ 'amazon-order-id': '111-DUP0002-0002' }),
+      ];
 
-    // First ingest
-    const s1 = await ingestOrderRows(rows);
-    expect(s1.recordsImported).toBe(2);
+      // First ingest
+      const s1 = await ingestOrderRows(rows);
+      expect(s1.recordsImported).toBe(2);
 
-    // Second ingest — same rows
-    const s2 = await ingestOrderRows(rows);
-    // LOCK-IN: second run counts as "updated" (already existed)
-    expect(s2.recordsImported).toBe(0);
-    expect(s2.recordsUpdated).toBe(2);
+      // Second ingest — same rows
+      const s2 = await ingestOrderRows(rows);
+      // LOCK-IN: second run counts as "updated" (already existed)
+      expect(s2.recordsImported).toBe(0);
+      expect(s2.recordsUpdated).toBe(2);
 
-    const count = await db.prisma.amazonOrder.count();
-    expect(count).toBe(2); // no duplicates
+      const count = await db.prisma.amazonOrder.count();
+      expect(count).toBe(2); // no duplicates
+    });
   });
 
   // ── 3. Update: later lastUpdatedDate → row updated ────────────────────────
   it('update: row with later lastUpdatedDate gets updated orderStatus', async () => {
-    const orderId = '111-UPD0001-0001';
-    const v1 = makeOrderRow({
-      'amazon-order-id':   orderId,
-      'last-updated-date': '2026-04-01T10:00:00+00:00',
-      'order-status':      'Pending',
+    await runWithAccount(accountId, async () => {
+      const orderId = '111-UPD0001-0001';
+      const v1 = makeOrderRow({
+        'amazon-order-id':   orderId,
+        'last-updated-date': '2026-04-01T10:00:00+00:00',
+        'order-status':      'Pending',
+      });
+
+      await ingestOrderRows([v1]);
+      const before = await db.prisma.amazonOrder.findFirstOrThrow({ where: { amazonOrderId: orderId } });
+      expect(before.orderStatus).toBe('Pending');
+
+      const v2 = makeOrderRow({
+        'amazon-order-id':   orderId,
+        'last-updated-date': '2026-04-02T10:00:00+00:00',
+        'order-status':      'Shipped',
+      });
+
+      await ingestOrderRows([v2]);
+      const after = await db.prisma.amazonOrder.findFirstOrThrow({ where: { amazonOrderId: orderId } });
+      // LOCK-IN: ON CONFLICT DO UPDATE sets orderStatus to EXCLUDED.orderStatus
+      expect(after.orderStatus).toBe('Shipped');
+
+      // Still only 1 row
+      expect(await db.prisma.amazonOrder.count()).toBe(1);
     });
-
-    await ingestOrderRows([v1]);
-    const before = await db.prisma.amazonOrder.findFirstOrThrow({ where: { amazonOrderId: orderId } });
-    expect(before.orderStatus).toBe('Pending');
-
-    const v2 = makeOrderRow({
-      'amazon-order-id':   orderId,
-      'last-updated-date': '2026-04-02T10:00:00+00:00',
-      'order-status':      'Shipped',
-    });
-
-    await ingestOrderRows([v2]);
-    const after = await db.prisma.amazonOrder.findFirstOrThrow({ where: { amazonOrderId: orderId } });
-    // LOCK-IN: ON CONFLICT DO UPDATE sets orderStatus to EXCLUDED.orderStatus
-    expect(after.orderStatus).toBe('Shipped');
-
-    // Still only 1 row
-    expect(await db.prisma.amazonOrder.count()).toBe(1);
   });
 
   // ── 4. Non-Amazon salesChannel → excluded ─────────────────────────────────
   it('Non-Amazon salesChannel rows are rejected and not inserted', async () => {
-    // LOCK-IN: ingest.service skips rows where salesChannel === 'Non-Amazon'
-    // or doesn't start with 'amazon' (case-insensitive).
-    const rows = [
-      makeOrderRow({ 'amazon-order-id': '111-AMZ0001-0001', 'sales-channel': 'Amazon.it' }),
-      makeOrderRow({ 'amazon-order-id': '111-NON0001-0001', 'sales-channel': 'Non-Amazon' }),
-    ];
+    await runWithAccount(accountId, async () => {
+      // LOCK-IN: ingest.service skips rows where salesChannel === 'Non-Amazon'
+      // or doesn't start with 'amazon' (case-insensitive).
+      const rows = [
+        makeOrderRow({ 'amazon-order-id': '111-AMZ0001-0001', 'sales-channel': 'Amazon.it' }),
+        makeOrderRow({ 'amazon-order-id': '111-NON0001-0001', 'sales-channel': 'Non-Amazon' }),
+      ];
 
-    const stats = await ingestOrderRows(rows);
-    expect(stats.recordsRejected).toBeGreaterThanOrEqual(1);
+      const stats = await ingestOrderRows(rows);
+      expect(stats.recordsRejected).toBeGreaterThanOrEqual(1);
 
-    const count = await db.prisma.amazonOrder.count();
-    expect(count).toBe(1); // only the Amazon.it order
+      const count = await db.prisma.amazonOrder.count();
+      expect(count).toBe(1); // only the Amazon.it order
+    });
   });
 
   // ── 5. Per-marketplace: IT/DE/FR/ES codes from salesChannel ──────────────
   it('per-marketplace: correct marketplace code derived from salesChannel', async () => {
-    // LOCK-IN: SALES_CHANNEL_TO_MARKETPLACE maps 'Amazon.it' → 'IT', 'Amazon.de' → 'DE', etc.
-    const rows = [
-      makeOrderRow({ 'amazon-order-id': '111-MKT0001-0001', 'sales-channel': 'Amazon.it' }),
-      makeOrderRow({ 'amazon-order-id': '111-MKT0002-0002', 'sales-channel': 'Amazon.de' }),
-      makeOrderRow({ 'amazon-order-id': '111-MKT0003-0003', 'sales-channel': 'Amazon.fr' }),
-      makeOrderRow({ 'amazon-order-id': '111-MKT0004-0004', 'sales-channel': 'Amazon.es' }),
-    ];
+    await runWithAccount(accountId, async () => {
+      // LOCK-IN: SALES_CHANNEL_TO_MARKETPLACE maps 'Amazon.it' → 'IT', 'Amazon.de' → 'DE', etc.
+      const rows = [
+        makeOrderRow({ 'amazon-order-id': '111-MKT0001-0001', 'sales-channel': 'Amazon.it' }),
+        makeOrderRow({ 'amazon-order-id': '111-MKT0002-0002', 'sales-channel': 'Amazon.de' }),
+        makeOrderRow({ 'amazon-order-id': '111-MKT0003-0003', 'sales-channel': 'Amazon.fr' }),
+        makeOrderRow({ 'amazon-order-id': '111-MKT0004-0004', 'sales-channel': 'Amazon.es' }),
+      ];
 
-    await ingestOrderRows(rows);
+      await ingestOrderRows(rows);
 
-    const orders = await db.prisma.amazonOrder.findMany({ orderBy: { amazonOrderId: 'asc' } });
-    const mps = orders.map(o => o.marketplace);
-    expect(mps).toContain('IT');
-    expect(mps).toContain('DE');
-    expect(mps).toContain('FR');
-    expect(mps).toContain('ES');
+      const orders = await db.prisma.amazonOrder.findMany({ orderBy: { amazonOrderId: 'asc' } });
+      const mps = orders.map(o => o.marketplace);
+      expect(mps).toContain('IT');
+      expect(mps).toContain('DE');
+      expect(mps).toContain('FR');
+      expect(mps).toContain('ES');
+    });
   });
 
   // ── 6. Items: composite orderItemId key = "orderId::asin::sku" ───────────
   it('item composite key is orderId::asin::sku — dedup within order', async () => {
-    // LOCK-IN: orderItemId = `${amazonOrderId}::${asin}::${sku ?? "nosku"}`
-    // Duplicate asin+sku items in same order are deduped (Map) before insert.
-    const rows = [
-      makeOrderRow({ 'amazon-order-id': '111-ITEM001-0001', asin: 'ASIN0001', sku: 'SKU-A', 'item-price': '10.00' }),
-      makeOrderRow({ 'amazon-order-id': '111-ITEM001-0001', asin: 'ASIN0001', sku: 'SKU-A', 'item-price': '10.00' }),
-      makeOrderRow({ 'amazon-order-id': '111-ITEM001-0001', asin: 'ASIN0002', sku: 'SKU-B', 'item-price': '20.00' }),
-    ];
+    await runWithAccount(accountId, async () => {
+      // LOCK-IN: orderItemId = `${amazonOrderId}::${asin}::${sku ?? "nosku"}`
+      // Duplicate asin+sku items in same order are deduped (Map) before insert.
+      const rows = [
+        makeOrderRow({ 'amazon-order-id': '111-ITEM001-0001', asin: 'ASIN0001', sku: 'SKU-A', 'item-price': '10.00' }),
+        makeOrderRow({ 'amazon-order-id': '111-ITEM001-0001', asin: 'ASIN0001', sku: 'SKU-A', 'item-price': '10.00' }),
+        makeOrderRow({ 'amazon-order-id': '111-ITEM001-0001', asin: 'ASIN0002', sku: 'SKU-B', 'item-price': '20.00' }),
+      ];
 
-    await ingestOrderRows(rows);
+      await ingestOrderRows(rows);
 
-    const items = await db.prisma.amazonOrderItem.findMany();
-    // LOCK-IN: 3 rows → grouped under 1 order → deduplicated to 2 distinct items
-    expect(items).toHaveLength(2);
+      const items = await db.prisma.amazonOrderItem.findMany();
+      // LOCK-IN: 3 rows → grouped under 1 order → deduplicated to 2 distinct items
+      expect(items).toHaveLength(2);
 
-    const orderItemIds = items.map(i => i.orderItemId);
-    expect(orderItemIds).toContain('111-ITEM001-0001::ASIN0001::SKU-A');
-    expect(orderItemIds).toContain('111-ITEM001-0001::ASIN0002::SKU-B');
+      const orderItemIds = items.map(i => i.orderItemId);
+      expect(orderItemIds).toContain('111-ITEM001-0001::ASIN0001::SKU-A');
+      expect(orderItemIds).toContain('111-ITEM001-0001::ASIN0002::SKU-B');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -368,55 +402,59 @@ describe('Amazon Sync — integration (PR 9)', () => {
 
   // ── 7. New settlement → AmazonSettlement + transactions ──────────────────
   it('settlement: new settlement report creates AmazonSettlement header + transactions', async () => {
-    const rows = makeSettlementRows({
-      settlementId: 'SETT-IT-001',
-      totalAmount:  '2500.00',
-      marketplace:  'amazon.it',
-      transactions: [
-        { transactionType: 'Order', amountType: 'Principal', amount: '3000.00', orderId: '111-ORD001-0001', asin: 'ASIN0001' },
-        { transactionType: 'Order', amountType: 'Commission', amount: '-450.00', orderId: '111-ORD001-0001', asin: 'ASIN0001' },
-      ],
-    });
+    await runWithAccount(accountId, async () => {
+      const rows = makeSettlementRows({
+        settlementId: 'SETT-IT-001',
+        totalAmount:  '2500.00',
+        marketplace:  'amazon.it',
+        transactions: [
+          { transactionType: 'Order', amountType: 'Principal', amount: '3000.00', orderId: '111-ORD001-0001', asin: 'ASIN0001' },
+          { transactionType: 'Order', amountType: 'Commission', amount: '-450.00', orderId: '111-ORD001-0001', asin: 'ASIN0001' },
+        ],
+      });
 
-    const result = await ingestSettlementRows(rows, 'SETT-IT-001');
-    expect(result.settlementId).toBe('SETT-IT-001');
-    expect(result.totalAmount).toBe(2500);
-    expect(result.upserted).toBeGreaterThanOrEqual(1);
+      const result = await ingestSettlementRows(rows, 'SETT-IT-001');
+      expect(result.settlementId).toBe('SETT-IT-001');
+      expect(result.totalAmount).toBe(2500);
+      expect(result.upserted).toBeGreaterThanOrEqual(1);
 
-    const sett = await (db.prisma as any).amazonSettlement.findUnique({
-      where: { settlementId: 'SETT-IT-001' },
-    });
-    expect(sett).not.toBeNull();
-    expect(sett.totalAmount).toBe(2500);
-    // LOCK-IN: marketplace derived from 'amazon.it' → 'IT'
-    expect(sett.marketplace).toBe('IT');
+      const sett = await (db.prisma as any).amazonSettlement.findUnique({
+        where: { amazonAccountId_settlementId: { amazonAccountId: accountId, settlementId: 'SETT-IT-001' } },
+      });
+      expect(sett).not.toBeNull();
+      expect(sett.totalAmount).toBe(2500);
+      // LOCK-IN: marketplace derived from 'amazon.it' → 'IT'
+      expect(sett.marketplace).toBe('IT');
 
-    const txCount = await db.prisma.amazonSettlementTransaction.count({
-      where: { settlementId: 'SETT-IT-001' },
+      const txCount = await db.prisma.amazonSettlementTransaction.count({
+        where: { settlementId: 'SETT-IT-001' },
+      });
+      expect(txCount).toBeGreaterThanOrEqual(1);
     });
-    expect(txCount).toBeGreaterThanOrEqual(1);
   });
 
   // ── 8. Dedup: re-running same settlement → no duplicate transactions ──────
   it('settlement dedup: re-ingesting same settlement deletes and recreates transactions', async () => {
-    // LOCK-IN: ingestSettlementRows does deleteMany({ where: { settlementId } }) before
-    // re-inserting, so the count is deterministic across re-runs.
-    const rows = makeSettlementRows({
-      settlementId: 'SETT-DEDUP',
-      transactions: [
-        { transactionType: 'Order', amountType: 'Principal', amount: '100.00' },
-      ],
+    await runWithAccount(accountId, async () => {
+      // LOCK-IN: ingestSettlementRows does deleteMany({ where: { settlementId } }) before
+      // re-inserting, so the count is deterministic across re-runs.
+      const rows = makeSettlementRows({
+        settlementId: 'SETT-DEDUP',
+        transactions: [
+          { transactionType: 'Order', amountType: 'Principal', amount: '100.00' },
+        ],
+      });
+
+      await ingestSettlementRows(rows, 'SETT-DEDUP');
+      const count1 = await db.prisma.amazonSettlementTransaction.count({ where: { settlementId: 'SETT-DEDUP' } });
+
+      // Second ingest with same settlement
+      await ingestSettlementRows(rows, 'SETT-DEDUP');
+      const count2 = await db.prisma.amazonSettlementTransaction.count({ where: { settlementId: 'SETT-DEDUP' } });
+
+      // LOCK-IN: count remains the same (not doubled)
+      expect(count2).toBe(count1);
     });
-
-    await ingestSettlementRows(rows, 'SETT-DEDUP');
-    const count1 = await db.prisma.amazonSettlementTransaction.count({ where: { settlementId: 'SETT-DEDUP' } });
-
-    // Second ingest with same settlement
-    await ingestSettlementRows(rows, 'SETT-DEDUP');
-    const count2 = await db.prisma.amazonSettlementTransaction.count({ where: { settlementId: 'SETT-DEDUP' } });
-
-    // LOCK-IN: count remains the same (not doubled)
-    expect(count2).toBe(count1);
   });
 
   // ── 9. Marketplace derived from marketplace-name column ──────────────────
@@ -425,39 +463,46 @@ describe('Amazon Sync — integration (PR 9)', () => {
       ['amazon.de', 'DE'] as const,
       ['amazon.fr', 'FR'] as const,
     ]) {
+      // truncateAll() CASCADEs AmazonAccount away too — recreate it each
+      // iteration so accountId stays valid for the FK on AmazonSettlement.
       await truncateAll(db.prisma);
-      const rows = makeSettlementRows({
-        settlementId: `SETT-MP-${expected}`,
-        marketplace:  mpName,
-        transactions: [
-          { transactionType: 'Order', amountType: 'Principal', amount: '100.00' },
-        ],
+      const iterAccountId = await createTestAmazonAccount(db.prisma);
+      await runWithAccount(iterAccountId, async () => {
+        const rows = makeSettlementRows({
+          settlementId: `SETT-MP-${expected}`,
+          marketplace:  mpName,
+          transactions: [
+            { transactionType: 'Order', amountType: 'Principal', amount: '100.00' },
+          ],
+        });
+        await ingestSettlementRows(rows, `SETT-MP-${expected}`);
+        const sett = await (db.prisma as any).amazonSettlement.findUnique({
+          where: { amazonAccountId_settlementId: { amazonAccountId: iterAccountId, settlementId: `SETT-MP-${expected}` } },
+        });
+        expect(sett?.marketplace).toBe(expected);
       });
-      await ingestSettlementRows(rows, `SETT-MP-${expected}`);
-      const sett = await (db.prisma as any).amazonSettlement.findUnique({
-        where: { settlementId: `SETT-MP-${expected}` },
-      });
-      expect(sett?.marketplace).toBe(expected);
     }
   });
 
   // ── 10. ServiceFee / Cost-of-Advertising rows captured ───────────────────
   it('settlement: Cost-of-Advertising row stored as transaction with correct amountType', async () => {
-    const rows = makeSettlementRows({
-      settlementId: 'SETT-ADS',
-      transactions: [
-        { transactionType: 'ServiceFee', amountType: 'Cost of Advertising', amount: '-200.00' },
-      ],
-    });
+    await runWithAccount(accountId, async () => {
+      const rows = makeSettlementRows({
+        settlementId: 'SETT-ADS',
+        transactions: [
+          { transactionType: 'ServiceFee', amountType: 'Cost of Advertising', amount: '-200.00' },
+        ],
+      });
 
-    await ingestSettlementRows(rows, 'SETT-ADS');
+      await ingestSettlementRows(rows, 'SETT-ADS');
 
-    const tx = await db.prisma.amazonSettlementTransaction.findFirst({
-      where: { settlementId: 'SETT-ADS', amountType: 'Cost of Advertising' },
+      const tx = await db.prisma.amazonSettlementTransaction.findFirst({
+        where: { settlementId: 'SETT-ADS', amountType: 'Cost of Advertising' },
+      });
+      // LOCK-IN: item-related-fee-type column maps to amountType in the stored transaction
+      expect(tx).not.toBeNull();
+      expect(tx!.amount).toBe(-200);
     });
-    // LOCK-IN: item-related-fee-type column maps to amountType in the stored transaction
-    expect(tx).not.toBeNull();
-    expect(tx!.amount).toBe(-200);
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -466,55 +511,61 @@ describe('Amazon Sync — integration (PR 9)', () => {
 
   // ── 11. bootstrapCalibration: AmazonForecastCalibration upserted ──────────
   it('bootstrapCalibration: creates AmazonForecastCalibration row from settlements', async () => {
-    // Seed two settlements for IT so bootstrapCalibration has data
-    const s1rows = makeSettlementRows({
-      settlementId: 'BC-SETT-001',
-      totalAmount:  '1400.00',
-      marketplace:  'amazon.it',
-      transactions: [
-        { transactionType: 'Order', amountType: 'Principal', amount: '2000.00', orderId: 'ORD-BC-1', asin: 'A001' },
-        { transactionType: 'Order', amountType: 'Commission', amount: '-300.00', orderId: 'ORD-BC-1', asin: 'A001' },
-        { transactionType: 'Order', amountType: 'FBAPerUnitFulfillmentFee', amount: '-120.00', orderId: 'ORD-BC-1', asin: 'A001' },
-      ],
+    await runWithAccount(accountId, async () => {
+      // Seed two settlements for IT so bootstrapCalibration has data
+      const s1rows = makeSettlementRows({
+        settlementId: 'BC-SETT-001',
+        totalAmount:  '1400.00',
+        marketplace:  'amazon.it',
+        transactions: [
+          { transactionType: 'Order', amountType: 'Principal', amount: '2000.00', orderId: 'ORD-BC-1', asin: 'A001' },
+          { transactionType: 'Order', amountType: 'Commission', amount: '-300.00', orderId: 'ORD-BC-1', asin: 'A001' },
+          { transactionType: 'Order', amountType: 'FBAPerUnitFulfillmentFee', amount: '-120.00', orderId: 'ORD-BC-1', asin: 'A001' },
+        ],
+      });
+      const s2rows = makeSettlementRows({
+        settlementId: 'BC-SETT-002',
+        totalAmount:  '1550.00',
+        marketplace:  'amazon.it',
+        transactions: [
+          { transactionType: 'Order', amountType: 'Principal', amount: '2200.00', orderId: 'ORD-BC-2', asin: 'A001' },
+          { transactionType: 'Order', amountType: 'Commission', amount: '-330.00', orderId: 'ORD-BC-2', asin: 'A001' },
+          { transactionType: 'Order', amountType: 'FBAPerUnitFulfillmentFee', amount: '-130.00', orderId: 'ORD-BC-2', asin: 'A001' },
+        ],
+      });
+
+      await ingestSettlementRows(s1rows, 'BC-SETT-001');
+      await ingestSettlementRows(s2rows, 'BC-SETT-002');
+
+      await bootstrapCalibration(['IT']);
+
+      const calib = await db.prisma.amazonForecastCalibration.findUnique({
+        where: { amazonAccountId_marketplace: { amazonAccountId: accountId, marketplace: 'IT' } },
+      });
+      expect(calib).not.toBeNull();
+      expect(calib!.dataPoints).toBe(2);
+
+      // LOCK-IN: payoutRatio = totalAmount / gross; after EWMA from 2 settlements
+      // Settlement 1: payout = 1400 / 2000 = 0.70
+      // Settlement 2: payout = 1550 / 2200 ≈ 0.7045
+      // alpha(1) = calcAlpha(1) = max(0.08, min(0.40, 0.60/sqrt(1))) = 0.40
+      // EWMA: 0.40 * 0.7045 + (1-0.40) * 0.70 ≈ 0.7018
+      expect(calib!.payoutRatio).toBeGreaterThan(0.60);
+      expect(calib!.payoutRatio).toBeLessThan(0.85);
+
+      // rCommission should reflect fees ratio
+      expect(calib!.rCommission).toBeGreaterThan(0);
+      expect(calib!.bootstrapSource).toBe('db_settlements');
     });
-    const s2rows = makeSettlementRows({
-      settlementId: 'BC-SETT-002',
-      totalAmount:  '1550.00',
-      marketplace:  'amazon.it',
-      transactions: [
-        { transactionType: 'Order', amountType: 'Principal', amount: '2200.00', orderId: 'ORD-BC-2', asin: 'A001' },
-        { transactionType: 'Order', amountType: 'Commission', amount: '-330.00', orderId: 'ORD-BC-2', asin: 'A001' },
-        { transactionType: 'Order', amountType: 'FBAPerUnitFulfillmentFee', amount: '-130.00', orderId: 'ORD-BC-2', asin: 'A001' },
-      ],
-    });
-
-    await ingestSettlementRows(s1rows, 'BC-SETT-001');
-    await ingestSettlementRows(s2rows, 'BC-SETT-002');
-
-    await bootstrapCalibration(['IT']);
-
-    const calib = await db.prisma.amazonForecastCalibration.findUnique({ where: { marketplace: 'IT' } });
-    expect(calib).not.toBeNull();
-    expect(calib!.dataPoints).toBe(2);
-
-    // LOCK-IN: payoutRatio = totalAmount / gross; after EWMA from 2 settlements
-    // Settlement 1: payout = 1400 / 2000 = 0.70
-    // Settlement 2: payout = 1550 / 2200 ≈ 0.7045
-    // alpha(1) = calcAlpha(1) = max(0.08, min(0.40, 0.60/sqrt(1))) = 0.40
-    // EWMA: 0.40 * 0.7045 + (1-0.40) * 0.70 ≈ 0.7018
-    expect(calib!.payoutRatio).toBeGreaterThan(0.60);
-    expect(calib!.payoutRatio).toBeLessThan(0.85);
-
-    // rCommission should reflect fees ratio
-    expect(calib!.rCommission).toBeGreaterThan(0);
-    expect(calib!.bootstrapSource).toBe('db_settlements');
   });
 
   // ── 12. updateCalibrationFromActual: EWMA update on new settlement ────────
   it('updateCalibrationFromActual: payoutRatio updated via EWMA with correct alpha', async () => {
+    await runWithAccount(accountId, async () => {
     // Seed a calibration row
     await db.prisma.amazonForecastCalibration.create({
       data: {
+        amazonAccountId: accountId,
         marketplace:     'IT',
         payoutRatio:     0.70,
         rCommission:     0.15,
@@ -545,7 +596,9 @@ describe('Amazon Sync — integration (PR 9)', () => {
       actualRatio:  1600 / 2200,
     });
 
-    const updated = await db.prisma.amazonForecastCalibration.findUnique({ where: { marketplace: 'IT' } });
+    const updated = await db.prisma.amazonForecastCalibration.findUnique({
+      where: { amazonAccountId_marketplace: { amazonAccountId: accountId, marketplace: 'IT' } },
+    });
     expect(updated).not.toBeNull();
 
     // LOCK-IN: dp = 6, alpha = calcAlpha(6) = max(0.08, min(0.40, 0.60/sqrt(6))) ≈ 0.245
@@ -554,77 +607,88 @@ describe('Amazon Sync — integration (PR 9)', () => {
     const expectedRatio = alpha * (1600 / 2200) + (1 - alpha) * 0.70;
     expect(updated!.payoutRatio).toBeCloseTo(expectedRatio, 4);
     expect(updated!.dataPoints).toBe(6);
+    });
   });
 
   // ── 13. Bias detection: 5 consecutive same-direction errors → hasBias ─────
   it('bias detection: 5+ same-direction errors set hasBias=true and biasCorrection', async () => {
-    // LOCK-IN: detectBias requires BIAS_WINDOW=5 errors all > 0.5 or all < -0.5
-    await db.prisma.amazonForecastCalibration.create({
-      data: {
-        marketplace:     'DE',
-        payoutRatio:     0.68,
-        rCommission:     0.15, rFba: 0.12, rAds: 0.05, rAdsVat: 0.01,
-        rDsf:            0.02, rStorage: 0.01, rInbound: 0.01, rPrep: 0.00,
-        rRefunds:        0.03, rOther: 0.01, rReimb: 0.01,
-        avgStoragePerSett: 50, avgInboundPerSett: 30, avgAdsPerSett: 180,
-        rRefundsSmoothed: 0.03,
-        dataPoints:      10,
-        ewmaAlpha:       0.19,
-        recentRatios:    [],
-        // Already has 4 positive errors — one more will trigger
-        recentErrors:    [2.1, 1.8, 3.0, 2.5] as any,
-      },
-    });
+    await runWithAccount(accountId, async () => {
+      // LOCK-IN: detectBias requires BIAS_WINDOW=5 errors all > 0.5 or all < -0.5
+      await db.prisma.amazonForecastCalibration.create({
+        data: {
+          amazonAccountId: accountId,
+          marketplace:     'DE',
+          payoutRatio:     0.68,
+          rCommission:     0.15, rFba: 0.12, rAds: 0.05, rAdsVat: 0.01,
+          rDsf:            0.02, rStorage: 0.01, rInbound: 0.01, rPrep: 0.00,
+          rRefunds:        0.03, rOther: 0.01, rReimb: 0.01,
+          avgStoragePerSett: 50, avgInboundPerSett: 30, avgAdsPerSett: 180,
+          rRefundsSmoothed: 0.03,
+          dataPoints:      10,
+          ewmaAlpha:       0.19,
+          recentRatios:    [],
+          // Already has 4 positive errors — one more will trigger
+          recentErrors:    [2.1, 1.8, 3.0, 2.5] as any,
+        },
+      });
 
-    // 5th consecutive positive error > 0.5
-    await updateCalibrationFromActual('DE', 2000, 1400, 2.2, {
-      actualGross: 2000,
-      actualRatio: 1400 / 2000,
-    });
+      // 5th consecutive positive error > 0.5
+      await updateCalibrationFromActual('DE', 2000, 1400, 2.2, {
+        actualGross: 2000,
+        actualRatio: 1400 / 2000,
+      });
 
-    const updated = await db.prisma.amazonForecastCalibration.findUnique({ where: { marketplace: 'DE' } });
-    // LOCK-IN: 5 errors all > 0.5 → hasBias=true, biasCorrection = avg of last 5
-    expect(updated!.hasBias).toBe(true);
-    expect(updated!.biasCorrection).not.toBe(0);
+      const updated = await db.prisma.amazonForecastCalibration.findUnique({
+        where: { amazonAccountId_marketplace: { amazonAccountId: accountId, marketplace: 'DE' } },
+      });
+      // LOCK-IN: 5 errors all > 0.5 → hasBias=true, biasCorrection = avg of last 5
+      expect(updated!.hasBias).toBe(true);
+      expect(updated!.biasCorrection).not.toBe(0);
+    });
   });
 
   // ── 14. Structural break: large ratio jump sets structuralBreakAt ──────────
   it('structural break: >20% ratio divergence sets structuralBreakAt and postBreakAlpha', async () => {
-    // LOCK-IN: STRUCTURAL_BREAK_THRESHOLD = 0.20
-    // If actualRatio diverges from payoutRatio by more than 20%, structuralBreakAt is set
-    await db.prisma.amazonForecastCalibration.create({
-      data: {
-        marketplace:      'FR',
-        payoutRatio:      0.70,   // baseline
-        rCommission:      0.15, rFba: 0.12, rAds: 0.05, rAdsVat: 0.01,
-        rDsf:             0.02, rStorage: 0.01, rInbound: 0.01, rPrep: 0.00,
-        rRefunds:         0.03, rOther: 0.01, rReimb: 0.01,
-        avgStoragePerSett: 50, avgInboundPerSett: 30, avgAdsPerSett: 160,
-        rRefundsSmoothed: 0.03,
-        dataPoints:       8,
-        ewmaAlpha:        0.21,
-        recentRatios:     [],
-        recentErrors:     [] as any,
-        structuralBreakAt: null,
-        postBreakAlpha:    null,
-      },
-    });
+    await runWithAccount(accountId, async () => {
+      // LOCK-IN: STRUCTURAL_BREAK_THRESHOLD = 0.20
+      // If actualRatio diverges from payoutRatio by more than 20%, structuralBreakAt is set
+      await db.prisma.amazonForecastCalibration.create({
+        data: {
+          amazonAccountId:  accountId,
+          marketplace:      'FR',
+          payoutRatio:      0.70,   // baseline
+          rCommission:      0.15, rFba: 0.12, rAds: 0.05, rAdsVat: 0.01,
+          rDsf:             0.02, rStorage: 0.01, rInbound: 0.01, rPrep: 0.00,
+          rRefunds:         0.03, rOther: 0.01, rReimb: 0.01,
+          avgStoragePerSett: 50, avgInboundPerSett: 30, avgAdsPerSett: 160,
+          rRefundsSmoothed: 0.03,
+          dataPoints:       8,
+          ewmaAlpha:        0.21,
+          recentRatios:     [],
+          recentErrors:     [] as any,
+          structuralBreakAt: null,
+          postBreakAlpha:    null,
+        },
+      });
 
-    // actualRatio = 1750 / 2000 = 0.875 → diverges from 0.70 by 25% > 20%
-    await updateCalibrationFromActual('FR', 2000, 1750, 5.0, {
-      actualGross: 2000,
-      actualRatio: 1750 / 2000,
-    });
+      // actualRatio = 1750 / 2000 = 0.875 → diverges from 0.70 by 25% > 20%
+      await updateCalibrationFromActual('FR', 2000, 1750, 5.0, {
+        actualGross: 2000,
+        actualRatio: 1750 / 2000,
+      });
 
-    const updated = await db.prisma.amazonForecastCalibration.findUnique({ where: { marketplace: 'FR' } });
-    // LOCK-IN: structural break detected → structuralBreakAt is set to a Date
-    expect(updated!.structuralBreakAt).not.toBeNull();
-    // LOCK-IN: postBreakAlpha was boosted then decayed; it may be null if decayed below calcAlpha
-    // Just verify the payoutRatio moved towards the new value more aggressively
-    const baseAlpha = Math.max(0.08, Math.min(0.40, 0.60 / Math.sqrt(9)));
-    const boostedAlpha = Math.min(0.50, baseAlpha * 2);
-    const expectedRatio = boostedAlpha * (1750 / 2000) + (1 - boostedAlpha) * 0.70;
-    expect(updated!.payoutRatio).toBeCloseTo(expectedRatio, 3);
+      const updated = await db.prisma.amazonForecastCalibration.findUnique({
+        where: { amazonAccountId_marketplace: { amazonAccountId: accountId, marketplace: 'FR' } },
+      });
+      // LOCK-IN: structural break detected → structuralBreakAt is set to a Date
+      expect(updated!.structuralBreakAt).not.toBeNull();
+      // LOCK-IN: postBreakAlpha was boosted then decayed; it may be null if decayed below calcAlpha
+      // Just verify the payoutRatio moved towards the new value more aggressively
+      const baseAlpha = Math.max(0.08, Math.min(0.40, 0.60 / Math.sqrt(9)));
+      const boostedAlpha = Math.min(0.50, baseAlpha * 2);
+      const expectedRatio = boostedAlpha * (1750 / 2000) + (1 - boostedAlpha) * 0.70;
+      expect(updated!.payoutRatio).toBeCloseTo(expectedRatio, 3);
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -633,50 +697,54 @@ describe('Amazon Sync — integration (PR 9)', () => {
 
   // ── 15. getSpApiToken: fetches and caches LWA token ───────────────────────
   it('getSpApiToken: fetches token from LWA endpoint and caches it', async () => {
-    let callCount = 0;
-    server.use(
-      http.post(/api\.amazon\.com\/auth\/o2\/token/, async () => {
-        callCount++;
-        return HttpResponse.json({ access_token: 'test_token_abc', expires_in: 3600 });
-      }),
-    );
+    await runWithAccount(accountId, async () => {
+      let callCount = 0;
+      server.use(
+        http.post(/api\.amazon\.com\/auth\/o2\/token/, async () => {
+          callCount++;
+          return HttpResponse.json({ access_token: 'test_token_abc', expires_in: 3600 });
+        }),
+      );
 
-    invalidateTokens(); // ensure fresh start
-    const token1 = await getSpApiToken();
-    expect(token1).toBe('test_token_abc');
-    expect(callCount).toBe(1);
+      invalidateTokens(); // ensure fresh start
+      const token1 = await getSpApiToken();
+      expect(token1).toBe('test_token_abc');
+      expect(callCount).toBe(1);
 
-    // Second call should hit cache, NOT the endpoint
-    const token2 = await getSpApiToken();
-    expect(token2).toBe('test_token_abc');
-    // LOCK-IN: token is cached after first fetch — no second HTTP call
-    expect(callCount).toBe(1);
+      // Second call should hit cache, NOT the endpoint
+      const token2 = await getSpApiToken();
+      expect(token2).toBe('test_token_abc');
+      // LOCK-IN: token is cached after first fetch — no second HTTP call
+      expect(callCount).toBe(1);
+    });
   });
 
   // ── 16. invalidateTokens + re-fetch ──────────────────────────────────────
   it('invalidateTokens: next getSpApiToken call re-fetches from LWA endpoint', async () => {
-    let callCount = 0;
-    server.use(
-      http.post(/api\.amazon\.com\/auth\/o2\/token/, async () => {
-        callCount++;
-        return HttpResponse.json({
-          access_token: `token-call-${callCount}`,
-          expires_in: 3600,
-        });
-      }),
-    );
+    await runWithAccount(accountId, async () => {
+      let callCount = 0;
+      server.use(
+        http.post(/api\.amazon\.com\/auth\/o2\/token/, async () => {
+          callCount++;
+          return HttpResponse.json({
+            access_token: `token-call-${callCount}`,
+            expires_in: 3600,
+          });
+        }),
+      );
 
-    invalidateTokens();
-    const t1 = await getSpApiToken();
-    expect(t1).toBe('token-call-1');
-    expect(callCount).toBe(1);
+      invalidateTokens();
+      const t1 = await getSpApiToken();
+      expect(t1).toBe('token-call-1');
+      expect(callCount).toBe(1);
 
-    // Invalidate and re-fetch
-    invalidateTokens();
-    const t2 = await getSpApiToken();
-    expect(t2).toBe('token-call-2');
-    // LOCK-IN: invalidateTokens sets cache to null → next call must re-fetch
-    expect(callCount).toBe(2);
+      // Invalidate and re-fetch
+      invalidateTokens();
+      const t2 = await getSpApiToken();
+      expect(t2).toBe('token-call-2');
+      // LOCK-IN: invalidateTokens sets cache to null → next call must re-fetch
+      expect(callCount).toBe(2);
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -685,54 +753,58 @@ describe('Amazon Sync — integration (PR 9)', () => {
 
   // ── 17. saveSnapshots: AmazonAdSnapshot rows created ─────────────────────
   it('ads snapshots: saveSnapshots creates AmazonAdSnapshot with acos/roas', async () => {
-    const rows = [
-      { campaignId: 'CAMP-001', campaignName: 'Campaign One', date: '2026-04-10', impressions: 1000, clicks: 50, spend: 30, sales: 150, orders: 5 },
-      { campaignId: 'CAMP-002', campaignName: 'Campaign Two', date: '2026-04-10', impressions:  500, clicks: 20, spend: 10, sales:   0, orders: 0 },
-    ];
+    await runWithAccount(accountId, async () => {
+      const rows = [
+        { campaignId: 'CAMP-001', campaignName: 'Campaign One', date: '2026-04-10', impressions: 1000, clicks: 50, spend: 30, sales: 150, orders: 5 },
+        { campaignId: 'CAMP-002', campaignName: 'Campaign Two', date: '2026-04-10', impressions:  500, clicks: 20, spend: 10, sales:   0, orders: 0 },
+      ];
 
-    const saved = await saveSnapshots('IT', '2026-04-10', rows);
-    expect(saved).toBe(2);
+      const saved = await saveSnapshots('IT', '2026-04-10', rows);
+      expect(saved).toBe(2);
 
-    const snaps = await (db.prisma as any).amazonAdSnapshot.findMany({
-      where: { marketplace: 'IT' },
-      orderBy: { campaignId: 'asc' },
+      const snaps = await (db.prisma as any).amazonAdSnapshot.findMany({
+        where: { marketplace: 'IT' },
+        orderBy: { campaignId: 'asc' },
+      });
+      expect(snaps).toHaveLength(2);
+
+      const camp1 = snaps.find((s: any) => s.campaignId === 'CAMP-001');
+      expect(camp1).not.toBeNull();
+      // LOCK-IN: acos = spend / sales; roas = sales / spend
+      expect(camp1.acos).toBeCloseTo(30 / 150, 5);
+      expect(camp1.roas).toBeCloseTo(150 / 30, 5);
+
+      const camp2 = snaps.find((s: any) => s.campaignId === 'CAMP-002');
+      // LOCK-IN: when sales=0, acos=null (guard: `row.sales > 0 ? ... : null`)
+      expect(camp2.acos).toBeNull();
+      // LOCK-IN: roas = sales/spend when spend>0; so spend=10, sales=0 → roas = 0 (not null)
+      expect(camp2.roas).toBe(0);
     });
-    expect(snaps).toHaveLength(2);
-
-    const camp1 = snaps.find((s: any) => s.campaignId === 'CAMP-001');
-    expect(camp1).not.toBeNull();
-    // LOCK-IN: acos = spend / sales; roas = sales / spend
-    expect(camp1.acos).toBeCloseTo(30 / 150, 5);
-    expect(camp1.roas).toBeCloseTo(150 / 30, 5);
-
-    const camp2 = snaps.find((s: any) => s.campaignId === 'CAMP-002');
-    // LOCK-IN: when sales=0, acos=null (guard: `row.sales > 0 ? ... : null`)
-    expect(camp2.acos).toBeNull();
-    // LOCK-IN: roas = sales/spend when spend>0; so spend=10, sales=0 → roas = 0 (not null)
-    expect(camp2.roas).toBe(0);
   });
 
   // ── 18. saveSnapshots dedup: second call updates existing rows ────────────
   it('ads snapshots dedup: second saveSnapshots call updates existing snapshot', async () => {
-    const rows = [
-      { campaignId: 'CAMP-DUP', campaignName: 'Dup Campaign', date: '2026-04-10', impressions: 100, clicks: 10, spend: 5, sales: 25, orders: 1 },
-    ];
+    await runWithAccount(accountId, async () => {
+      const rows = [
+        { campaignId: 'CAMP-DUP', campaignName: 'Dup Campaign', date: '2026-04-10', impressions: 100, clicks: 10, spend: 5, sales: 25, orders: 1 },
+      ];
 
-    await saveSnapshots('IT', '2026-04-10', rows);
+      await saveSnapshots('IT', '2026-04-10', rows);
 
-    // Update: higher spend
-    const updated = [
-      { campaignId: 'CAMP-DUP', campaignName: 'Dup Campaign Updated', date: '2026-04-10', impressions: 200, clicks: 20, spend: 10, sales: 50, orders: 2 },
-    ];
-    await saveSnapshots('IT', '2026-04-10', updated);
+      // Update: higher spend
+      const updated = [
+        { campaignId: 'CAMP-DUP', campaignName: 'Dup Campaign Updated', date: '2026-04-10', impressions: 200, clicks: 20, spend: 10, sales: 50, orders: 2 },
+      ];
+      await saveSnapshots('IT', '2026-04-10', updated);
 
-    const count = await (db.prisma as any).amazonAdSnapshot.count({ where: { marketplace: 'IT', campaignId: 'CAMP-DUP' } });
-    // LOCK-IN: uses findFirst + update (not create) for existing rows → no duplicates
-    expect(count).toBe(1);
+      const count = await (db.prisma as any).amazonAdSnapshot.count({ where: { marketplace: 'IT', campaignId: 'CAMP-DUP' } });
+      // LOCK-IN: uses findFirst + update (not create) for existing rows → no duplicates
+      expect(count).toBe(1);
 
-    const snap = await (db.prisma as any).amazonAdSnapshot.findFirst({ where: { marketplace: 'IT', campaignId: 'CAMP-DUP' } });
-    expect(snap.spend).toBe(10);
-    expect(snap.campaignName).toBe('Dup Campaign Updated');
+      const snap = await (db.prisma as any).amazonAdSnapshot.findFirst({ where: { marketplace: 'IT', campaignId: 'CAMP-DUP' } });
+      expect(snap.spend).toBe(10);
+      expect(snap.campaignName).toBe('Dup Campaign Updated');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

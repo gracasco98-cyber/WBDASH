@@ -15,6 +15,7 @@
 
 import * as fs from "fs";
 import { prisma } from "../../db";
+import { getCurrentAccountId } from "../../context/account-context";
 import {
   findCalibrationByMarketplace,
   findRecentForecastSnapshot,
@@ -75,6 +76,8 @@ export async function reconcileForecastSnapshots(): Promise<void> {
   // (calibration-update imports forecast-snapshot, so forecast-snapshot imports calibration-update lazily)
   const { updateCalibrationFromActual } = await import("./calibration-update.service");
 
+  const amazonAccountId = getCurrentAccountId();
+
   for (const snap of snapshots) {
     const periodEndMs = new Date(snap.periodEnd + "T12:00:00").getTime();
 
@@ -105,7 +108,7 @@ export async function reconcileForecastSnapshots(): Promise<void> {
         (ABS(SUM(CASE WHEN t."transactionType"='Refund' THEN t.amount ELSE 0 END)) /
           NULLIF(SUM(CASE WHEN t."amountType"='Principal' AND t."transactionType"='Order' THEN t.amount ELSE 0 END),0))::FLOAT8 AS r_refunds
       FROM "AmazonSettlementTransaction" t
-      WHERE t."settlementId" = '${settled.settlementId}'
+      WHERE t."settlementId" = '${settled.settlementId}' AND t."amazonAccountId" = '${amazonAccountId}'
     `);
 
     const tx = txStats[0];
@@ -154,6 +157,7 @@ export async function computeAndSaveForecasts(
   marketplaces = MARKETPLACES_ALL
 ): Promise<void> {
   const today = new Date();
+  const amazonAccountId = getCurrentAccountId();
 
   // Lazy import to avoid circular dependency
   const { getCalibration } = await import("./calibration-update.service");
@@ -171,6 +175,7 @@ export async function computeAndSaveForecasts(
       (MAX("depositDate") + INTERVAL '14 days')::date::text AS next_deposit_est
     FROM "AmazonSettlement"
     WHERE marketplace = ANY(ARRAY[${marketplaces.map(m => `'${m}'`).join(",")}])
+      AND "amazonAccountId" = '${amazonAccountId}'
     GROUP BY marketplace
   `);
 
@@ -188,6 +193,7 @@ export async function computeAndSaveForecasts(
       SELECT marketplace, MAX("startDate") AS last_start, MAX("endDate") AS last_end
       FROM "AmazonSettlement"
       WHERE marketplace = ANY(ARRAY[${mpList.map(m => `'${m}'`).join(",")}])
+        AND "amazonAccountId" = '${amazonAccountId}'
       GROUP BY marketplace
     ),
     current_p AS (
@@ -196,8 +202,10 @@ export async function computeAndSaveForecasts(
       FROM "AmazonOrder" o JOIN last_sett ls ON ls.marketplace = o.marketplace
       WHERE o."orderStatus" NOT IN ('Cancelled','Pending')
         AND o."purchaseDate" > ls.last_end
+        AND o."amazonAccountId" = '${amazonAccountId}'
         AND NOT EXISTS (SELECT 1 FROM "AmazonSettlementTransaction" st
-          WHERE st."orderId" = o."amazonOrderId" AND st."amountType"='Principal' AND st."transactionType"='Order')
+          WHERE st."orderId" = o."amazonOrderId" AND st."amountType"='Principal' AND st."transactionType"='Order'
+            AND st."amazonAccountId" = '${amazonAccountId}')
       GROUP BY o.marketplace
     ),
     straggler_p AS (
@@ -206,8 +214,10 @@ export async function computeAndSaveForecasts(
       FROM "AmazonOrder" o JOIN last_sett ls ON ls.marketplace = o.marketplace
       WHERE o."orderStatus" NOT IN ('Cancelled','Pending')
         AND o."purchaseDate" >= ls.last_start AND o."purchaseDate" <= ls.last_end
+        AND o."amazonAccountId" = '${amazonAccountId}'
         AND NOT EXISTS (SELECT 1 FROM "AmazonSettlementTransaction" st
-          WHERE st."orderId" = o."amazonOrderId" AND st."amountType"='Principal' AND st."transactionType"='Order')
+          WHERE st."orderId" = o."amazonOrderId" AND st."amountType"='Principal' AND st."transactionType"='Order'
+            AND st."amazonAccountId" = '${amazonAccountId}')
       GROUP BY o.marketplace
     )
     SELECT
