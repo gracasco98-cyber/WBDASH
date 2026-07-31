@@ -71,7 +71,7 @@ export async function getSalesSummary(args: {
           COALESCE(SUM(i."quantityOrdered"),0)::INTEGER AS "units",
           COUNT(DISTINCT i.asin)::INTEGER             AS "uniqueProducts"
         FROM "AmazonOrderItem" i
-        JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+        JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
         WHERE i."purchaseDate" BETWEEN '${from.toISOString()}' AND '${to.toISOString()}'
           AND o."orderStatus" NOT IN ('Canceled','Cancelled')
           AND o."amazonAccountId" = '${accountId}'
@@ -188,7 +188,7 @@ export async function getChannelComparison(args: {
              ROUND(COALESCE(SUM(i."itemPrice"),      0)::NUMERIC,2) AS "grossRevenue",
              COALESCE(SUM(i."quantityOrdered"),       0)::INTEGER AS "units"
       FROM "AmazonOrderItem" i
-      JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+      JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
       WHERE i."purchaseDate" BETWEEN ${from} AND ${to}
         AND o."orderStatus" NOT IN ('Canceled','Cancelled')
         AND o."amazonAccountId" = ${accountId}
@@ -199,7 +199,7 @@ export async function getChannelComparison(args: {
              COUNT(DISTINCT o."amazonOrderId")::INTEGER           AS "orders",
              ROUND(COALESCE(SUM(i."itemPrice"),0)::NUMERIC,2)     AS "revenue"
       FROM "AmazonOrderItem" i
-      JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+      JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
       WHERE i."purchaseDate" BETWEEN ${from} AND ${to}
         AND o."orderStatus" NOT IN ('Canceled','Cancelled')
         AND o."amazonAccountId" = ${accountId}
@@ -247,7 +247,7 @@ export async function getPeriodComparison(args: {
         SELECT COUNT(DISTINCT o."amazonOrderId")::INTEGER AS "orders",
                ROUND(COALESCE(SUM(i."itemPrice"),0)::NUMERIC,2) AS "revenue"
         FROM "AmazonOrderItem" i
-        JOIN "AmazonOrder" o ON o."amazonOrderId"=i."amazonOrderId"
+        JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
         WHERE i."purchaseDate" BETWEEN ${from} AND ${to}
           AND o."orderStatus" NOT IN ('Canceled','Cancelled')
           AND o."amazonAccountId" = ${accountId}
@@ -328,7 +328,7 @@ export async function getAmazonInventorySummary(): Promise<any> {
            SUM(i."quantityOrdered")::INTEGER AS "unitsSold30d",
            ROUND((SUM(i."quantityOrdered")::FLOAT / 30)::NUMERIC, 2) AS "dailyVelocity"
     FROM "AmazonOrderItem" i
-    JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+    JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
     WHERE i."purchaseDate" >= ${since}
       AND o."orderStatus" NOT IN ('Canceled','Cancelled')
       AND o."amazonAccountId" = ${accountId}
@@ -341,7 +341,7 @@ export async function getAmazonInventorySummary(): Promise<any> {
     SELECT COUNT(DISTINCT i.asin)::INTEGER AS "activeSkus",
            SUM(i."quantityOrdered")::INTEGER AS "totalUnits30d"
     FROM "AmazonOrderItem" i
-    JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+    JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
     WHERE i."purchaseDate" >= ${since}
       AND o."orderStatus" NOT IN ('Canceled','Cancelled')
       AND o."amazonAccountId" = ${accountId}

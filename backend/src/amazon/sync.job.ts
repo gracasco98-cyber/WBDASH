@@ -14,8 +14,9 @@ import { countAllAdSnapshots } from "../repositories/amazon/ads.repo";
 import { countAllAmazonOrders, countAllAmazonOrderItems } from "../repositories/amazon/orders.repo";
 import { countAllAmazonProductSnapshots } from "../repositories/amazon/product-snapshots.repo";
 import { countSyncJobsByStatus } from "../repositories/amazon/sync-jobs.repo";
-import { runWithAccount } from "../context/account-context";
+import { runWithAccount, getCurrentAccountId } from "../context/account-context";
 import { findActiveAccounts } from "../repositories/amazon/accounts.repo";
+import { hasNACredentials } from "./token.service";
 
 export { syncAdsBackfill };
 
@@ -78,51 +79,12 @@ function splitDateRange(from: Date, to: Date, chunkDays: number): Array<[Date, D
 }
 
 /**
- * Cache of marketplace IDs confirmed working per region.
- * KNOWN GAP (multi-account migration): this cache is shared across ALL
- * accounts, not keyed by amazonAccountId. If two accounts have genuinely
- * different valid marketplaces, one account's probe result can be reused for
- * another — worst case is a few unnecessary probe requests or a transient
- * skip, not wrong data (fetchReportRobust still falls back to per-marketplace
- * probing on InvalidInput). Acceptable for now; revisit if multi-account use
- * shows real accounts with divergent marketplace sets. See docs/tech-debt.md.
+ * Cache of marketplace IDs confirmed working per (account, region) —
+ * keyed by `${amazonAccountId}:${region}` so two accounts never share a
+ * probe result (fixed during the multi-account migration; previously a
+ * single shared cache, see docs/tech-debt.md F.3).
  */
-let validMarketplaceIds:   string[] | null = null;
-let validMarketplaceIdsNA: string[] | null = null;
-
-/** Try each marketplace ID individually, return only the ones that don't 404/InvalidInput */
-async function getValidMarketplaceIds(dateFrom: Date, dateTo: Date, region: "EU" | "NA" = "EU"): Promise<string[]> {
-  const cache = region === "NA" ? validMarketplaceIdsNA : validMarketplaceIds;
-  if (cache !== null) return cache;
-
-  const allIds = region === "NA" ? ALL_NA_MARKETPLACE_IDS : ALL_EU_MARKETPLACE_IDS;
-  const codeMap = Object.fromEntries(Object.entries(MARKETPLACE_IDS).filter(([c]) => MARKETPLACE_REGION[c] === region));
-
-  console.log(`[Amazon Sync] Probing valid ${region} marketplace IDs...`);
-  const valid: string[] = [];
-
-  for (const [code, mpId] of Object.entries(codeMap)) {
-    try {
-      await fetchOrderReport([mpId], dateFrom, dateTo, region);
-      valid.push(mpId);
-      console.log(`[Amazon Sync] ✅ ${region} Marketplace ${code} (${mpId}) — OK`);
-    } catch (err) {
-      const msg = String(err);
-      if (msg.includes("InvalidInput") || msg.includes("Invalid Marketplace")) {
-        console.log(`[Amazon Sync] ⚠️ ${region} Marketplace ${code} (${mpId}) — not available, skipping`);
-      } else {
-        valid.push(mpId);
-        console.log(`[Amazon Sync] ⚠️ ${region} Marketplace ${code} (${mpId}) — probe failed (${msg.slice(0,60)}), included anyway`);
-      }
-    }
-  }
-
-  if (region === "NA") validMarketplaceIdsNA = valid;
-  else                  validMarketplaceIds   = valid;
-
-  console.log(`[Amazon Sync] Valid ${region} marketplaces: ${valid.length}/${allIds.length}`);
-  return valid;
-}
+const validMarketplaceIdsCache = new Map<string, string[]>();
 
 /** Fetch a report with automatic per-marketplace fallback on InvalidInput errors */
 async function fetchReportRobust(marketplaceIds: string[], dateFrom: Date, dateTo: Date, region: "EU" | "NA" = "EU"): Promise<string> {
@@ -131,6 +93,8 @@ async function fetchReportRobust(marketplaceIds: string[], dateFrom: Date, dateT
   } catch (err) {
     const msg = String(err);
     if (!msg.includes("InvalidInput") && !msg.includes("Invalid Marketplace")) throw err;
+
+    const cacheKey = `${getCurrentAccountId()}:${region}`;
 
     // Try each marketplace individually, collect rows from valid ones
     console.log(`[Amazon Sync] Falling back to per-marketplace ${region} requests...`);
@@ -145,18 +109,16 @@ async function fetchReportRobust(marketplaceIds: string[], dateFrom: Date, dateT
           if (!headerLine) headerLine = lines[0];
           allRows.push(...lines.slice(1));
         }
-        // Cache valid marketplace
-        const cache = region === "NA" ? validMarketplaceIdsNA : validMarketplaceIds;
+        // Cache valid marketplace for this account+region
+        const cache = validMarketplaceIdsCache.get(cacheKey);
         if (cache && !cache.includes(mpId)) cache.push(mpId);
+        else if (!cache) validMarketplaceIdsCache.set(cacheKey, [mpId]);
       } catch (mpErr) {
         const mpMsg = String(mpErr);
         if (mpMsg.includes("InvalidInput") || mpMsg.includes("Invalid Marketplace")) {
           console.log(`[Amazon Sync] Skipping invalid ${region} marketplace ${mpId}`);
-          if (region === "NA") {
-            if (validMarketplaceIdsNA) validMarketplaceIdsNA = validMarketplaceIdsNA.filter(id => id !== mpId);
-          } else {
-            if (validMarketplaceIds)   validMarketplaceIds   = validMarketplaceIds.filter(id => id !== mpId);
-          }
+          const cache = validMarketplaceIdsCache.get(cacheKey);
+          if (cache) validMarketplaceIdsCache.set(cacheKey, cache.filter(id => id !== mpId));
         } else {
           console.error(`[Amazon Sync] Error for ${region} marketplace ${mpId}:`, mpErr);
         }
@@ -278,8 +240,8 @@ export async function runAmazonIncrementalSync(): Promise<void> {
   // Always run EU
   await runIncrementalForRegion("EU");
 
-  // Run NA only if AMAZON_US_REFRESH_TOKEN is configured
-  if (process.env.AMAZON_US_REFRESH_TOKEN) {
+  // Run NA only if the current account has NA-region SP-API credentials configured
+  if (await hasNACredentials()) {
     await runIncrementalForRegion("NA");
   }
 
@@ -469,7 +431,7 @@ export async function runFullAmazonDatabaseSync(dateFrom: Date | string): Promis
 
   try {
     // ── PHASE 1: ORDERS ────────────────────────────────────────────────────────
-    const hasNA = !!process.env.AMAZON_US_REFRESH_TOKEN;
+    const hasNA = await hasNACredentials();
     emit("Phase 1: Orders", "Starting", 1, `Backfill orders from ${startFrom.toISOString().split("T")[0]} — ${totalDays} days (EU${hasNA ? " + NA" : ""})`);
 
     const regionsToSync: Array<{ region: "EU" | "NA"; label: string; ids: string[] }> = [

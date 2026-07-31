@@ -40,6 +40,7 @@ async function seedAmazonAccount(): Promise<void> {
     lwaClientId: process.env.AMAZON_LWA_CLIENT_ID ?? null,
     lwaClientSecret: process.env.AMAZON_LWA_CLIENT_SECRET ?? null,
     spApiRefreshToken: refreshToken,
+    spApiRefreshTokenNA: process.env.AMAZON_US_REFRESH_TOKEN ?? null,
     adsClientId: process.env.AMAZON_ADVERTISING_CLIENT_ID ?? process.env.AMAZON_LWA_CLIENT_ID ?? null,
     adsClientSecret:
       process.env.AMAZON_ADVERTISING_CLIENT_SECRET ?? process.env.AMAZON_LWA_CLIENT_SECRET ?? null,

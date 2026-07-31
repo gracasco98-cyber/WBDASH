@@ -159,7 +159,8 @@ model AmazonAccount {
   isActive             Boolean   @default(true)
   lwaClientId          String?
   lwaClientSecretEnc   String?                          // encrypted
-  spApiRefreshTokenEnc String?                          // encrypted
+  spApiRefreshTokenEnc String?                          // encrypted — primary region (see `region` field)
+  spApiRefreshTokenNAEnc String?                        // encrypted — optional secondary NA-region token, same LWA client
   adsClientId          String?
   adsClientSecretEnc   String?                          // encrypted
   adsRefreshTokenEnc   String?                          // encrypted
