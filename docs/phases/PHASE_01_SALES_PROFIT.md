@@ -23,18 +23,18 @@ Dare visibilità affidabile e aggiornata su vendite e profitto reale su Amazon, 
 | Caricamento costi advertising | ✅ fatto | `backend/src/amazon/ads-api.service.ts`, `ads-sync.service.ts` |
 | Calcolo profitto stimato e consolidato | ⚠️ parziale — P&L calcolato a query-time, non versionato/riproducibile | `frontend/src/app/amazon/pl/page.tsx` — manca un vero profit engine (vedi `PROJECT_SPEC.md` §4) |
 | Dashboard giornaliera + confronti (ieri/settimana/mese) | ✅ fatto | `frontend/src/components/dashboard/**`, `PeriodContext`, `usePeriodFilter` |
-| Filtri (marketplace, brand, prodotto/SKU/ASIN, periodo, valuta) | ⚠️ account ancora da aggiungere in UI | `AmazonFilterBar`, `FilterBar` |
+| Filtri (marketplace, brand, prodotto/SKU/ASIN, periodo, valuta) | ✅ fatto (account incluso, 2026-07-31) | `AmazonFilterBar`, `FilterBar`, `AmazonAccountSelector` |
 
-## 3. Multi seller-account — fatto (2026-07-31), resta il selettore in UI
+## 3. Multi seller-account — fatto (2026-07-31)
 
-Implementato sul branch `migration/multi-account-amazon`:
+Implementato sui branch `migration/multi-account-amazon` + `feature/multi-account-remaining-gaps`:
 
-1. ✅ Modello `AmazonAccount` con credenziali SP-API/Ads cifrate (AES-256-GCM).
+1. ✅ Modello `AmazonAccount` con credenziali SP-API (EU + NA)/Ads cifrate (AES-256-GCM).
 2. ✅ `amazonAccountId` aggiunto a tutti i 15 modelli del dominio Amazon, vincoli di unicità ricalcolati per account. Database era vuoto → nessun backfill necessario.
 3. ✅ Ogni query/repository filtra per account (via contesto `AsyncLocalStorage`, non parametro esplicito — vedi `docs/tech-debt.md` F.1).
-4. ❌ **UI: selettore account** — non ancora fatto. `AmazonFilterBar` e componenti simili non hanno ancora un modo per l'utente di scegliere/cambiare account quando ce n'è più di uno attivo. Prossimo passo naturale per chiudere completamente questo punto.
+4. ✅ **UI: selettore account** — `AmazonAccountSelector` nell'header (badge statico con 0/1 account, dropdown con 2+), persistenza in `localStorage`, `apiUrl()` inietta `amazonAccountId` su ogni chiamata API. `AmazonAccountGuard` impedisce a qualsiasi pagina Amazon di caricare dati finché la selezione non è risolta (evita i 500 "No Amazon account in scope" con account ambiguo).
 
-Vedi `docs/tech-debt.md` sezione F per il dettaglio completo (bug di cache cross-account trovato e corretto, gap noti su region NA e su alcuni JOIN non a chiave composita).
+Vedi `docs/tech-debt.md` sezione F per il dettaglio completo (bug di cache cross-account, bug di race sull'auth trovato e corretto, region NA e JOIN a chiave composita — tutti chiusi al 2026-07-31).
 
 ## 4. Stati dei dati (obbligatorio in UI)
 

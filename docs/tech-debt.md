@@ -345,15 +345,24 @@ I file sotto sono **sopra i limiti documentati** in CONTRIBUTING.md ma **non in 
 
 ### F.3 — Gap noti, non risolti in questa sessione
 
-- **NA region non multi-account**: `token.service.ts`'s `getSpApiTokenNA()` legge ancora da `AMAZON_US_REFRESH_TOKEN` (env var globale), non da `AmazonAccount`. Lo schema attuale modella un solo refresh token SP-API per account (una region); un account che vende sia in EU che NA richiederebbe un secondo campo cifrato dedicato — non implementato.
-- **Cache `validMarketplaceIds`/`validMarketplaceIdsNA` in `sync.job.ts`**: condivisa tra tutti gli account (non per-account). Rischio basso (nel peggiore dei casi probe ridondanti o uno skip transitorio, non dati sbagliati — `fetchReportRobust` ha comunque un fallback per-marketplace su `InvalidInput`), ma non corretta al 100% se due account avessero insiemi di marketplace validi davvero divergenti.
-- **Join non sempre su chiave composita**: in alcuni punti (`chat/tools.ts`, `products.routes.ts` `/aggregated`, `stats.routes.ts` `/product-overview`) i JOIN tra `AmazonOrder`/`AmazonOrderItem` restano su `amazonOrderId` con un filtro `WHERE amazonAccountId` aggiunto su entrambi gli alias, invece di riscrivere la condizione di JOIN come composita. Rischio di collisione quasi nullo (gli order ID Amazon sono di fatto globalmente unici), ma è una differenza strutturale rispetto al resto della codebase, segnalata dagli agent che hanno fatto il fix.
 - **E.1 (repo layer non rispettato) resta il problema di fondo**: la migrazione multi-account ha dovuto toccare ~25 file di service/route esattamente per lo stesso motivo della migrazione Decimal (E.2) — nessuno spostamento verso il repository layer è stato fatto, solo l'aggiunta di `getCurrentAccountId()` nei punti diretti.
 - **Migrazione dati per deployment esistenti a singolo account**: se questo codebase venisse mai deployato con dati reali PRIMA di questa migrazione, sarebbe necessario un backfill di `amazonAccountId` su tutte le righe esistenti prima di rendere il campo `NOT NULL` — non rilevante qui perché il database resta vuoto (nessun dato reale mai sincronizzato).
 - **Origine**: richiesta esplicita dell'utente (2026-07-31) di procedere con la migrazione multi-account "tutto in un colpo".
+
+### F.4 — Frontend: selettore account + guard "nessun account" (2026-07-31)
+
+- **Cosa è cambiato**: `AmazonAccountContext`/`useAmazonAccount` (fetch account attivi, selezione persistita in `localStorage`), `AmazonAccountSelector` (dropdown nell'header Amazon, badge statico se c'è 0/1 account), `apiUrl()` in `lib/api/client.ts` che inietta `amazonAccountId` su ogni chiamata `fetch()` verso il backend.
+- **Bug reale trovato con test end-to-end in browser (Playwright)**: con 2+ account attivi e nessuna selezione ancora fatta, le pagine Amazon-only (`orders.routes.ts` `/summary`/`/timeseries`, `settlement.routes.ts` `/dashboard`, `products.routes.ts` `/products`) partivano comunque a fare fetch e ricevevano 500 non gestiti ("No Amazon account in scope") — il middleware si comporta correttamente (non indovina mai l'account), ma nessuna pagina aspettava che la selezione fosse fatta prima di interrogare l'API.
+  - **Fix**: `AmazonAccountGuard` (`frontend/src/components/amazon/AmazonAccountGuard.tsx`), montato in `app/amazon/layout.tsx` attorno a `{children}` — blocca il rendering delle pagine e mostra un prompt "Seleziona un account Amazon per continuare" finché `needsSelection && !selectedAccountId`.
+- **Secondo bug trovato mentre si verificava il fix, sempre con test in browser**: `AmazonAccountContext` decideva "utente non loggato → 0 account" leggendo `user === null` da `useAuth()`, ma quel valore è identico sia a "sessione non ancora verificata" sia a "loggato fuori" — nella finestra in cui `AuthProvider` stava ancora controllando la sessione, il contesto si risolveva prematuramente a "0 account, nessuna selezione necessaria" e lasciava montare le pagine Amazon prima che il vero conteggio account fosse noto, riproducendo lo stesso raffica di 500 che il guard doveva prevenire.
+  - **Fix**: il `useEffect` di `AmazonAccountContext` ora aspetta anche `authLoading` (da `useAuth()`) prima di decidere, non solo `user`.
+- **Verifica**: test RTL aggiunti (`AmazonAccountGuard.test.tsx`, `AmazonAccountContext.test.tsx`, 8/8 verdi in totale sul frontend) + smoke test Playwright manuale (login → prompt guard → selezione account → dashboard) con zero errori console/network nella corsa finale. Nessuna regressione backend (310/310).
 
 ---
 
 ## Voci risolte
 
-(nessuna voce ancora — quando una voce viene fixata, va spostata qui con la PR di fix)
+- **NA region non multi-account** (era in F.3): `AmazonAccount` ha ora un secondo campo cifrato `spApiRefreshTokenNA`; `token.service.ts`'s `getSpApiTokenNA()`/`hasNACredentials()` leggono dall'account corrente invece che da `AMAZON_US_REFRESH_TOKEN`. Fix in `feature/multi-account-remaining-gaps`, 2026-07-31.
+- **Cache `validMarketplaceIds`/`validMarketplaceIdsNA` condivisa tra account** (era in F.3): `sync.job.ts` ora usa `validMarketplaceIdsCache = new Map<string, string[]>()` chiave `` `${accountId}:${region}` ``. Fix in `feature/multi-account-remaining-gaps`, 2026-07-31.
+- **Join non su chiave composita** (era in F.3): i JOIN in `chat/tools.ts` e `routes/analytics.routes.ts` tra `AmazonOrder`/`AmazonOrderItem` ora usano `ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"`. Fix in `feature/multi-account-remaining-gaps`, 2026-07-31.
+- **Frontend: nessun selettore account, pagine Amazon-only 500 con account ambiguo** — vedi F.4 sopra per dettagli. Fix in `feature/multi-account-remaining-gaps`, 2026-07-31.
