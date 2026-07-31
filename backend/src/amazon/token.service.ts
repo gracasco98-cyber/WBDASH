@@ -1,15 +1,11 @@
 // amazon/token.service.ts — LWA token cache for SP-API and Advertising API
 //
 // Credentials are per AmazonAccount (encrypted at rest, see
-// repositories/amazon/accounts.repo.ts), not global env vars anymore — the
-// token cache is keyed by accountId so two accounts never share a token.
-//
-// KNOWN GAP: the NA-region SP-API token (getSpApiTokenNA) still reads from
-// the legacy AMAZON_US_REFRESH_TOKEN env var, not from AmazonAccount. The
-// current schema models one SP-API refresh token per account (one region);
-// properly supporting an account that sells in both EU and NA would need a
-// second encrypted token field on AmazonAccount. Out of scope for this
-// migration — see docs/tech-debt.md.
+// repositories/amazon/accounts.repo.ts), not global env vars — the token
+// cache is keyed by accountId so two accounts never share a token. An
+// account can optionally hold a secondary NA-region SP-API refresh token
+// (spApiRefreshTokenNA) alongside its primary one, for sellers active in
+// both EU and NA under the same LWA client.
 
 import { TOKEN_ENDPOINT } from "./config";
 import { prisma } from "../db";
@@ -22,8 +18,8 @@ interface CachedToken {
 }
 
 const spApiCacheByAccount = new Map<string, CachedToken>();
+const spApiCacheNAByAccount = new Map<string, CachedToken>();
 const adsApiCacheByAccount = new Map<string, CachedToken>();
-let spApiCacheNA: CachedToken | null = null;
 
 async function fetchToken(clientId: string, clientSecret: string, refreshToken: string): Promise<CachedToken> {
   const params = new URLSearchParams({
@@ -74,25 +70,34 @@ export async function getSpApiToken(): Promise<string> {
 }
 
 /**
- * Get SP-API access token for North America (cached, auto-refreshed).
- * KNOWN GAP: still reads from the legacy global env vars — see file header.
+ * Get SP-API access token for North America for the current account (cached, auto-refreshed).
+ * Throws if the account has no spApiRefreshTokenNA configured — check
+ * `hasNACredentials()` before calling this in a loop over multiple accounts.
  */
 export async function getSpApiTokenNA(): Promise<string> {
-  if (spApiCacheNA && spApiCacheNA.expiresAt > Date.now()) {
-    return spApiCacheNA.accessToken;
+  const accountId = getCurrentAccountId();
+  const cached = spApiCacheNAByAccount.get(accountId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.accessToken;
   }
 
-  const clientId     = process.env.AMAZON_LWA_CLIENT_ID;
-  const clientSecret = process.env.AMAZON_LWA_CLIENT_SECRET;
-  const refreshToken = process.env.AMAZON_US_REFRESH_TOKEN;
-
-  if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error("[Amazon] Missing AMAZON_LWA_CLIENT_ID / AMAZON_LWA_CLIENT_SECRET / AMAZON_US_REFRESH_TOKEN");
+  const creds = await getAccountCredentials(prisma, accountId);
+  if (!creds.lwaClientId || !creds.lwaClientSecret || !creds.spApiRefreshTokenNA) {
+    throw new Error(
+      `[Amazon] AmazonAccount ${accountId} is missing LWA client id/secret or NA-region SP-API refresh token`
+    );
   }
 
-  spApiCacheNA = await fetchToken(clientId, clientSecret, refreshToken);
-  console.log("[Amazon Token] SP-API NA token refreshed, expires in ~55 min");
-  return spApiCacheNA.accessToken;
+  const token = await fetchToken(creds.lwaClientId, creds.lwaClientSecret, creds.spApiRefreshTokenNA);
+  spApiCacheNAByAccount.set(accountId, token);
+  console.log(`[Amazon Token] SP-API NA token refreshed for account ${accountId}, expires in ~55 min`);
+  return token.accessToken;
+}
+
+/** Whether the current account has NA-region SP-API credentials configured. */
+export async function hasNACredentials(): Promise<boolean> {
+  const creds = await getAccountCredentials(prisma, getCurrentAccountId());
+  return !!creds.spApiRefreshTokenNA;
 }
 
 /** Get Advertising API access token for the current account (cached, auto-refreshed) */
@@ -122,6 +127,6 @@ export async function getAdsApiToken(): Promise<string> {
 export function invalidateTokens(): void {
   const accountId = getCurrentAccountId();
   spApiCacheByAccount.delete(accountId);
+  spApiCacheNAByAccount.delete(accountId);
   adsApiCacheByAccount.delete(accountId);
-  spApiCacheNA = null;
 }

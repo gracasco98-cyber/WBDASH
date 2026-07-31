@@ -9,6 +9,8 @@ export interface AmazonAccountCredentials {
   lwaClientId: string | null;
   lwaClientSecret: string | null;
   spApiRefreshToken: string | null;
+  /** Optional secondary NA-region SP-API refresh token, same LWA client. Null if the account doesn't sell in NA. */
+  spApiRefreshTokenNA: string | null;
   adsClientId: string | null;
   adsClientSecret: string | null;
   adsRefreshToken: string | null;
@@ -25,6 +27,7 @@ export function decryptCredentials(account: AmazonAccount): AmazonAccountCredent
     lwaClientId: account.lwaClientId,
     lwaClientSecret: decryptOrNull(account.lwaClientSecretEnc),
     spApiRefreshToken: decryptOrNull(account.spApiRefreshTokenEnc),
+    spApiRefreshTokenNA: decryptOrNull(account.spApiRefreshTokenNAEnc),
     adsClientId: account.adsClientId,
     adsClientSecret: decryptOrNull(account.adsClientSecretEnc),
     adsRefreshToken: decryptOrNull(account.adsRefreshTokenEnc),
@@ -67,6 +70,7 @@ export interface CreateAmazonAccountParams {
   lwaClientId?: string | null;
   lwaClientSecret?: string | null;
   spApiRefreshToken?: string | null;
+  spApiRefreshTokenNA?: string | null;
   adsClientId?: string | null;
   adsClientSecret?: string | null;
   adsRefreshToken?: string | null;
@@ -86,6 +90,7 @@ export async function createAccount(
       lwaClientId: params.lwaClientId ?? null,
       lwaClientSecretEnc: params.lwaClientSecret ? encryptSecret(params.lwaClientSecret) : null,
       spApiRefreshTokenEnc: params.spApiRefreshToken ? encryptSecret(params.spApiRefreshToken) : null,
+      spApiRefreshTokenNAEnc: params.spApiRefreshTokenNA ? encryptSecret(params.spApiRefreshTokenNA) : null,
       adsClientId: params.adsClientId ?? null,
       adsClientSecretEnc: params.adsClientSecret ? encryptSecret(params.adsClientSecret) : null,
       adsRefreshTokenEnc: params.adsRefreshToken ? encryptSecret(params.adsRefreshToken) : null,

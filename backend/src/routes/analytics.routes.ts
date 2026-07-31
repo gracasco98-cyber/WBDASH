@@ -54,7 +54,7 @@ router.get("/forecast", async (_req: Request, res: Response) => {
       SELECT i.asin,
              ROUND((SUM(i."quantityOrdered")::FLOAT / 30)::NUMERIC, 2) AS "dailyVel"
       FROM "AmazonOrderItem" i
-      JOIN "AmazonOrder" o ON o."amazonOrderId" = i."amazonOrderId"
+      JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
       WHERE i."purchaseDate" >= ${daysAgo(30)}
         AND o."orderStatus" NOT IN ('Canceled','Cancelled')
         AND o."amazonAccountId" = ${accountId}
@@ -382,7 +382,7 @@ router.get("/margin-predictor", async (_req: Request, res: Response) => {
       SELECT i.asin,
              ROUND((SUM(i."quantityOrdered")::FLOAT/30)::NUMERIC,2) AS vel
       FROM "AmazonOrderItem" i
-      JOIN "AmazonOrder" o ON o."amazonOrderId"=i."amazonOrderId"
+      JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
       WHERE i."purchaseDate" >= ${since30}
         AND o."orderStatus" NOT IN ('Canceled','Cancelled')
         AND o."amazonAccountId" = ${accountId}

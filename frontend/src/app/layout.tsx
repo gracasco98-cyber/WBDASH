@@ -3,6 +3,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { PeriodProvider } from "@/context/PeriodContext";
+import { AmazonAccountProvider } from "@/context/AmazonAccountContext";
 import ChatWidget from "@/components/ChatWidget";
 
 export const metadata: Metadata = {
@@ -31,9 +32,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-w-0 w-full">
         <ThemeProvider>
           <AuthProvider>
-            <PeriodProvider>
-              {children}
-            </PeriodProvider>
+            <AmazonAccountProvider>
+              <PeriodProvider>
+                {children}
+              </PeriodProvider>
+            </AmazonAccountProvider>
           </AuthProvider>
         </ThemeProvider>
         {/* AI Chatbot — hidden on /login via CSS if needed */}

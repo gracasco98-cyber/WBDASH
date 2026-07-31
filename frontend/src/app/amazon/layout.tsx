@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import SyncStatus from "@/components/dashboard/SyncStatus";
 import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
+import AmazonAccountSelector from "@/components/amazon/AmazonAccountSelector";
+import AmazonAccountGuard from "@/components/amazon/AmazonAccountGuard";
 
 const AMAZON_TABS = [
   { href: "/amazon",            emoji: "📊", label: "Overview"     },
@@ -40,10 +42,7 @@ export default function AmazonLayout({ children }: { children: React.ReactNode }
         rightExtras={
           <>
             <div className="hidden sm:block"><SyncStatus /></div>
-            <div className="hidden md:flex items-center gap-2 text-xs text-zinc-500">
-              <div className="w-1.5 h-1.5 rounded-full bg-accent-amber" />
-              <span>Amazon EU</span>
-            </div>
+            <AmazonAccountSelector />
           </>
         }
       />
@@ -83,7 +82,7 @@ export default function AmazonLayout({ children }: { children: React.ReactNode }
         <GlobalSidebar />
         <div className="flex-1 min-w-0">
           <main className="max-w-[1600px] px-4 md:px-6 py-4 md:py-6 overflow-x-hidden">
-            {children}
+            <AmazonAccountGuard>{children}</AmazonAccountGuard>
           </main>
         </div>
       </div>

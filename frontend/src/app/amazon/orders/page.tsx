@@ -1,11 +1,10 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { api, AmazonOrdersResponse } from "@/lib/api";
+import { apiUrl } from "@/lib/api/client";
 import AmazonFilterBar from "@/components/amazon/AmazonFilterBar";
 import AmazonOrdersTable from "@/components/amazon/AmazonOrdersTable";
 import { RefreshCw, Download } from "lucide-react";
-
-const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 export default function AmazonOrdersPage() {
   const [filter,      setFilter]      = useState("last30");
@@ -53,14 +52,14 @@ export default function AmazonOrdersPage() {
   const STATUS_OPTIONS = ["", "Shipped", "Delivered", "Pending", "Unshipped", "Canceled"];
 
   const handleExport = () => {
-    const params = new URLSearchParams({ filter });
+    const params: Record<string, string> = { filter };
     if (filter === "custom") {
-      if (from) params.set("from", from);
-      if (to)   params.set("to", to);
+      if (from) params.from = from;
+      if (to)   params.to   = to;
     }
-    if (marketplace !== "all") params.set("marketplace", marketplace);
-    if (status) params.set("status", status);
-    window.location.href = `${BASE}/api/amazon/orders/export?${params.toString()}`;
+    if (marketplace !== "all") params.marketplace = marketplace;
+    if (status) params.status = status;
+    window.location.href = apiUrl("/api/amazon/orders/export", params);
   };
 
   return (
