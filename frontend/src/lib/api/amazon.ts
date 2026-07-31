@@ -1,5 +1,5 @@
 // lib/api/amazon.ts — Amazon endpoints
-import { BASE, get } from "./client";
+import { apiUrl, get } from "./client";
 import type {
   AmazonOverview,
   AmazonSummary,
@@ -17,9 +17,14 @@ import type {
   AmazonFeeBreakdown,
   AmazonPaymentForecast,
   AmazonUnreconciledResponse,
+  AmazonAccountSummary,
 } from "./types";
 
 export const amazon = {
+  // ── Account management ──────────────────────────────────────────────────────
+  listAccounts: () =>
+    get<AmazonAccountSummary[]>("/api/amazon/accounts"),
+
   overview: (params?: Record<string, string>) =>
     get<AmazonOverview>("/api/amazon/overview", params),
 
@@ -51,50 +56,50 @@ export const amazon = {
     get<AmazonSyncJob[]>("/api/amazon/sync/jobs"),
 
   triggerBackfill: (days: number, marketplace?: string) =>
-    fetch(`${BASE}/api/amazon/sync/backfill`, {
+    fetch(apiUrl("/api/amazon/sync/backfill"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ days, marketplace }),
     }),
 
   triggerIncremental: () =>
-    fetch(`${BASE}/api/amazon/sync/incremental`, { method: "POST" }),
+    fetch(apiUrl("/api/amazon/sync/incremental"), { method: "POST" }),
 
   triggerSnapshot: () =>
-    fetch(`${BASE}/api/amazon/sync/snapshot`, { method: "POST" }),
+    fetch(apiUrl("/api/amazon/sync/snapshot"), { method: "POST" }),
 
   triggerSnapshotFull: (days = 180) =>
-    fetch(`${BASE}/api/amazon/sync/snapshot/full`, {
+    fetch(apiUrl("/api/amazon/sync/snapshot/full"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ days }),
     }),
 
   triggerHistorical: (days = 180) =>
-    fetch(`${BASE}/api/amazon/sync/historical`, {
+    fetch(apiUrl("/api/amazon/sync/historical"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ days }),
     }),
 
   triggerSettlement: () =>
-    fetch(`${BASE}/api/amazon/sync/settlement`, { method: "POST" }),
+    fetch(apiUrl("/api/amazon/sync/settlement"), { method: "POST" }),
 
   cogs: () =>
     get<AmazonCogs[]>("/api/amazon/cogs"),
 
   saveCogs: (asin: string, marketplace: string, cogsPerUnit: number, notes?: string) =>
-    fetch(`${BASE}/api/amazon/cogs`, {
+    fetch(apiUrl("/api/amazon/cogs"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ asin, marketplace, cogsPerUnit, notes }),
     }).then((r) => r.json() as Promise<AmazonCogs>),
 
   deleteCogs: (id: string) =>
-    fetch(`${BASE}/api/amazon/cogs/${id}`, { method: "DELETE" }),
+    fetch(apiUrl(`/api/amazon/cogs/${id}`), { method: "DELETE" }),
 
   bulkImportCogs: (records: any[]) =>
-    fetch(`${BASE}/api/amazon/cogs/bulk`, {
+    fetch(apiUrl("/api/amazon/cogs/bulk"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ records }),
@@ -105,11 +110,11 @@ export const amazon = {
 
   saveCogsPriceEntry: (data: Partial<AmazonCogsPriceEntry>) =>
     data.id
-      ? fetch(`${BASE}/api/amazon/cogs/entries/${data.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json())
-      : fetch(`${BASE}/api/amazon/cogs/entries`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
+      ? fetch(apiUrl(`/api/amazon/cogs/entries/${data.id}`), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json())
+      : fetch(apiUrl("/api/amazon/cogs/entries"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => r.json()),
 
   deleteCogsPriceEntry: (id: string) =>
-    fetch(`${BASE}/api/amazon/cogs/entries/${id}`, { method: "DELETE" }).then(r => r.json()),
+    fetch(apiUrl(`/api/amazon/cogs/entries/${id}`), { method: "DELETE" }).then(r => r.json()),
 
   pl: (params?: Record<string, string>) =>
     get<AmazonPLResponse>("/api/amazon/pl", params),
@@ -165,21 +170,21 @@ export const amazon = {
     }>("/api/amazon/ppc/search-terms", params),
 
   triggerKeywordSync: (days = 30) =>
-    fetch(`${BASE}/api/amazon/sync/ads/keywords`, {
+    fetch(apiUrl("/api/amazon/sync/ads/keywords"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ days }),
     }).then((r) => r.json()),
 
   triggerSearchTermSync: (days = 30, marketplace?: string) =>
-    fetch(`${BASE}/api/amazon/sync/ads/search-terms`, {
+    fetch(apiUrl("/api/amazon/sync/ads/search-terms"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ days, marketplace }),
     }).then((r) => r.json()),
 
   updateInventory: (data: Partial<AmazonInventoryItem>) =>
-    fetch(`${BASE}/api/amazon/inventory`, {
+    fetch(apiUrl("/api/amazon/inventory"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -189,9 +194,7 @@ export const amazon = {
     get<{ breakdown: AmazonFeeBreakdown[]; totalFees: number }>("/api/amazon/fees", params),
 
   exportOrders: (params: Record<string, string>) => {
-    const url = new URL(`${BASE}/api/amazon/export/orders`);
-    Object.entries(params).forEach(([k, v]) => v && url.searchParams.set(k, v));
-    window.open(url.toString(), "_blank");
+    window.open(apiUrl("/api/amazon/export/orders", params), "_blank");
   },
 
   // ── Advertising API ────────────────────────────────────────────────────────
@@ -208,7 +211,7 @@ export const amazon = {
     }>("/api/amazon/ads/daily", params),
 
   triggerAdsSync: (days?: number) =>
-    fetch(`${BASE}/api/amazon/sync/ads`, {
+    fetch(apiUrl("/api/amazon/sync/ads"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(days ? { days } : {}),

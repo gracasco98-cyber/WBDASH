@@ -1,14 +1,13 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api, AmazonSyncJob } from "@/lib/api";
+import { apiUrl } from "@/lib/api/client";
 import { fmtNum } from "@/lib/fmt";
 import {
   RefreshCw, Play, CheckCircle, XCircle, Clock, Loader,
   Database, TrendingUp, BarChart2, FileText, Package,
   AlertTriangle, Zap, Shield, ChevronDown, ChevronRight,
 } from "lucide-react";
-
-const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
 
 /* ─── Types ─────────────────────────────────────────────────────────────────── */
 interface FullSyncProgress {
@@ -164,7 +163,7 @@ export default function AmazonSyncPage() {
   const loadDbStats = useCallback(async () => {
     setDbStatsLoading(true);
     try {
-      const r = await fetch(`${BASE}/api/amazon/sync/db-stats`);
+      const r = await fetch(apiUrl("/api/amazon/sync/db-stats"));
       if (r.ok) setDbStats(await r.json());
     } catch {}
     finally { setDbStatsLoading(false); }
@@ -173,7 +172,7 @@ export default function AmazonSyncPage() {
   /* ─── Poll full sync progress ───────────────────────────────────────────── */
   const pollProgress = useCallback(async () => {
     try {
-      const r = await fetch(`${BASE}/api/amazon/sync/full/progress`);
+      const r = await fetch(apiUrl("/api/amazon/sync/full/progress"));
       if (r.ok) {
         const p: FullSyncProgress = await r.json();
         setFullSync(p);
@@ -199,7 +198,7 @@ export default function AmazonSyncPage() {
     if (triggering) return;
     setTriggering(true);
     try {
-      const r = await fetch(`${BASE}/api/amazon/sync/full`, {
+      const r = await fetch(apiUrl("/api/amazon/sync/full"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dateFrom: fullSyncDateFrom }),

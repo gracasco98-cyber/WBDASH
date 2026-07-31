@@ -467,6 +467,14 @@ export interface AmazonPeriodStats {
   pctChange: number | null;
 }
 
+// GET /api/amazon/accounts — never includes credentials, only what the selector needs
+export interface AmazonAccountSummary {
+  id: string;
+  name: string;
+  sellerId: string;
+  region: string;
+}
+
 export interface AmazonOverview {
   today:     AmazonPeriodStats;
   yesterday: AmazonPeriodStats;
