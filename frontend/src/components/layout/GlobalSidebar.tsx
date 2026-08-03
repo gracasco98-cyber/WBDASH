@@ -3,165 +3,174 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  ShoppingBag,
-  Package,
+  LayoutDashboard, ShoppingCart, Wallet, Boxes, Megaphone, LifeBuoy, Shield,
   ChevronDown,
 } from "lucide-react";
 
-// ── Nav config ────────────────────────────────────────────────────────────────
+interface NavItem {
+  href: string;
+  label: string;
+}
+interface ComingSoonItem {
+  label: string;
+  comingSoon: true;
+}
+type GroupItem = NavItem | ComingSoonItem;
 
-const MARKETPLACE_ITEMS = [
-  { href: "/products", label: "Prodotti & Performance" },
+interface Group {
+  key: string;
+  label: string;
+  icon: typeof Wallet;
+  items: GroupItem[];
+}
+
+const GROUPS: Group[] = [
+  {
+    key: "finance", label: "FINANCE", icon: Wallet,
+    items: [
+      { href: "/amazon/pl", label: "P&L" },
+      { href: "/amazon/payments", label: "Pagamenti" },
+      { label: "Fisco", comingSoon: true },
+      { label: "Regole fees/IVA/spedizioni", comingSoon: true },
+      { label: "Reportistica", comingSoon: true },
+    ],
+  },
+  {
+    key: "inventory", label: "INVENTORY", icon: Boxes,
+    items: [
+      { href: "/prodotti", label: "Prodotti" },
+      { href: "/amazon/cogs", label: "COGS" },
+      { href: "/amazon/inventory", label: "Magazzino" },
+      { label: "Fornitori", comingSoon: true },
+      { label: "Purchase Orders", comingSoon: true },
+    ],
+  },
+  {
+    key: "marketing", label: "MARKETING", icon: Megaphone,
+    items: [
+      { href: "/amazon/ppc", label: "Advertising" },
+      { href: "/amazon/analytics", label: "Intelligence" },
+      { label: "Content Hub", comingSoon: true },
+      { label: "Calendario promo", comingSoon: true },
+    ],
+  },
+  {
+    key: "supporto", label: "SUPPORTO", icon: LifeBuoy,
+    items: [
+      { label: "I miei ticket", comingSoon: true },
+    ],
+  },
+  {
+    key: "admin", label: "ADMIN", icon: Shield,
+    items: [
+      { href: "/admin", label: "Gestione utenti" },
+      { href: "/amazon/sync", label: "Sync Center" },
+      { href: "/account/security", label: "Sicurezza" },
+    ],
+  },
 ];
 
-const AMAZON_ITEMS = [
-  { href: "/amazon",           label: "Overview"    },
-  { href: "/amazon/pl",        label: "P&L"         },
-  { href: "/amazon/products",  label: "Prodotti"    },
-  { href: "/amazon/cogs",      label: "COGS"        },
-  { href: "/amazon/inventory", label: "Magazzino"   },
-  { href: "/amazon/orders",    label: "Ordini"      },
-  { href: "/amazon/ppc",       label: "PPC / Ads"   },
-  { href: "/amazon/payments",  label: "Pagamenti"   },
-  { href: "/amazon/sync",      label: "Sync Center" },
-  { href: "/amazon/analytics", label: "Analytics"   },
-];
-
-// ── Component ─────────────────────────────────────────────────────────────────
+function isNavItem(item: GroupItem): item is NavItem {
+  return "href" in item;
+}
 
 export default function GlobalSidebar() {
   const pathname = usePathname();
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    finance: true, inventory: true, marketing: true, supporto: true, admin: true,
+  });
 
-  const [mpOpen, setMpOpen]  = useState(false);
-  const [amzOpen, setAmzOpen] = useState(false);
+  const toggle = (key: string) => setOpenGroups(g => ({ ...g, [key]: !g[key] }));
 
-  const isDashboard   = pathname === "/";
-  const isMarketplace = pathname.startsWith("/products");
-  const isAmazon      = pathname.startsWith("/amazon");
+  const linkCls = (active: boolean) => `
+    px-2.5 py-1.5 rounded-lg text-sm transition-all border block
+    ${active
+      ? "bg-accent-primary/10 border-accent-primary/20 text-accent-primary font-medium"
+      : "border-transparent text-zinc-500 hover:text-white hover:bg-white/5"
+    }
+  `;
 
   return (
     <aside
       className="
-        hidden md:flex flex-col w-52 shrink-0
+        hidden md:flex flex-col w-56 shrink-0
         sticky top-[57px] h-[calc(100vh-57px)] overflow-y-auto
         border-r border-bg-border
         bg-bg-card
       "
     >
       <nav className="flex flex-col gap-0.5 py-3 px-2">
-
-        {/* ── Dashboard ── */}
         <Link
           href="/"
-          className={`
-            flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium
-            transition-all border
-            ${isDashboard
+          className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+            pathname === "/"
               ? "bg-accent-primary/12 border-accent-primary/25 text-accent-primary"
               : "border-transparent text-zinc-400 hover:text-white hover:bg-white/5"
-            }
-          `}
+          }`}
         >
           <LayoutDashboard size={15} className="shrink-0" />
           Dashboard
         </Link>
 
-        {/* ── Marketplace group ── */}
-        <div className="mt-2">
-          <button
-            onClick={() => setMpOpen(v => !v)}
-            className={`
-              w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg
-              text-xs font-semibold uppercase tracking-widest transition-colors
-              ${isMarketplace
-                ? "text-emerald-400"
-                : "text-zinc-500 hover:text-zinc-300"
-              }
-            `}
-          >
-            <span className="flex items-center gap-2">
-              <ShoppingBag size={13} className="shrink-0" />
-              Marketplace
-            </span>
-            <ChevronDown
-              size={12}
-              className={`shrink-0 transition-transform duration-200 ${mpOpen ? "" : "-rotate-90"}`}
-            />
-          </button>
+        <Link
+          href="/ordini"
+          className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+            pathname.startsWith("/ordini")
+              ? "bg-accent-primary/12 border-accent-primary/25 text-accent-primary"
+              : "border-transparent text-zinc-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <ShoppingCart size={15} className="shrink-0" />
+          Ordini
+        </Link>
 
-          {mpOpen && (
-            <div className="mt-0.5 ml-3 pl-3 border-l border-zinc-800 flex flex-col gap-0.5">
-              {MARKETPLACE_ITEMS.map(item => {
-                const active = pathname === item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`
-                      px-2.5 py-1.5 rounded-lg text-sm transition-all border
-                      ${active
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 font-medium"
-                        : "border-transparent text-zinc-500 hover:text-white hover:bg-white/5"
-                      }
-                    `}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
+        {GROUPS.map(group => {
+          const Icon = group.icon;
+          const open = openGroups[group.key];
+          const groupActive = group.items.some(i => isNavItem(i) && pathname.startsWith(i.href));
+          return (
+            <div key={group.key} className="mt-2">
+              <button
+                onClick={() => toggle(group.key)}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-widest transition-colors ${
+                  groupActive ? "text-accent-primary" : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Icon size={13} className="shrink-0" />
+                  {group.label}
+                </span>
+                <ChevronDown size={12} className={`shrink-0 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+              </button>
+
+              {open && (
+                <div className="mt-0.5 ml-3 pl-3 border-l border-zinc-800 flex flex-col gap-0.5">
+                  {group.items.map(item => {
+                    if (!isNavItem(item)) {
+                      return (
+                        <button
+                          key={item.label}
+                          disabled
+                          title="Prossimamente"
+                          className="px-2.5 py-1.5 rounded-lg text-sm text-left text-zinc-700 cursor-not-allowed flex items-center justify-between gap-2"
+                        >
+                          {item.label}
+                          <span className="text-[9px] uppercase tracking-wide text-zinc-700 border border-zinc-800 rounded px-1 py-0.5 shrink-0">Prossimamente</span>
+                        </button>
+                      );
+                    }
+                    const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                    return (
+                      <Link key={item.href} href={item.href} className={linkCls(active)}>
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        {/* ── Amazon group ── */}
-        <div className="mt-2">
-          <button
-            onClick={() => setAmzOpen(v => !v)}
-            className={`
-              w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg
-              text-xs font-semibold uppercase tracking-widest transition-colors
-              ${isAmazon
-                ? "text-amber-400"
-                : "text-zinc-500 hover:text-zinc-300"
-              }
-            `}
-          >
-            <span className="flex items-center gap-2">
-              <Package size={13} className="shrink-0" />
-              Amazon
-            </span>
-            <ChevronDown
-              size={12}
-              className={`shrink-0 transition-transform duration-200 ${amzOpen ? "" : "-rotate-90"}`}
-            />
-          </button>
-
-          {amzOpen && (
-            <div className="mt-0.5 ml-3 pl-3 border-l border-zinc-800 flex flex-col gap-0.5">
-              {AMAZON_ITEMS.map(item => {
-                const active = item.href === "/amazon"
-                  ? pathname === "/amazon"
-                  : pathname.startsWith(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`
-                      px-2.5 py-1.5 rounded-lg text-sm transition-all border
-                      ${active
-                        ? "bg-amber-500/10 border-amber-500/20 text-amber-400 font-medium"
-                        : "border-transparent text-zinc-500 hover:text-white hover:bg-white/5"
-                      }
-                    `}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
+          );
+        })}
       </nav>
     </aside>
   );
