@@ -28,6 +28,7 @@ const GROUPS: Group[] = [
   {
     key: "finance", label: "FINANCE", icon: Wallet,
     items: [
+      { href: "/amazon", label: "Overview" },
       { href: "/amazon/pl", label: "P&L" },
       { href: "/amazon/payments", label: "Pagamenti" },
       { label: "Fisco", comingSoon: true },
@@ -72,6 +73,18 @@ const GROUPS: Group[] = [
 
 function isNavItem(item: GroupItem): item is NavItem {
   return "href" in item;
+}
+
+/**
+ * "/amazon" (Overview) is a literal string-prefix of every other /amazon/*
+ * route across every group (P&L, COGS, PPC, ...), which now live as
+ * separate sibling items rather than children of it — so unlike every
+ * other href here, it must match exactly, never via startsWith, or every
+ * /amazon/* page would also light up Overview (and FINANCE) as active.
+ */
+function isHrefActive(pathname: string, href: string): boolean {
+  if (href === "/amazon") return pathname === "/amazon";
+  return pathname === href || pathname.startsWith(href + "/");
 }
 
 export default function GlobalSidebar() {
@@ -127,7 +140,7 @@ export default function GlobalSidebar() {
         {GROUPS.map(group => {
           const Icon = group.icon;
           const open = openGroups[group.key];
-          const groupActive = group.items.some(i => isNavItem(i) && pathname.startsWith(i.href));
+          const groupActive = group.items.some(i => isNavItem(i) && isHrefActive(pathname, i.href));
           return (
             <div key={group.key} className="mt-2">
               <button
@@ -159,7 +172,7 @@ export default function GlobalSidebar() {
                         </button>
                       );
                     }
-                    const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                    const active = isHrefActive(pathname, item.href);
                     return (
                       <Link key={item.href} href={item.href} className={linkCls(active)}>
                         {item.label}
