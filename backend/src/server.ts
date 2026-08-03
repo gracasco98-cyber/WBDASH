@@ -18,7 +18,7 @@ import statsRouter from "./routes/stats.routes";
 import productsRouter from "./routes/products.routes";
 import { runInitialSync, startPolling, startSnapshotPolling } from "./jobs/sync.job";
 import amazonRouter from "./amazon/routes";
-import { startAmazonPolling, startAmazonSnapshotPolling } from "./amazon/sync.job";
+import { startAmazonPolling, startAmazonSnapshotPolling, forEachActiveAccount } from "./amazon/sync.job";
 import { bootstrapCalibration, bootstrapFromExcel, bootstrapComponentModel, runDailyCalibration } from "./amazon/forecast";
 import chatRouter from "./routes/chat.routes";
 import analyticsRouter from "./routes/analytics.routes";
@@ -188,23 +188,27 @@ async function bootstrap() {
     startAmazonPolling();
     startAmazonSnapshotPolling();
 
-    Promise.resolve()
-      .then(() => bootstrapCalibration())
-      .then(() => bootstrapFromExcel())
-      .then(() => bootstrapComponentModel())
-      .catch(err => console.warn("[Server] Calibration bootstrap error:", err));
+    // bootstrapCalibration/runDailyCalibration read the current AmazonAccount
+    // via getCurrentAccountId() — like the sync jobs in amazon/sync.job.ts,
+    // these run outside any HTTP request (server boot / cron), so they must
+    // resolve and iterate active accounts themselves via forEachActiveAccount.
+    forEachActiveAccount("Calibration bootstrap", async () => {
+      await bootstrapCalibration();
+      await bootstrapFromExcel();
+      await bootstrapComponentModel();
+    }).catch(err => console.warn("[Server] Calibration bootstrap error:", err));
 
     const now = new Date();
     const next2am = new Date(now);
     next2am.setHours(2, 0, 0, 0);
     if (next2am <= now) next2am.setDate(next2am.getDate() + 1);
     const msUntil2am = next2am.getTime() - now.getTime();
+    const runDailyCalibrationForAllAccounts = () =>
+      forEachActiveAccount("Daily calibration", () => runDailyCalibration())
+        .catch(err => console.warn("[Calibration] Daily job error:", err));
     setTimeout(() => {
-      runDailyCalibration().catch(err => console.warn("[Calibration] Daily job error:", err));
-      setInterval(
-        () => runDailyCalibration().catch(err => console.warn("[Calibration] Daily job error:", err)),
-        86400000
-      );
+      runDailyCalibrationForAllAccounts();
+      setInterval(runDailyCalibrationForAllAccounts, 86400000);
     }, msUntil2am);
     console.log(`[Server] Calibration daily job scheduled (first run in ${Math.round(msUntil2am / 60000)} min)`);
   } else {

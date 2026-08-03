@@ -26,7 +26,7 @@ export { syncAdsBackfill };
 // context/account-context.ts) — they must resolve the account list themselves
 // and run each account's sync sequentially (safer for SP-API rate limits than
 // running all accounts concurrently).
-async function forEachActiveAccount(
+export async function forEachActiveAccount(
   label: string,
   fn: () => Promise<void>
 ): Promise<void> {
