@@ -7,22 +7,6 @@ import { apiUrl } from "@/lib/api/client";
 import { mergeOrders, UnifiedOrder } from "@/lib/mergeOrders";
 import { isAmazonChannel, amazonChannelCode } from "@/components/dashboard/FilterBar";
 
-// NOTE on field mapping below:
-// mergeOrders() (Task 7) expects Amazon rows shaped as { amazonOrderId, purchaseDate,
-// orderTotal, orderStatus, marketplace, currency } and Shopify rows shaped as
-// { id, createdAt, totalPrice, financialStatus, marketplaceDetected, currency }.
-// The real backend rows (Prisma `AmazonOrder` / `ShopifyOrder`) do NOT have
-// `orderTotal` / `totalPrice` fields — the actual money fields are
-// `itemTotal` (Amazon) and `totalAmount` (Shopify, already a number via the
-// repo's DTO conversion). We alias them here rather than editing
-// mergeOrders.ts, which is out of scope for this task.
-function toMergeableAmazonOrders(orders: any[]): any[] {
-  return orders.map(o => ({ ...o, orderTotal: o.itemTotal }));
-}
-function toMergeableShopifyOrders(orders: any[]): any[] {
-  return orders.map(o => ({ ...o, totalPrice: o.totalAmount }));
-}
-
 export default function OrdiniPage() {
   const { marketplace } = useMarketplaceFilter();
   const [orders, setOrders] = useState<UnifiedOrder[]>([]);
@@ -54,12 +38,7 @@ export default function OrdiniPage() {
           : Promise.resolve({ orders: [] }),
       ]);
 
-      setOrders(
-        mergeOrders(
-          toMergeableAmazonOrders(amazonRes.orders ?? []),
-          toMergeableShopifyOrders(shopifyRes.orders ?? [])
-        )
-      );
+      setOrders(mergeOrders(amazonRes.orders ?? [], shopifyRes.orders ?? []));
     } catch (e) {
       console.error("[OrdiniPage] load error:", e);
     } finally {
