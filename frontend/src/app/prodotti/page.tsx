@@ -4,6 +4,7 @@ import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import CrossChannelProducts from "@/components/dashboard/CrossChannelProducts";
 import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
+import AmazonAccountGuard from "@/components/amazon/AmazonAccountGuard";
 
 type Period = "today" | "yesterday" | "last7" | "last30" | "last90" | "month";
 
@@ -45,7 +46,9 @@ export default function ProdottiPage() {
                 ))}
               </div>
             </div>
-            <CrossChannelProducts filter={period} from="" to="" marketplace={marketplace} />
+            <AmazonAccountGuard>
+              <CrossChannelProducts filter={period} from="" to="" marketplace={marketplace} />
+            </AmazonAccountGuard>
           </main>
         </div>
       </div>

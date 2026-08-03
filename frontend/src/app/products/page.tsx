@@ -14,6 +14,7 @@ import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import { getMeta } from "@/lib/marketplaces";
 import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
+import { isAmazonChannel } from "@/components/dashboard/FilterBar";
 
 const MARKETPLACES = [
   "all", "REDCARE_IT", "REDCARE_DE", "TEMU_IT", "TEMU_ES", "TEMU_FR", "TEMU_DE",
@@ -36,7 +37,12 @@ export default function ProductsPage() {
 
   // Products tab state
   const [filter, setFilter] = useState("last30");
-  const { marketplace, setMarketplace } = useMarketplaceFilter();
+  const { marketplace: globalMarketplace, setMarketplace } = useMarketplaceFilter();
+  // This page is Shopify-only — an Amazon channel selected globally has no
+  // meaning here, so treat it as "all" rather than sending an incompatible
+  // value to the Shopify stats endpoint or leaving the <select> in an
+  // unmatched state.
+  const marketplace = isAmazonChannel(globalMarketplace) ? "all" : globalMarketplace;
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("grossRevenue");
   const [sortDir, setSortDir] = useState("desc");

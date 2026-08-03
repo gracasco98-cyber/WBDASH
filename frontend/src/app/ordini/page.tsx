@@ -6,9 +6,15 @@ import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
 import { api } from "@/lib/api";
 import { mergeOrders, UnifiedOrder } from "@/lib/mergeOrders";
 import { isAmazonChannel, amazonChannelCode } from "@/components/dashboard/FilterBar";
+import AmazonAccountGuard from "@/components/amazon/AmazonAccountGuard";
 
-export default function OrdiniPage() {
-  const { marketplace } = useMarketplaceFilter();
+// Data-fetching content, kept in its own component (rather than inline in
+// OrdiniPage) so that wrapping it in <AmazonAccountGuard> actually prevents
+// its Amazon-scoped fetch from firing while no account is selected — a
+// guard only skips rendering of its children, so the fetch must live in a
+// child component to be skipped along with it, not in the page component
+// itself (which the router always renders/invokes regardless of the guard).
+function OrdiniContent({ marketplace }: { marketplace: string }) {
   const [orders, setOrders] = useState<UnifiedOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,6 +50,37 @@ export default function OrdiniPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  if (loading) {
+    return <div className="text-zinc-500 text-sm py-10 text-center">Caricamento…</div>;
+  }
+
+  return (
+    <div className="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
+      <div className="grid grid-cols-6 gap-2 px-4 py-2 border-b border-bg-border text-[10px] text-zinc-600 uppercase tracking-wide">
+        <div>Canale</div><div>Ordine</div><div>Data</div><div>Marketplace</div><div>Totale</div><div>Stato</div>
+      </div>
+      <div className="divide-y divide-bg-border/20">
+        {orders.map(o => (
+          <div key={`${o.channel}-${o.id}`} className="grid grid-cols-6 gap-2 px-4 py-2.5 text-xs text-zinc-300">
+            <div className="capitalize">{o.channel}</div>
+            <div className="font-mono text-[11px]">{o.id}</div>
+            <div>{new Date(o.date).toLocaleDateString("it-IT")}</div>
+            <div>{o.marketplace}</div>
+            <div className="tabular-nums">{o.total.toFixed(2)} {o.currency}</div>
+            <div>{o.status}</div>
+          </div>
+        ))}
+        {orders.length === 0 && (
+          <div className="text-zinc-600 text-xs py-8 text-center">Nessun ordine nel periodo selezionato</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function OrdiniPage() {
+  const { marketplace } = useMarketplaceFilter();
+
   return (
     <div className="min-h-screen bg-bg-base">
       <AppHeader accentColor="primary" />
@@ -52,30 +89,9 @@ export default function OrdiniPage() {
         <div className="flex-1 min-w-0">
           <main className="max-w-[1600px] px-4 md:px-6 py-4 md:py-6 space-y-4">
             <h1 className="text-lg sm:text-xl font-bold text-white">Ordini</h1>
-            {loading ? (
-              <div className="text-zinc-500 text-sm py-10 text-center">Caricamento…</div>
-            ) : (
-              <div className="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
-                <div className="grid grid-cols-6 gap-2 px-4 py-2 border-b border-bg-border text-[10px] text-zinc-600 uppercase tracking-wide">
-                  <div>Canale</div><div>Ordine</div><div>Data</div><div>Marketplace</div><div>Totale</div><div>Stato</div>
-                </div>
-                <div className="divide-y divide-bg-border/20">
-                  {orders.map(o => (
-                    <div key={`${o.channel}-${o.id}`} className="grid grid-cols-6 gap-2 px-4 py-2.5 text-xs text-zinc-300">
-                      <div className="capitalize">{o.channel}</div>
-                      <div className="font-mono text-[11px]">{o.id}</div>
-                      <div>{new Date(o.date).toLocaleDateString("it-IT")}</div>
-                      <div>{o.marketplace}</div>
-                      <div className="tabular-nums">{o.total.toFixed(2)} {o.currency}</div>
-                      <div>{o.status}</div>
-                    </div>
-                  ))}
-                  {orders.length === 0 && (
-                    <div className="text-zinc-600 text-xs py-8 text-center">Nessun ordine nel periodo selezionato</div>
-                  )}
-                </div>
-              </div>
-            )}
+            <AmazonAccountGuard>
+              <OrdiniContent marketplace={marketplace} />
+            </AmazonAccountGuard>
           </main>
         </div>
       </div>
