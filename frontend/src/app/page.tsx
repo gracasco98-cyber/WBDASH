@@ -292,9 +292,9 @@ export default function DashboardPage() {
         }
         rightExtras={
           <>
-            <div className="hidden sm:block"><SyncStatus /></div>
+            <div className="hidden xl:block"><SyncStatus /></div>
             {/* Live clock */}
-            <div className="hidden md:flex items-center gap-2 text-xs text-zinc-500">
+            <div className="hidden xl:flex items-center gap-2 text-xs text-zinc-500">
               <div className="live-dot w-1.5 h-1.5 rounded-full bg-accent-primary" />
               <span>{clockTime.toLocaleTimeString("it-IT")}</span>
             </div>

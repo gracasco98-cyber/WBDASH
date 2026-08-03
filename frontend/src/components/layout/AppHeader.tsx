@@ -29,7 +29,7 @@ export default function AppHeader({
 
   return (
     <>
-      <header className="border-b border-bg-border px-3 md:px-5 flex items-center justify-between sticky top-0 z-40 bg-bg-base/95 backdrop-blur-sm h-[57px]">
+      <header className="border-b border-bg-border px-3 md:px-5 flex items-center sticky top-0 z-40 bg-bg-base/95 backdrop-blur-sm h-[57px]">
 
         {/* ── Logo ─────────────────────────────────────────────────────── */}
         <div
@@ -47,15 +47,20 @@ export default function AppHeader({
           </span>
         </div>
 
-        {/* ── Center slot — ONLY on md+ (hidden on mobile, shown in drawer) ── */}
+        {/* ── Center slot — ONLY on md+ (hidden on mobile, shown in drawer).
+             flex-1 + min-w-0 so it shares space with the logo/right cluster
+             instead of floating absolutely-centered over them — the right
+             cluster grew (account + marketplace selectors are now always
+             visible here), which made the old absolute-centered slot
+             overlap it on common viewport widths. ── */}
         {centerContent && (
-          <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center pointer-events-auto">
+          <div className="hidden md:flex flex-1 min-w-0 items-center justify-center overflow-x-auto scrollbar-hide px-2">
             {centerContent}
           </div>
         )}
 
         {/* ── Right cluster ─────────────────────────────────────────────── */}
-        <div className="flex items-center gap-1 md:gap-2 ml-auto">
+        <div className="flex items-center gap-1 md:gap-2 ml-auto shrink-0">
 
           <MarketplaceFilterSelector />
           <AmazonAccountSelector />
