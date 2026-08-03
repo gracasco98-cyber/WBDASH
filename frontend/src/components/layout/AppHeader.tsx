@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { Bell, Menu, X } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
 import { UserMenu } from "@/components/auth/UserMenu";
+import AmazonAccountSelector from "@/components/amazon/AmazonAccountSelector";
+import MarketplaceFilterSelector from "@/components/layout/MarketplaceFilterSelector";
 
 interface AppHeaderProps {
   accentColor?: "primary" | "amber";
@@ -54,6 +56,9 @@ export default function AppHeader({
 
         {/* ── Right cluster ─────────────────────────────────────────────── */}
         <div className="flex items-center gap-1 md:gap-2 ml-auto">
+
+          <MarketplaceFilterSelector />
+          <AmazonAccountSelector />
 
           {/* Page-specific extras (SyncStatus, clock, refresh) — hidden on mobile via own classes */}
           {rightExtras}
