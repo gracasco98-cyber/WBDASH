@@ -12,6 +12,7 @@ import {
   Calendar, SlidersHorizontal, ExternalLink,
 } from "lucide-react";
 import { fmtEur, fmtNum } from "@/lib/fmt";
+import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -679,7 +680,7 @@ function SettlementWidget({ dashData, loading }: { dashData: AmazonDashboardResp
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function AmazonOverviewPage() {
-  const [marketplace, setMarketplace] = useState("all");
+  const { marketplace, setMarketplace } = useMarketplaceFilter();
   const [activeView, setActiveView] = useState<DashboardView>("tiles");
   const [period, setPeriod] = useState<Period>("today");
   const [customFrom, setCustomFrom] = useState(() => {

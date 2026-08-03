@@ -13,6 +13,7 @@ import { RefreshCw, Search, BarChart2, Package } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import { getMeta } from "@/lib/marketplaces";
+import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
 
 const MARKETPLACES = [
   "all", "REDCARE_IT", "REDCARE_DE", "TEMU_IT", "TEMU_ES", "TEMU_FR", "TEMU_DE",
@@ -35,7 +36,7 @@ export default function ProductsPage() {
 
   // Products tab state
   const [filter, setFilter] = useState("last30");
-  const [marketplace, setMarketplace] = useState("all");
+  const { marketplace, setMarketplace } = useMarketplaceFilter();
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("grossRevenue");
   const [sortDir, setSortDir] = useState("desc");
