@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
-import { apiUrl } from "@/lib/api/client";
+import { api } from "@/lib/api";
 import { mergeOrders, UnifiedOrder } from "@/lib/mergeOrders";
 import { isAmazonChannel, amazonChannelCode } from "@/components/dashboard/FilterBar";
 
@@ -24,18 +24,14 @@ export default function OrdiniPage() {
       const shopifyParams: Record<string, string> = { filter: "last30", limit: "100" };
       if (!isAmazonChannel(marketplace) && marketplace !== "all") shopifyParams.marketplace = marketplace;
 
-      // Real mounted paths (verified against backend/src/server.ts +
-      // backend/src/amazon/routes/index.ts): amazonRouter is mounted at
-      // "/api/amazon" and orders.routes.ts registers "/orders" on it, giving
-      // "/api/amazon/orders" — NOT "/api/amazon/orders/orders" as the task
-      // brief assumed.
+      // api.amazon.orders / api.orders wrap GET /api/amazon/orders and
+      // GET /api/stats/orders respectively via the shared get<T>() helper
+      // (lib/api/client.ts), which redirects to /login on 401 and throws on
+      // any non-2xx — unlike a raw fetch(), which would otherwise silently
+      // resolve an auth/error response into an empty order list.
       const [amazonRes, shopifyRes] = await Promise.all([
-        includeAmazon
-          ? fetch(apiUrl("/api/amazon/orders", amazonParams), { credentials: "include" }).then(r => r.json())
-          : Promise.resolve({ orders: [] }),
-        includeShopify
-          ? fetch(apiUrl("/api/stats/orders", shopifyParams), { credentials: "include" }).then(r => r.json())
-          : Promise.resolve({ orders: [] }),
+        includeAmazon ? api.amazon.orders(amazonParams) : Promise.resolve({ orders: [] }),
+        includeShopify ? api.orders(shopifyParams) : Promise.resolve({ orders: [] }),
       ]);
 
       setOrders(mergeOrders(amazonRes.orders ?? [], shopifyRes.orders ?? []));
