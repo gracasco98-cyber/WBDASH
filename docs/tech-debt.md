@@ -360,6 +360,25 @@ I file sotto sono **sopra i limiti documentati** in CONTRIBUTING.md ma **non in 
 
 ---
 
+## G. Riorganizzazione menu/navigazione (2026-08-03)
+
+Sidebar riorganizzata per area di business (Finance/Inventory/Marketing/Supporto/Admin) invece che per canale (Amazon/Marketplace). Spec: `docs/superpowers/specs/2026-08-03-nav-reorg-design.md`. Filtro Marketplace promosso da stato locale-per-pagina a `MarketplaceFilterContext` globale (stesso pattern di `AmazonAccountContext`). Due nuove pagine cross-channel: `/prodotti` (riusa `CrossChannelProducts` esistente), `/ordini` (nuova, unisce `/api/amazon/orders` + `/api/stats/orders` via `mergeOrders()`).
+
+### G.1 — Bug trovati con verifica in browser (chrome-devtools), non dai test automatici
+
+- **`mergeOrders.ts` leggeva nomi di campo mai esistiti**: la spec/piano assumeva `orderTotal`/`totalPrice`, ma i modelli Prisma reali sono `AmazonOrder.itemTotal`/`ShopifyOrder.totalAmount` — ogni chiamata reale avrebbe prodotto `NaN`. Scoperto dall'agente che implementava la pagina Ordini (che aveva aggirato il problema localmente), corretto alla fonte in `mergeOrders.ts` e nei suoi test.
+- **Endpoint Amazon ordini sbagliato nel piano**: `/api/amazon/orders/orders` non esiste, il path reale è `/api/amazon/orders` (verificato su `amazon/routes/index.ts` + `orders.routes.ts`).
+- **Pagina Ordini usava `fetch()` grezzo invece di `api.amazon.orders()`/`api.orders()`**: bypassava la gestione centralizzata di 401 (redirect a `/login`) e errori non-2xx — un fallimento di sessione sarebbe silenziosamente diventato una lista ordini vuota. Corretto usando gli helper tipizzati già esistenti.
+- **Hydration mismatch in `MarketplaceFilterContext`**: leggeva `localStorage` in modo sincrono nell'inizializzatore di `useState`, causando un disallineamento tra il render server (SSR non vede mai `localStorage`) e il primo render client — errore "Text content does not match server-rendered HTML", l'intera pagina passava a client-rendering. Corretto con lo stesso pattern già usato da `AmazonAccountContext`: valore di default sicuro per SSR, adozione del valore reale in un effect post-mount.
+- **Sovrapposizione visiva nell'header**: `AppHeader`'s `centerContent` (gli switcher Tiles/Chart/P&L/Trends della dashboard root) era posizionato `absolute` centrato sull'intera larghezza, ignorando i fratelli — aggiungendo i due nuovi selettori sempre visibili (marketplace + account), il cluster destro si è allargato abbastanza da sovrapporsi al centro a larghezze desktop comuni (testato a 1200px). Corretto con un layout flex a 3 colonne (logo/centro flessibile con scroll orizzontale/cluster destro), e spostati due elementi a priorità più bassa (stato sync, orologio) da `sm:`/`md:` a `xl:` per lasciare spazio.
+
+### G.2 — Bug pre-esistenti scoperti durante la verifica, non corretti (fuori scope)
+
+- **Hydration mismatch dell'orologio**: `frontend/src/app/page.tsx` inizializza `clockTime`/`lastRefresh` con `useState(new Date())`, che differisce quasi certamente tra il render server e l'hydration client — probabile causa residua di "Text content does not match server-rendered HTML" osservato ancora dopo il fix di G.1 (verificato: il file su `develop`, prima di questo branch, ha già questo pattern — non introdotto dalla riorganizzazione menu). Da affrontare separatamente (es. `suppressHydrationWarning` sul nodo orologio, o inizializzare a `null` finché non monta).
+- **Sovrapposizione visiva minore nella tabella Prodotti Cross-Channel**: nella vista `/prodotti`, il numero vendite (es. "885,10") si sovrappone leggermente al testo ASIN nella riga prodotto. Componente `CrossChannelProducts`/`AggregatedProductsView`, non toccato da questa riorganizzazione — quirk di stile pre-esistente.
+
+---
+
 ## Voci risolte
 
 - **NA region non multi-account** (era in F.3): `AmazonAccount` ha ora un secondo campo cifrato `spApiRefreshTokenNA`; `token.service.ts`'s `getSpApiTokenNA()`/`hasNACredentials()` leggono dall'account corrente invece che da `AMAZON_US_REFRESH_TOKEN`. Fix in `feature/multi-account-remaining-gaps`, 2026-07-31.
