@@ -1,14 +1,18 @@
 // server.ts — Express entry point
+//
+// dotenv must load before any other import: `./db` reads process.env.DATABASE_URL
+// at module-load time to construct `pgPool` (a plain `pg.Pool`, not lazy like
+// Prisma), so if dotenv.config() ran after that import, pgPool would capture
+// `undefined` and connect-pg-simple would fall back to Postgres' default
+// database (the OS username) — every session-touching route then 500s.
+import "dotenv/config";
+
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { prisma, pgPool } from "./db";
 import rateLimit from "express-rate-limit";
-
-dotenv.config();
-
 import { handleWebhook } from "./webhooks/webhooks";
 import statsRouter from "./routes/stats.routes";
 import productsRouter from "./routes/products.routes";
