@@ -6,6 +6,7 @@ import {
   getConfiguredProfiles,
   fetchSPCampaignReport,
   fetchSPKeywordReport,
+  fetchSPAdvertisedProductReport,
   listSPCampaigns,
   listSPAdGroups,
   listSPKeywords,
@@ -15,6 +16,7 @@ import {
   SpAdGroup,
   SpKeyword,
 } from "./ads-api.service";
+import { upsertAdvertisedProductSnapshot } from "../repositories/amazon/ad-spend.repo";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function dateStr(d: Date): string {
@@ -213,6 +215,51 @@ export async function syncAdsDaily(): Promise<void> {
     await sleep(2000);
   }
   console.log("[Ads Sync] Daily sync complete");
+}
+
+/**
+ * Daily sync for per-ASIN Sponsored Products spend/sales, one report call
+ * per configured profile. Persists to AmazonAdvertisedProductSnapshot so
+ * request-time reads (products/performance route) never call the Ads API
+ * directly — that report can take up to 45 minutes to generate.
+ */
+export async function syncAdvertisedProductDaily(): Promise<void> {
+  if (!(await isAdsConfigured())) {
+    console.log("[Ads Sync] Advertising API not configured — skipping advertised-product sync");
+    return;
+  }
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const date = dateStr(yesterday);
+
+  const profiles = await getConfiguredProfiles();
+  console.log(`[Ads Sync] Advertised-product daily sync for ${date} — ${profiles.length} marketplaces`);
+
+  for (const profile of profiles) {
+    try {
+      const rows = await fetchSPAdvertisedProductReport(profile.profileId, date, date);
+      for (const row of rows) {
+        if (!row.advertisedAsin) continue;
+        await upsertAdvertisedProductSnapshot(prisma, {
+          snapshotDate: new Date(date),
+          marketplace: profile.marketplace,
+          asin: row.advertisedAsin,
+          campaignId: row.campaignId,
+          spend: row.spend,
+          sales: row.sales,
+          impressions: row.impressions,
+          clicks: row.clicks,
+          orders: row.orders,
+        });
+      }
+      console.log(`[Ads Sync] ${profile.marketplace} advertised-product — saved ${rows.length} rows`);
+      await sleep(2000);
+    } catch (err) {
+      console.error(`[Ads Sync] ${profile.marketplace} advertised-product sync failed:`, err);
+    }
+  }
+  console.log("[Ads Sync] Advertised-product daily sync complete");
 }
 
 /**

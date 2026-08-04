@@ -6,7 +6,7 @@ import { fetchOrderReport } from "./sp-api.service";
 import { parseTsv, ingestOrderRows, IngestStats } from "./ingest.service";
 import { runAmazonSnapshotJob, computeAllAmazonHistoricalSnapshots } from "./snapshot.service";
 import { syncSettlementReports } from "./settlement.service";
-import { syncAdsDaily, syncAdsBackfill, refreshLiveCampaignCache, syncKeywordMetrics, syncAdsCatchUp } from "./ads-sync.service";
+import { syncAdsDaily, syncAdsBackfill, refreshLiveCampaignCache, syncKeywordMetrics, syncAdsCatchUp, syncAdvertisedProductDaily } from "./ads-sync.service";
 import { reconcileForecastSnapshots, computeAndSaveForecasts } from "./forecast";
 import { broadcast } from "../sse/sse";
 import { createSyncJob, finishSyncJob } from "../repositories/amazon/sync-jobs.repo";
@@ -337,6 +337,18 @@ export function startAmazonSnapshotPolling(): void {
   setTimeout(() => {
     forEachActiveAccount("ads daily sync", syncAdsDaily).catch(console.error);
   }, 90_000);
+
+  // ── Advertised-product (per-ASIN ad spend) sync: every 24h ──────────────
+  setInterval(() => {
+    console.log("[Amazon Sync] Running scheduled advertised-product sync...");
+    forEachActiveAccount("advertised-product sync", syncAdvertisedProductDaily).catch(console.error);
+  }, 24 * 3_600_000);
+
+  // Advertised-product sync: run 100s after startup (staggered after the
+  // 90s ads daily sync above, avoiding both hitting the Ads API at once)
+  setTimeout(() => {
+    forEachActiveAccount("advertised-product sync", syncAdvertisedProductDaily).catch(console.error);
+  }, 100_000);
 
   // ── Keyword metrics sync: every 3 hours ──────────────────────────────────
   setInterval(() => {
