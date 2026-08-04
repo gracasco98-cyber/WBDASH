@@ -130,6 +130,42 @@ describe("resolveProductPerformance", () => {
         marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
       });
       expect(groups[0].rows[0].stock).toBe(184);
+      expect(groups[0].rows[0].hasStockData).toBe(true);
+    });
+  });
+
+  it("hasStockData is false (with stock 0) when no inventory row exists for the identifier", async () => {
+    await runWithAccount(accountId, async () => {
+      await seedOneProductWithSales();
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      // "we never received an inventory row" must stay distinguishable from
+      // "we checked and there are zero units" — the UI renders the former as "—".
+      expect(groups[0].rows[0].hasStockData).toBe(false);
+      expect(groups[0].rows[0].stock).toBe(0);
+      expect(groups[0].aggregate.hasStockData).toBe(false);
+    });
+  });
+
+  it("aggregate hasStockData is true only when every identifier row has inventory data", async () => {
+    await runWithAccount(accountId, async () => {
+      const product = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-IT" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "DE", asin: "B0ABC123", sku: "SKU-RSV-DE" });
+      await upsertAmazonInventory(db.prisma, {
+        asin: "B0ABC123", sku: "SKU-RSV-IT", marketplace: "IT",
+        qtyAfn: 50, qtyMfn: 0, qtyInbound: 0, qtyReserved: 0, qtyTotal: 50,
+        reorderPoint: 0, reorderQty: 0, leadTimeDays: 30,
+      });
+
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const group = groups.find((g) => g.product.id === product.id)!;
+      expect(group.rows.find((r) => r.marketplace === "IT")!.hasStockData).toBe(true);
+      expect(group.rows.find((r) => r.marketplace === "DE")!.hasStockData).toBe(false);
+      expect(group.aggregate.hasStockData).toBe(false);
     });
   });
 

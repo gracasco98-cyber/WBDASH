@@ -21,7 +21,7 @@ vi.mock("@/lib/api", () => ({
 const baseRow = {
   identifierId: "ident-1", asin: "B0ABC123", marketplace: "IT", sku: "SKU-RSV-01",
   units: 10, sales: 200, promo: 5, refundsAmount: 2, refundsCount: 1, refundPct: 0.01,
-  adsSpend: 8, realAcos: 0.04, amazonFees: 35, hasRealFees: true, hasRealCogs: true, cogs: 45, stock: 184,
+  adsSpend: 8, realAcos: 0.04, amazonFees: 35, hasRealFees: true, hasRealCogs: true, cogs: 45, stock: 184, hasStockData: true,
   grossProfit: 110, netProfit: 110, estimatedPayout: 155, margin: 0.55, roi: 2.44,
   avgSellingPrice: 20, bsr: null,
 };
@@ -77,7 +77,7 @@ describe("ProductsPerformanceTable", () => {
     expect(dashes.length).toBeGreaterThanOrEqual(3); // ads, acos, bsr
   });
 
-  it("shows an estimated-data badge on Fee Amazon and COGS when hasRealFees/hasRealCogs are false", async () => {
+  it("propagates the estimated-data badge to every cell derived from fee/COGS estimates", async () => {
     const estimatedRow = { ...baseRow, hasRealFees: false, hasRealCogs: false };
     const estimatedGroups: ProductPerformanceGroup[] = [
       {
@@ -88,11 +88,35 @@ describe("ProductsPerformanceTable", () => {
     ];
     const user = userEvent.setup();
     render(<ProductsPerformanceTable groups={estimatedGroups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
-    // Parent row: Fee Amazon + COGS badges (2)
-    expect(screen.getAllByText("≈")).toHaveLength(2);
+    // Parent row: Fee Amazon + COGS, plus the 4 cells derived from them
+    // (grossProfit, netProfit, margin, roi) = 6 badges.
+    expect(screen.getAllByText("≈")).toHaveLength(6);
+    expect(screen.getAllByTitle("Calcolato su fee/COGS parzialmente stimati")).toHaveLength(4);
     await user.click(screen.getByRole("button", { name: /espandi resveratrolo 500mg/i }));
-    // Expanded child row adds its own Fee Amazon + COGS badges (2 more, 4 total)
-    expect(screen.getAllByText("≈")).toHaveLength(4);
+    // The expanded child row adds its own 6, for 12 total.
+    expect(screen.getAllByText("≈")).toHaveLength(12);
+    expect(screen.getAllByTitle("Calcolato su fee/COGS parzialmente stimati")).toHaveLength(8);
+  });
+
+  it("badges derived cells when only fees are estimated (COGS real), and none when both are real", () => {
+    const feesOnly = { ...baseRow, hasRealFees: false, hasRealCogs: true };
+    const { rerender } = render(
+      <ProductsPerformanceTable groups={[{ product: { id: "p1", name: "X", brand: null }, rows: [feesOnly], aggregate: feesOnly }]} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />
+    );
+    // Fee Amazon badge + the 4 derived badges — COGS itself stays unbadged.
+    expect(screen.getAllByText("≈")).toHaveLength(5);
+
+    rerender(
+      <ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />
+    );
+    expect(screen.queryAllByText("≈")).toHaveLength(0);
+  });
+
+  it("shows '—' for stock when the backend has no inventory data for the row", () => {
+    const noStock = { ...baseRow, stock: 0, hasStockData: false, adsSpend: 8, realAcos: 0.04, bsr: 12 };
+    render(<ProductsPerformanceTable groups={[{ product: { id: "p1", name: "X", brand: null }, rows: [noStock], aggregate: noStock }]} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    // Ads/ACOS/BSR are all populated here, so the only "—" is the stock cell.
+    expect(screen.getAllByText("—")).toHaveLength(1);
   });
 
   it("renders a fetched thumbnail on the child row for a resolved ASIN", async () => {

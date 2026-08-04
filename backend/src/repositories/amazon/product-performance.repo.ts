@@ -27,6 +27,9 @@ export interface ProductPerformanceRow {
   hasRealCogs: boolean;
   cogs: number;
   stock: number;
+  /** False when no AmazonInventory row exists for this identifier, so `stock: 0`
+   *  means "unknown" rather than "checked, zero units". The UI renders "—". */
+  hasStockData: boolean;
   grossProfit: number;
   netProfit: number;
   estimatedPayout: number;
@@ -188,6 +191,7 @@ export async function resolveProductPerformance(
         hasRealCogs,
         cogs,
         stock: stockByKey.get(key) ?? 0,
+        hasStockData: stockByKey.has(key),
         bsr: null, // AmazonProductSnapshot.bsr exists but is never populated (spec §Scope, out of scope)
         ...derived,
       };
@@ -212,8 +216,9 @@ export async function resolveProductPerformance(
         // start at `true` for this to combine correctly across the reduce.
         hasRealFees: acc.hasRealFees && r.hasRealFees,
         hasRealCogs: acc.hasRealCogs && r.hasRealCogs,
+        hasStockData: acc.hasStockData && r.hasStockData,
       }),
-      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, adsSpend: null as number | null, hasAnyAds: false, hasRealFees: true, hasRealCogs: true }
+      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, adsSpend: null as number | null, hasAnyAds: false, hasRealFees: true, hasRealCogs: true, hasStockData: true }
     );
 
     const aggDerived = deriveMetrics({
@@ -228,7 +233,8 @@ export async function resolveProductPerformance(
       refundPct: aggBase.sales > 0 ? aggBase.refundsAmount / aggBase.sales : 0,
       adsSpend: aggBase.hasAnyAds ? aggBase.adsSpend : null,
       realAcos: aggBase.hasAnyAds && aggBase.adsSpend !== null && aggBase.sales > 0 ? aggBase.adsSpend / aggBase.sales : null,
-      amazonFees: aggBase.amazonFees, hasRealFees: aggBase.hasRealFees, hasRealCogs: aggBase.hasRealCogs, cogs: aggBase.cogs, stock: aggBase.stock,
+      amazonFees: aggBase.amazonFees, hasRealFees: aggBase.hasRealFees, hasRealCogs: aggBase.hasRealCogs,
+      cogs: aggBase.cogs, stock: aggBase.stock, hasStockData: aggBase.hasStockData,
       ...aggDerived,
     };
 

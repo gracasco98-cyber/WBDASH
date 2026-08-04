@@ -2,6 +2,7 @@
 import { useState, useEffect, Fragment } from "react";
 import type { ProductPerformanceGroup, ProductPerformanceRow } from "@/lib/api";
 import { api } from "@/lib/api";
+import MetricRow from "./MetricRow";
 
 export type GroupBy = "marketplace" | "product";
 
@@ -18,10 +19,11 @@ const MARKETPLACE_LABEL: Record<string, string> = {
   UK: "Amazon.co.uk", PL: "Amazon.pl", NL: "Amazon.nl", SE: "Amazon.se", BE: "Amazon.com.be",
 };
 
-const fmtEur = (n: number) => `€ ${n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const fmtPct = (n: number) => `${(n * 100).toLocaleString("it-IT", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
-const dash = (v: number | null, fmt: (n: number) => string) => (v === null ? "—" : fmt(v));
-const profitColor = (n: number) => (n < 0 ? "#dc2626" : "#0d9488");
+const COLUMNS = [
+  "Marketplace / Prodotto", "Unità", "Resi", "Ricavi", "Promo", "Ads", "% Resi",
+  "Fee Amazon", "COGS", "Profitto lordo", "Profitto netto", "Payout stimato",
+  "Margine", "ROI", "BSR", "Prezzo medio", "ACOS reale", "Stock",
+];
 
 interface RowEntry {
   key: string;
@@ -69,6 +71,7 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
       identifierId: "", asin: "", marketplace: mp, sku: null, bsr: null,
       hasRealFees: rows.every((r) => r.hasRealFees),
       hasRealCogs: rows.every((r) => r.hasRealCogs),
+      hasStockData: rows.every((r) => r.hasStockData),
       refundPct: sum.sales > 0 ? sum.refundsAmount / sum.sales : 0,
       realAcos: sum.adsSpend !== null && sum.sales > 0 ? sum.adsSpend / sum.sales : null,
       margin: sum.sales > 0 ? sum.netProfit / sum.sales : 0,
@@ -86,10 +89,6 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
       }),
     };
   });
-}
-
-function MetricCell({ children }: { children: React.ReactNode }) {
-  return <td style={{ padding: "9px 10px" }}>{children}</td>;
 }
 
 export default function ProductsPerformanceTable({ groups, groupBy, onGroupByChange, onRenamed, onMoved }: Props) {
@@ -139,16 +138,64 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
     }
   };
 
+  const parentLabel = (entry: RowEntry, isOpen: boolean) => (
+    <>
+      <button
+        aria-label={`Espandi ${entry.label}`}
+        onClick={() => toggle(entry.key)}
+        className="bg-transparent border-none cursor-pointer flex items-center gap-1.5 text-inherit"
+      >
+        <span>{isOpen ? "▾" : "›"}</span> {entry.label}
+      </button>
+      {groupBy === "product" && (
+        <button title="Rinomina" onClick={() => handleRename(entry.key, entry.label)} className="ml-1.5 bg-transparent border-none cursor-pointer text-zinc-500 hover:text-zinc-300 transition-colors">
+          ✎
+        </button>
+      )}
+    </>
+  );
+
+  const childLabel = (child: { key: string; label: string; metrics: ProductPerformanceRow }) => (
+    <>
+      <div className="ml-5 flex items-center gap-2">
+        {images[child.metrics.asin] ? (
+          <img src={images[child.metrics.asin]!} alt="" className="w-[22px] h-[22px] rounded-[5px] object-cover shrink-0" />
+        ) : (
+          <div className="w-[22px] h-[22px] rounded-[5px] bg-bg-hover shrink-0" />
+        )}
+        <span className="ml-1 text-zinc-500">↳ {child.label} — <span>{child.metrics.asin}</span></span>
+      </div>
+      {groupBy === "product" && (
+        <button onClick={() => setMovingId(child.key)} className="ml-2 text-[10px] text-accent-blue bg-transparent border-none cursor-pointer underline">
+          Sposta in un altro prodotto…
+        </button>
+      )}
+      {movingId === child.key && (
+        <span className="ml-2">
+          <input
+            aria-label="ID prodotto destinazione"
+            value={targetProductId}
+            onChange={(e) => setTargetProductId(e.target.value)}
+            placeholder="ID prodotto destinazione"
+            className="text-[10px] w-40 bg-bg-base border border-bg-border rounded px-1 py-0.5 text-zinc-300"
+          />
+          <button onClick={() => handleMove(child.metrics.identifierId)} className="text-[10px] ml-1 text-zinc-300 hover:text-white">OK</button>
+        </span>
+      )}
+    </>
+  );
+
   return (
-    <div style={{ background: "#f4f5f7", borderRadius: 10, border: "1px solid #ddd", color: "#1a1a1a" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px" }}>
-        <span style={{ fontSize: 12, color: "#6b7280" }}>▤ Prodotti</span>
-        <label style={{ fontSize: 12, color: "#374151" }}>
+    <div className="bg-bg-card rounded-[10px] border border-bg-border text-zinc-300">
+      <div className="flex justify-between items-center px-4 py-3">
+        <span className="text-xs text-zinc-500">▤ Prodotti</span>
+        <label className="text-xs text-zinc-400">
           Raggruppa per{" "}
           <select
             aria-label="Raggruppa per"
             value={groupBy}
             onChange={(e) => onGroupByChange(e.target.value as GroupBy)}
+            className="bg-bg-hover border border-bg-border rounded px-1.5 py-0.5 text-zinc-300"
           >
             <option value="marketplace">Marketplace</option>
             <option value="product">Prodotto</option>
@@ -156,137 +203,21 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
         </label>
       </div>
 
-      <div style={{ overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: "0 0 8px 8px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
+      <div className="overflow-x-auto border-t border-bg-border rounded-b-lg">
+        <table className="w-full border-collapse text-[11.5px]">
           <thead>
-            <tr style={{ color: "#6b7280", textAlign: "left", background: "#fafafa", borderBottom: "1px solid #e5e7eb" }}>
-              <th style={{ padding: "9px 10px" }}>Marketplace / Prodotto</th>
-              <th style={{ padding: "9px 10px" }}>Unità</th>
-              <th style={{ padding: "9px 10px" }}>Resi</th>
-              <th style={{ padding: "9px 10px" }}>Ricavi</th>
-              <th style={{ padding: "9px 10px" }}>Promo</th>
-              <th style={{ padding: "9px 10px" }}>Ads</th>
-              <th style={{ padding: "9px 10px" }}>% Resi</th>
-              <th style={{ padding: "9px 10px" }}>Fee Amazon</th>
-              <th style={{ padding: "9px 10px" }}>COGS</th>
-              <th style={{ padding: "9px 10px" }}>Profitto lordo</th>
-              <th style={{ padding: "9px 10px" }}>Profitto netto</th>
-              <th style={{ padding: "9px 10px" }}>Payout stimato</th>
-              <th style={{ padding: "9px 10px" }}>Margine</th>
-              <th style={{ padding: "9px 10px" }}>ROI</th>
-              <th style={{ padding: "9px 10px" }}>BSR</th>
-              <th style={{ padding: "9px 10px" }}>Prezzo medio</th>
-              <th style={{ padding: "9px 10px" }}>ACOS reale</th>
-              <th style={{ padding: "9px 10px" }}>Stock</th>
+            <tr className="text-zinc-500 text-left bg-bg-hover border-b border-bg-border">
+              {COLUMNS.map((c) => <th key={c} className="px-2.5 py-2.5 font-medium">{c}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((entry) => {
               const isOpen = expanded.has(entry.key);
-              const m = entry.metrics;
               return (
                 <Fragment key={entry.key}>
-                  <tr style={{ borderBottom: "1px solid #f0f0f1" }}>
-                    <MetricCell>
-                      <button
-                        aria-label={`Espandi ${entry.label}`}
-                        onClick={() => toggle(entry.key)}
-                        style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
-                      >
-                        <span>{isOpen ? "▾" : "›"}</span> {entry.label}
-                      </button>
-                      {groupBy === "product" && (
-                        <button
-                          title="Rinomina"
-                          onClick={() => handleRename(entry.key, entry.label)}
-                          style={{ marginLeft: 6, background: "none", border: "none", cursor: "pointer", color: "#9ca3af" }}
-                        >
-                          ✎
-                        </button>
-                      )}
-                    </MetricCell>
-                    <MetricCell>{m.units}</MetricCell>
-                    <MetricCell>{fmtEur(m.refundsAmount)}</MetricCell>
-                    <MetricCell>{fmtEur(m.sales)}</MetricCell>
-                    <MetricCell>{fmtEur(m.promo)}</MetricCell>
-                    <MetricCell>{dash(m.adsSpend, fmtEur)}</MetricCell>
-                    <MetricCell>{fmtPct(m.refundPct)}</MetricCell>
-                    <MetricCell>
-                      {fmtEur(m.amazonFees)}
-                      {!m.hasRealFees && <span title="Stimato — settlement non ancora disponibile" style={{ color: "#f59e0b", fontSize: 9, marginLeft: 3 }}>≈</span>}
-                    </MetricCell>
-                    <MetricCell>
-                      {fmtEur(m.cogs)}
-                      {!m.hasRealCogs && <span title="Stimato — nessun COGS configurato per questo ASIN" style={{ color: "#f59e0b", fontSize: 9, marginLeft: 3 }}>≈</span>}
-                    </MetricCell>
-                    <MetricCell><span style={{ color: profitColor(m.grossProfit), fontWeight: 600 }}>{fmtEur(m.grossProfit)}</span></MetricCell>
-                    <MetricCell><span style={{ color: profitColor(m.netProfit), fontWeight: 600 }}>{fmtEur(m.netProfit)}</span></MetricCell>
-                    <MetricCell>{fmtEur(m.estimatedPayout)}</MetricCell>
-                    <MetricCell><span style={{ color: profitColor(m.margin), fontWeight: 600 }}>{fmtPct(m.margin)}</span></MetricCell>
-                    <MetricCell><span style={{ color: profitColor(m.roi), fontWeight: 600 }}>{fmtPct(m.roi)}</span></MetricCell>
-                    <MetricCell>{dash(m.bsr, (n) => String(n))}</MetricCell>
-                    <MetricCell>{fmtEur(m.avgSellingPrice)}</MetricCell>
-                    <MetricCell>{dash(m.realAcos, fmtPct)}</MetricCell>
-                    <MetricCell>{m.stock}</MetricCell>
-                  </tr>
+                  <MetricRow label={parentLabel(entry, isOpen)} metrics={entry.metrics} />
                   {isOpen && entry.children?.map((child) => (
-                    <tr key={child.key} style={{ background: "#f9fafb" }}>
-                      <MetricCell>
-                        <div style={{ marginLeft: 20, display: "flex", alignItems: "center", gap: 8 }}>
-                          {images[child.metrics.asin] ? (
-                            <img src={images[child.metrics.asin]!} alt="" style={{ width: 22, height: 22, borderRadius: 5, objectFit: "cover", flexShrink: 0 }} />
-                          ) : (
-                            <div style={{ width: 22, height: 22, borderRadius: 5, background: "#eef0ff", flexShrink: 0 }} />
-                          )}
-                          <span style={{ marginLeft: 4, color: "#6b7280" }}>
-                            ↳ {child.label} — <span>{child.metrics.asin}</span>
-                          </span>
-                        </div>
-                        {groupBy === "product" && (
-                          <button
-                            onClick={() => setMovingId(child.key)}
-                            style={{ marginLeft: 8, fontSize: 10, color: "#2563eb", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
-                          >
-                            Sposta in un altro prodotto…
-                          </button>
-                        )}
-                        {movingId === child.key && (
-                          <span style={{ marginLeft: 8 }}>
-                            <input
-                              aria-label="ID prodotto destinazione"
-                              value={targetProductId}
-                              onChange={(e) => setTargetProductId(e.target.value)}
-                              placeholder="ID prodotto destinazione"
-                              style={{ fontSize: 10, width: 160 }}
-                            />
-                            <button onClick={() => handleMove(child.metrics.identifierId)} style={{ fontSize: 10, marginLeft: 4 }}>OK</button>
-                          </span>
-                        )}
-                      </MetricCell>
-                      <MetricCell>{child.metrics.units}</MetricCell>
-                      <MetricCell>{fmtEur(child.metrics.refundsAmount)}</MetricCell>
-                      <MetricCell>{fmtEur(child.metrics.sales)}</MetricCell>
-                      <MetricCell>{fmtEur(child.metrics.promo)}</MetricCell>
-                      <MetricCell>{dash(child.metrics.adsSpend, fmtEur)}</MetricCell>
-                      <MetricCell>{fmtPct(child.metrics.refundPct)}</MetricCell>
-                      <MetricCell>
-                        {fmtEur(child.metrics.amazonFees)}
-                        {!child.metrics.hasRealFees && <span title="Stimato — settlement non ancora disponibile" style={{ color: "#f59e0b", fontSize: 9, marginLeft: 3 }}>≈</span>}
-                      </MetricCell>
-                      <MetricCell>
-                        {fmtEur(child.metrics.cogs)}
-                        {!child.metrics.hasRealCogs && <span title="Stimato — nessun COGS configurato per questo ASIN" style={{ color: "#f59e0b", fontSize: 9, marginLeft: 3 }}>≈</span>}
-                      </MetricCell>
-                      <MetricCell><span style={{ color: profitColor(child.metrics.grossProfit), fontWeight: 600 }}>{fmtEur(child.metrics.grossProfit)}</span></MetricCell>
-                      <MetricCell><span style={{ color: profitColor(child.metrics.netProfit), fontWeight: 600 }}>{fmtEur(child.metrics.netProfit)}</span></MetricCell>
-                      <MetricCell>{fmtEur(child.metrics.estimatedPayout)}</MetricCell>
-                      <MetricCell><span style={{ color: profitColor(child.metrics.margin), fontWeight: 600 }}>{fmtPct(child.metrics.margin)}</span></MetricCell>
-                      <MetricCell><span style={{ color: profitColor(child.metrics.roi), fontWeight: 600 }}>{fmtPct(child.metrics.roi)}</span></MetricCell>
-                      <MetricCell>{dash(child.metrics.bsr, (n) => String(n))}</MetricCell>
-                      <MetricCell>{fmtEur(child.metrics.avgSellingPrice)}</MetricCell>
-                      <MetricCell>{dash(child.metrics.realAcos, fmtPct)}</MetricCell>
-                      <MetricCell>{child.metrics.stock}</MetricCell>
-                    </tr>
+                    <MetricRow key={child.key} label={childLabel(child)} metrics={child.metrics} isChild />
                   ))}
                 </Fragment>
               );

@@ -663,6 +663,9 @@ export interface ProductPerformanceRow {
   hasRealCogs: boolean;
   cogs: number;
   stock: number;
+  /** False when the backend has no AmazonInventory row for this identifier —
+   *  `stock: 0` then means "unknown", not "zero units". Rendered as "—". */
+  hasStockData: boolean;
   grossProfit: number;
   netProfit: number;
   estimatedPayout: number;
