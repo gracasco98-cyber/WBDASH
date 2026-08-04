@@ -7,7 +7,7 @@
 // Run manually: npm run seed:products
 import type { PrismaClient } from "@prisma/client";
 import { prisma } from "../db";
-import { createProduct, createIdentifier, findProductsByIdentifierSkus } from "../repositories/amazon/product.repo";
+import { createProduct, createIdentifier, findProductsByIdentifierSkus, findExistingAmazonIdentifierKeys } from "../repositories/amazon/product.repo";
 
 interface DistinctAsinRow {
   asin: string;
@@ -24,11 +24,7 @@ export async function seedProductsFromSku(
     ORDER BY asin, marketplace, "purchaseDate" DESC
   `;
 
-  const existingIdentifiers = await db.productIdentifier.findMany({
-    where: { channelType: "AMAZON" },
-    select: { asin: true, marketplace: true },
-  });
-  const existingKeys = new Set(existingIdentifiers.map((i) => `${i.marketplace}::${i.asin}`));
+  const existingKeys = await findExistingAmazonIdentifierKeys(db);
 
   const skusToGroup = [...new Set(distinctRows.map((r) => r.sku).filter((s): s is string => !!s))];
   const existingProductsBySku = await findProductsByIdentifierSkus(db, skusToGroup);

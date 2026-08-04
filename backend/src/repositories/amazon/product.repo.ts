@@ -148,3 +148,14 @@ export async function renameProduct(
     data: { name: params.name },
   });
 }
+
+/** Existing Amazon identifier keys (marketplace::asin), for the seed script's idempotency check. */
+export async function findExistingAmazonIdentifierKeys(
+  prisma: PrismaClient
+): Promise<Set<string>> {
+  const rows = await prisma.productIdentifier.findMany({
+    where: { channelType: "AMAZON" },
+    select: { asin: true, marketplace: true },
+  });
+  return new Set(rows.map((r) => `${r.marketplace}::${r.asin}`));
+}
