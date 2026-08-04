@@ -40,7 +40,7 @@ async function buildAdsSpendMap(
 productsPerformanceRouter.get("/products/performance", async (req: Request, res: Response) => {
   try {
     const { filter = "last30", from, to, marketplace = "all", productIds } = req.query as Record<string, string>;
-    const range = getDateRange(filter, from, to);
+    const range = getDateRange(from && to ? "custom" : filter, from, to);
     const dateFrom = range.gte ?? new Date(Date.now() - 30 * 86400000);
     const dateTo = range.lte ?? new Date();
 
