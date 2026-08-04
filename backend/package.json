@@ -11,6 +11,7 @@
     "db:seed": "ts-node src/seed.ts",
     "seed:admin": "ts-node src/seed-admin.ts",
     "seed:amazon-account": "ts-node src/seed-amazon-account.ts",
+    "seed:products": "ts-node src/scripts/seed-products-from-sku.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
