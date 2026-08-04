@@ -42,7 +42,7 @@ export async function findAllProducts(
   prisma: PrismaClient,
   params?: { status?: "ACTIVE" | "ARCHIVED" }
 ): Promise<ProductWithIdentifiers[]> {
-  const rows = await (prisma as any).product.findMany({
+  const rows = await prisma.product.findMany({
     where: params?.status ? { status: params.status } : undefined,
     include: { identifiers: true },
     orderBy: { name: "asc" },
@@ -54,7 +54,7 @@ export async function findProductById(
   prisma: PrismaClient,
   id: string
 ): Promise<ProductWithIdentifiers | null> {
-  const row = await (prisma as any).product.findUnique({
+  const row = await prisma.product.findUnique({
     where: { id },
     include: { identifiers: true },
   });
@@ -67,7 +67,7 @@ export async function findProductsByIdentifierSkus(
   skus: string[]
 ): Promise<ProductWithIdentifiers[]> {
   if (skus.length === 0) return [];
-  const rows = await (prisma as any).product.findMany({
+  const rows = await prisma.product.findMany({
     where: { identifiers: { some: { sku: { in: skus } } } },
     include: { identifiers: true },
   });
@@ -78,7 +78,7 @@ export async function createProduct(
   prisma: PrismaClient,
   params: { name: string; brand?: string | null }
 ): Promise<ProductWithIdentifiers> {
-  const row = await (prisma as any).product.create({
+  const row = await prisma.product.create({
     data: { name: params.name, brand: params.brand ?? null },
     include: { identifiers: true },
   });
@@ -95,7 +95,7 @@ export async function createIdentifier(
     sku?: string | null;
   }
 ): Promise<ProductIdentifierRow> {
-  const row = await (prisma as any).productIdentifier.create({
+  const row = await prisma.productIdentifier.create({
     data: {
       productId: params.productId,
       channelType: params.channelType,
@@ -116,32 +116,34 @@ export async function moveIdentifier(
   prisma: PrismaClient,
   params: { identifierId: string; targetProductId: string }
 ): Promise<void> {
-  const identifier = await (prisma as any).productIdentifier.findUniqueOrThrow({
+  const identifier = await prisma.productIdentifier.findUniqueOrThrow({
     where: { id: params.identifierId },
   });
   const sourceProductId = identifier.productId;
 
-  await (prisma as any).productIdentifier.update({
-    where: { id: params.identifierId },
-    data: { productId: params.targetProductId },
-  });
-
-  const remaining = await (prisma as any).productIdentifier.count({
-    where: { productId: sourceProductId },
-  });
-  if (remaining === 0) {
-    await (prisma as any).product.update({
-      where: { id: sourceProductId },
-      data: { status: "ARCHIVED" },
+  await prisma.$transaction(async (tx) => {
+    await tx.productIdentifier.update({
+      where: { id: params.identifierId },
+      data: { productId: params.targetProductId },
     });
-  }
+
+    const remaining = await tx.productIdentifier.count({
+      where: { productId: sourceProductId },
+    });
+    if (remaining === 0) {
+      await tx.product.update({
+        where: { id: sourceProductId },
+        data: { status: "ARCHIVED" },
+      });
+    }
+  });
 }
 
 export async function renameProduct(
   prisma: PrismaClient,
   params: { productId: string; name: string }
 ): Promise<void> {
-  await (prisma as any).product.update({
+  await prisma.product.update({
     where: { id: params.productId },
     data: { name: params.name },
   });
