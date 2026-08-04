@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import SyncStatus from "@/components/dashboard/SyncStatus";
 import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
-import AmazonAccountSelector from "@/components/amazon/AmazonAccountSelector";
 import AmazonAccountGuard from "@/components/amazon/AmazonAccountGuard";
 
 const AMAZON_TABS = [
@@ -42,7 +41,6 @@ export default function AmazonLayout({ children }: { children: React.ReactNode }
         rightExtras={
           <>
             <div className="hidden sm:block"><SyncStatus /></div>
-            <AmazonAccountSelector />
           </>
         }
       />

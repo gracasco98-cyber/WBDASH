@@ -12,6 +12,8 @@ import {
   Calendar, SlidersHorizontal, ExternalLink,
 } from "lucide-react";
 import { fmtEur, fmtNum } from "@/lib/fmt";
+import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
+import { isAmazonChannel, amazonChannelCode } from "@/components/dashboard/FilterBar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -679,7 +681,15 @@ function SettlementWidget({ dashData, loading }: { dashData: AmazonDashboardResp
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function AmazonOverviewPage() {
-  const [marketplace, setMarketplace] = useState("all");
+  const { marketplace: globalMarketplace, setMarketplace: setGlobalMarketplace } = useMarketplaceFilter();
+  // This page speaks the backend's raw Amazon marketplace codes ("IT", "DE", ...),
+  // but the global filter speaks "AMAZON_IT" etc. — translate at this page's boundary
+  // so the ~40 existing internal uses of `marketplace`/`setMarketplace` below need no
+  // changes, and so this page's own pill row doesn't write an incompatible raw code
+  // into shared global state that every other page/component would misinterpret.
+  const marketplace = isAmazonChannel(globalMarketplace) ? amazonChannelCode(globalMarketplace)! : "all";
+  const setMarketplace = (code: string) =>
+    setGlobalMarketplace(code === "all" ? "all" : `AMAZON_${code}`);
   const [activeView, setActiveView] = useState<DashboardView>("tiles");
   const [period, setPeriod] = useState<Period>("today");
   const [customFrom, setCustomFrom] = useState(() => {

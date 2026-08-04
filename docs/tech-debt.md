@@ -360,6 +360,32 @@ I file sotto sono **sopra i limiti documentati** in CONTRIBUTING.md ma **non in 
 
 ---
 
+## G. Riorganizzazione menu/navigazione (2026-08-03)
+
+Sidebar riorganizzata per area di business (Finance/Inventory/Marketing/Supporto/Admin) invece che per canale (Amazon/Marketplace). Spec: `docs/superpowers/specs/2026-08-03-nav-reorg-design.md`. Filtro Marketplace promosso da stato locale-per-pagina a `MarketplaceFilterContext` globale (stesso pattern di `AmazonAccountContext`). Due nuove pagine cross-channel: `/prodotti` (riusa `CrossChannelProducts` esistente), `/ordini` (nuova, unisce `/api/amazon/orders` + `/api/stats/orders` via `mergeOrders()`).
+
+### G.1 — Bug trovati con verifica in browser (chrome-devtools), non dai test automatici
+
+- **`mergeOrders.ts` leggeva nomi di campo mai esistiti**: la spec/piano assumeva `orderTotal`/`totalPrice`, ma i modelli Prisma reali sono `AmazonOrder.itemTotal`/`ShopifyOrder.totalAmount` — ogni chiamata reale avrebbe prodotto `NaN`. Scoperto dall'agente che implementava la pagina Ordini (che aveva aggirato il problema localmente), corretto alla fonte in `mergeOrders.ts` e nei suoi test.
+- **Endpoint Amazon ordini sbagliato nel piano**: `/api/amazon/orders/orders` non esiste, il path reale è `/api/amazon/orders` (verificato su `amazon/routes/index.ts` + `orders.routes.ts`).
+- **Pagina Ordini usava `fetch()` grezzo invece di `api.amazon.orders()`/`api.orders()`**: bypassava la gestione centralizzata di 401 (redirect a `/login`) e errori non-2xx — un fallimento di sessione sarebbe silenziosamente diventato una lista ordini vuota. Corretto usando gli helper tipizzati già esistenti.
+- **Hydration mismatch in `MarketplaceFilterContext`**: leggeva `localStorage` in modo sincrono nell'inizializzatore di `useState`, causando un disallineamento tra il render server (SSR non vede mai `localStorage`) e il primo render client — errore "Text content does not match server-rendered HTML", l'intera pagina passava a client-rendering. Corretto con lo stesso pattern già usato da `AmazonAccountContext`: valore di default sicuro per SSR, adozione del valore reale in un effect post-mount.
+- **Sovrapposizione visiva nell'header**: `AppHeader`'s `centerContent` (gli switcher Tiles/Chart/P&L/Trends della dashboard root) era posizionato `absolute` centrato sull'intera larghezza, ignorando i fratelli — aggiungendo i due nuovi selettori sempre visibili (marketplace + account), il cluster destro si è allargato abbastanza da sovrapporsi al centro a larghezze desktop comuni (testato a 1200px). Corretto con un layout flex a 3 colonne (logo/centro flessibile con scroll orizzontale/cluster destro), e spostati due elementi a priorità più bassa (stato sync, orologio) da `sm:`/`md:` a `xl:` per lasciare spazio.
+- **`/amazon` usava uno spazio valori incompatibile col filtro globale** (trovato dalla review finale, non dal browser walkthrough — il default `"all"` funzionava ovunque e nascondeva il bug): la pagina parla in codici Amazon grezzi (`"IT"`, `"DE"`...), il contesto globale parla `"AMAZON_IT"` — selezionare un marketplace dall'header azzerava tutti i KPI della pagina, e cliccare una pillola nella pagina scriveva un valore incompatibile nello stato globale persistito, corrompendolo per tutte le altre pagine/sessioni successive. Corretto con un layer di traduzione locale alla pagina (legge/scrive `AMAZON_X` ↔ `X` alla frontiera), lasciando intatti i ~40 usi interni esistenti. Test di regressione aggiunto.
+- **`/products` inoltrava valori Amazon a un endpoint solo-Shopify**: stesso tipo di incompatibilità, corretto con un guard in lettura (`isAmazonChannel(...) ? "all" : ...`).
+- **`/prodotti` e `/ordini` chiamavano endpoint Amazon-scoped senza `AmazonAccountGuard`**: con 2+ account e nessuna selezione, il fetch falliva silenziosamente mostrando "nessun dato" invece del prompt di selezione — la stessa classe di problema già risolta altrove nel progetto (F.4), riaperta da queste due pagine nuove. Corretto avvolgendole nel guard esistente; per `/ordini` è servito estrarre la logica di fetch in un componente figlio (`OrdiniContent`) perché il guard blocca solo il rendering dei figli, non il corpo del componente padre che lo contiene.
+
+**Minori non corrette, accettate come trade-off** (dalla review finale del branch):
+- Il guard su `/prodotti`/`/ordini` nasconde anche il contenuto Shopify-only quando il filtro globale è un canale Shopify e 2+ account Amazon esistono senza selezione — più restrittivo del necessario, ma comunque un miglioramento rispetto al comportamento precedente (che mostrava una tabella vuota fuorviante). Un fix più preciso: gate solo su `marketplace === "all" || isAmazonChannel(marketplace)`.
+- La riga di pillole marketplace su `/amazon` elenca solo 6 codici (IT/DE/ES/FR/UK/US) mentre il selettore globale ne offre 9 (include PL/CA/MX) — selezionando questi ultimi dall'header, i dati si filtrano correttamente ma nessuna pillola risulta evidenziata.
+
+### G.2 — Bug pre-esistenti scoperti durante la verifica, non corretti (fuori scope)
+
+- **Hydration mismatch dell'orologio**: `frontend/src/app/page.tsx` inizializza `clockTime`/`lastRefresh` con `useState(new Date())`, che differisce quasi certamente tra il render server e l'hydration client — probabile causa residua di "Text content does not match server-rendered HTML" osservato ancora dopo il fix di G.1 (verificato: il file su `develop`, prima di questo branch, ha già questo pattern — non introdotto dalla riorganizzazione menu). Da affrontare separatamente (es. `suppressHydrationWarning` sul nodo orologio, o inizializzare a `null` finché non monta).
+- **Sovrapposizione visiva minore nella tabella Prodotti Cross-Channel**: nella vista `/prodotti`, il numero vendite (es. "885,10") si sovrappone leggermente al testo ASIN nella riga prodotto. Componente `CrossChannelProducts`/`AggregatedProductsView`, non toccato da questa riorganizzazione — quirk di stile pre-esistente.
+
+---
+
 ## Voci risolte
 
 - **NA region non multi-account** (era in F.3): `AmazonAccount` ha ora un secondo campo cifrato `spApiRefreshTokenNA`; `token.service.ts`'s `getSpApiTokenNA()`/`hasNACredentials()` leggono dall'account corrente invece che da `AMAZON_US_REFRESH_TOKEN`. Fix in `feature/multi-account-remaining-gaps`, 2026-07-31.

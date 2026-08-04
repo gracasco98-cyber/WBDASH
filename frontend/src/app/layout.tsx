@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { PeriodProvider } from "@/context/PeriodContext";
 import { AmazonAccountProvider } from "@/context/AmazonAccountContext";
+import { MarketplaceFilterProvider } from "@/context/MarketplaceFilterContext";
 import ChatWidget from "@/components/ChatWidget";
 
 export const metadata: Metadata = {
@@ -33,9 +34,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <AuthProvider>
             <AmazonAccountProvider>
-              <PeriodProvider>
-                {children}
-              </PeriodProvider>
+              <MarketplaceFilterProvider>
+                <PeriodProvider>
+                  {children}
+                </PeriodProvider>
+              </MarketplaceFilterProvider>
             </AmazonAccountProvider>
           </AuthProvider>
         </ThemeProvider>

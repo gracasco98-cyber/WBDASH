@@ -53,14 +53,15 @@ Fatturato, Ordini, Unità vendute, Profitto, Margine %, Advertising spend, ACOS,
 
 Non più uno scaffolding da zero: sono estensioni incrementali su un sistema già funzionante. Ogni riga è una branch indipendente e verificabile, da `develop`, seguendo `CONTRIBUTING.md`.
 
-1. `chore/prisma-baseline-migration` — creare la prima migrazione versionata (`prisma migrate dev --name init`) sullo schema esistente, per stabilire una baseline prima di qualsiasi altra modifica.
-2. `feature/profit-engine` — estrarre la logica di calcolo P&L da `frontend/src/app/amazon/pl/page.tsx` e dalle query dirette in un modulo backend dedicato, versionato (formula version, input snapshot, stati stimato/consolidato/riconciliato), con fixture di test sui casi limite economici (vendita con sconto, rimborso parziale, fee tardiva, cambio valuta, ordine cancellato).
-3. `feature/data-completeness-state` — aggiungere il flag di completezza dati a livello di risposta API e mostrarlo in ogni KPI card.
+1. `chore/prisma-baseline-migration` — ~~creare la prima migrazione versionata~~ **fatto il 2026-08-01**, vedi `CLAUDE.md` roadmap #0.
+2. `feature/profit-engine` — motore di calcolo profitto versionato (stimato/consolidato, per ordine, append-only). **Spec approvata** in `docs/superpowers/specs/2026-08-03-profit-engine-design.md`, implementazione non ancora iniziata.
+3. `feature/data-completeness-state` — aggiungere il flag di completezza dati a livello di risposta API e mostrarlo in ogni KPI card. Dipende dal profit engine (voce 2).
 4. ~~`migration/decimal-money`~~ — **fatto e verificato il 2026-07-30** (database vuoto, nessun backfill dati). Vedi `../tech-debt.md` E.2. Verifica end-to-end con Testcontainers su Postgres reale: 250 test passati.
-5. ~~`migration/multi-account-amazon`~~ — **backend fatto il 2026-07-31**, vedi §3 e `../tech-debt.md` F. Resta `feature/multi-account-ui-selector` (frontend).
+5. ~~`migration/multi-account-amazon`~~ — **fatto** (backend 2026-07-31, selettore UI 2026-07-31/08-01), vedi §3 e `../tech-debt.md` F.
 6. `feature/raw-payload-persistence` — introdurre una tabella (o storage esterno) per conservare il payload raw ricevuto da Amazon/Shopify prima della normalizzazione, per permettere ricalcoli futuri senza re-fetch.
 7. `refactor/settlement-reconciliation` — chiudere il gap di `docs/tech-debt.md` A.8 (delta tra `AmazonSettlement.totalAmount` e somma delle transazioni) con un widget di riconciliazione esplicito.
 8. Voci minori già tracciate in `docs/tech-debt.md` sezione A (cutoff date disallineati, AOV su gross invece di net, ordini cancellati trattati diversamente tra Shopify e Amazon) — da valutare caso per caso, sono comportamenti lockati nei test attuali.
+9. ~~`feature/nav-reorg`~~ — **fatto il 2026-08-03**: sidebar riorganizzata per area di business (Finance/Inventory/Marketing/Supporto/Admin) invece che per canale, filtro Marketplace globale, pagine unificate cross-channel Prodotti/Ordini. Spec in `docs/superpowers/specs/2026-08-03-nav-reorg-design.md`. Le tile BI (periodi personalizzabili, confronto, metriche Sales/Profit/Costi/VAT) restano un sotto-progetto separato, rimandato, dipendente dal profit engine (voce 2).
 
 Ogni branch richiede: test propri, lint/typecheck/build verdi (`ci-backend`/`ci-frontend`), migrazione + rollback documentati quando tocca lo schema.
 

@@ -23,6 +23,7 @@ import {
   RefreshCw, Eye, EyeOff, ChevronDown,
 } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
+import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
 
 // ─── Section visibility ────────────────────────────────────────────────────────
 type SectionId = "bi_overview" | "charts" | "products";
@@ -82,7 +83,7 @@ function SectionBar({
 export default function DashboardPage() {
   const [activeView, setActiveView] = useState<DashboardView>("tiles");
   const { state: periodState, setPreset, setDateRange } = usePeriodFilter();
-  const [marketplace, setMarketplace] = useState("all");
+  const { marketplace, setMarketplace } = useMarketplaceFilter();
   const [status, setStatus] = useState("all");
 
   // Derive filter and date range from global period state
@@ -291,9 +292,9 @@ export default function DashboardPage() {
         }
         rightExtras={
           <>
-            <div className="hidden sm:block"><SyncStatus /></div>
+            <div className="hidden xl:block"><SyncStatus /></div>
             {/* Live clock */}
-            <div className="hidden md:flex items-center gap-2 text-xs text-zinc-500">
+            <div className="hidden xl:flex items-center gap-2 text-xs text-zinc-500">
               <div className="live-dot w-1.5 h-1.5 rounded-full bg-accent-primary" />
               <span>{clockTime.toLocaleTimeString("it-IT")}</span>
             </div>
