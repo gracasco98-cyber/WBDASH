@@ -138,4 +138,84 @@ describe("resolveProductPerformance", () => {
       expect(row.realAcos).toBeCloseTo(10 / 200, 4);
     });
   });
+
+  it("applies marketplace-then-ALL COGS priority per identifier, not the first-loaded row for the ASIN", async () => {
+    await runWithAccount(accountId, async () => {
+      // Same ASIN on two marketplaces (IT + DE) under one product — this is the
+      // shape the buggy code missed: cogsByAsin was keyed by asin only, so whichever
+      // COGS row happened to load first for "B0ABC123" was reused for *every*
+      // identifier sharing that ASIN, regardless of marketplace.
+      const product = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-IT" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "DE", asin: "B0ABC123", sku: "SKU-RSV-DE" });
+
+      await db.prisma.amazonOrder.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-IT", purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"), orderStatus: "Shipped", marketplace: "IT" },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-IT", orderItemId: "I-IT", asin: "B0ABC123", sku: "SKU-RSV-IT", productTitle: "Resveratrolo 500mg", marketplace: "IT", quantityOrdered: 10, quantityShipped: 10, itemPrice: 200, itemTax: 0, promotionDiscount: 0, purchaseDate: new Date("2026-08-01") } as any,
+      });
+      await db.prisma.amazonOrder.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-DE", purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"), orderStatus: "Shipped", marketplace: "DE" },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-DE", orderItemId: "I-DE", asin: "B0ABC123", sku: "SKU-RSV-DE", productTitle: "Resveratrolo 500mg", marketplace: "DE", quantityOrdered: 5, quantityShipped: 5, itemPrice: 100, itemTax: 0, promotionDiscount: 0, purchaseDate: new Date("2026-08-01") } as any,
+      });
+
+      // IT gets a marketplace-specific COGS row; the "ALL" row is the fallback for
+      // marketplaces (like DE here) with no specific row. findCogsForAsins("all")
+      // fetches IT + ALL, so both rows land in the same resolveProductPerformance
+      // call — exactly the scenario where the old asin-only cache collided.
+      await upsertCogs(db.prisma, { asin: "B0ABC123", marketplace: "IT", cogsPerUnit: 4, shippingCost: 0 });
+      await upsertCogs(db.prisma, { asin: "B0ABC123", marketplace: "ALL", cogsPerUnit: 9, shippingCost: 0 });
+
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const group = groups.find((g) => g.product.id === product.id)!;
+      const itRow = group.rows.find((r) => r.marketplace === "IT")!;
+      const deRow = group.rows.find((r) => r.marketplace === "DE")!;
+
+      expect(itRow.cogs).toBeCloseTo(4 * 10, 2); // exact IT match: (4 + 0) * 10 units
+      expect(deRow.cogs).toBeCloseTo(9 * 5, 2); // no DE-specific row: falls back to ALL: (9 + 0) * 5 units
+    });
+  });
+
+  it("aggregate hasRealFees is true only when every identifier row has real settlement fees", async () => {
+    await runWithAccount(accountId, async () => {
+      const product = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-IT" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "DE", asin: "B0DEF456", sku: "SKU-RSV-DE" });
+
+      await db.prisma.amazonOrder.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-IT", purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"), orderStatus: "Shipped", marketplace: "IT" },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-IT", orderItemId: "I-IT", asin: "B0ABC123", sku: "SKU-RSV-IT", productTitle: "Resveratrolo 500mg", marketplace: "IT", quantityOrdered: 10, quantityShipped: 10, itemPrice: 200, itemTax: 0, promotionDiscount: 0, purchaseDate: new Date("2026-08-01") } as any,
+      });
+      await db.prisma.amazonOrder.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-DE", purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"), orderStatus: "Shipped", marketplace: "DE" },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-DE", orderItemId: "I-DE", asin: "B0DEF456", sku: "SKU-RSV-DE", productTitle: "Resveratrolo 500mg", marketplace: "DE", quantityOrdered: 5, quantityShipped: 5, itemPrice: 100, itemTax: 0, promotionDiscount: 0, purchaseDate: new Date("2026-08-01") } as any,
+      });
+
+      // Only the IT identifier has a real settlement transaction — DE has none, so
+      // it falls back to the fee estimate (hasRealFees: false).
+      await createSettlementTransactions(db.prisma, [
+        { settlementId: "S1", transactionType: "Order", orderId: "O-IT", asin: "B0ABC123", sku: "SKU-RSV-IT", marketplace: "IT", amountType: "Commission", amount: -30, currency: "EUR", postedDate: new Date("2026-08-01") },
+      ] as any);
+
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const group = groups.find((g) => g.product.id === product.id)!;
+      const itRow = group.rows.find((r) => r.marketplace === "IT")!;
+      const deRow = group.rows.find((r) => r.marketplace === "DE")!;
+
+      expect(itRow.hasRealFees).toBe(true);
+      expect(deRow.hasRealFees).toBe(false);
+      expect(group.aggregate.hasRealFees).toBe(false);
+    });
+  });
 });

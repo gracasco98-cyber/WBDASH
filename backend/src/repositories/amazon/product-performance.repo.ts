@@ -125,9 +125,15 @@ export async function resolveProductPerformance(
     }
   }
 
-  const cogsByAsin = new Map<string, { cogsPerUnit: number; shippingCost: number }>();
-  for (const c of cogsRows as Array<{ asin: string; cogsPerUnit: number; shippingCost: number }>) {
-    if (!cogsByAsin.has(c.asin)) cogsByAsin.set(c.asin, { cogsPerUnit: c.cogsPerUnit, shippingCost: c.shippingCost });
+  // Keyed by `${marketplace}::${asin}` (matching salesByKey/feesByKey/refundsByKey/
+  // stockByKey below) so that marketplace-specific COGS rows never collide with each
+  // other or with the "ALL" fallback row for the same ASIN. findCogsForAsins returns
+  // both the requested marketplace and "ALL" records — priority is applied when the
+  // row is resolved below (exact marketplace match first, "ALL" fallback second).
+  const cogsByKey = new Map<string, { cogsPerUnit: number; shippingCost: number }>();
+  for (const c of cogsRows as Array<{ asin: string; marketplace: string; cogsPerUnit: number; shippingCost: number }>) {
+    const key = `${c.marketplace}::${c.asin}`;
+    cogsByKey.set(key, { cogsPerUnit: c.cogsPerUnit, shippingCost: c.shippingCost });
   }
 
   const stockByKey = new Map<string, number>();
@@ -149,7 +155,7 @@ export async function resolveProductPerformance(
       const realFees = feesByKey.get(key);
       const hasRealFees = realFees !== undefined;
       const amazonFees = hasRealFees ? realFees! : sold.sales * FEE_ESTIMATE_PCT + sold.units * FEE_ESTIMATE_PER_UNIT;
-      const cogsInfo = cogsByAsin.get(ident.asin as string);
+      const cogsInfo = cogsByKey.get(key) ?? cogsByKey.get(`ALL::${ident.asin}`);
       const cogs = cogsInfo ? (cogsInfo.cogsPerUnit + cogsInfo.shippingCost) * sold.units : 0;
       const adsInfo = params.adsSpendByAsin?.get(ident.asin as string);
       const adsSpend = adsInfo ? adsInfo.spend : null;
@@ -190,9 +196,14 @@ export async function resolveProductPerformance(
         stock: acc.stock + r.stock,
         adsSpend: r.adsSpend !== null ? (acc.adsSpend ?? 0) + r.adsSpend : acc.adsSpend,
         hasAnyAds: acc.hasAnyAds || r.adsSpend !== null,
-        hasRealFees: acc.hasRealFees || r.hasRealFees,
+        // AND-logic: the aggregate only claims "real fees" when every identifier row
+        // has real settlement fees — one row falling back to the estimate must not
+        // make the whole aggregate look verified. `true` is the identity element for
+        // AND (same role `0` plays for the sum reducers above), so the seed must
+        // start at `true` for this to combine correctly across the reduce.
+        hasRealFees: acc.hasRealFees && r.hasRealFees,
       }),
-      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, adsSpend: null as number | null, hasAnyAds: false, hasRealFees: false }
+      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, adsSpend: null as number | null, hasAnyAds: false, hasRealFees: true }
     );
 
     const aggDerived = deriveMetrics({
