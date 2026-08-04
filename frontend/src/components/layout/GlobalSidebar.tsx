@@ -39,7 +39,6 @@ const GROUPS: Group[] = [
   {
     key: "inventory", label: "INVENTORY", icon: Boxes,
     items: [
-      { href: "/prodotti", label: "Prodotti" },
       { href: "/amazon/cogs", label: "COGS" },
       { href: "/amazon/inventory", label: "Magazzino" },
       { label: "Fornitori", comingSoon: true },

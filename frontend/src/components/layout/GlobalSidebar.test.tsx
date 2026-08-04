@@ -28,12 +28,11 @@ describe("GlobalSidebar", () => {
     expect(screen.getByText("ADMIN")).toBeInTheDocument();
   });
 
-  it("links P&L, Pagamenti, COGS, Magazzino, Prodotti, Advertising, Intelligence, Sync Center, Sicurezza to their existing unchanged URLs", () => {
+  it("links P&L, Pagamenti, COGS, Magazzino, Advertising, Intelligence, Sync Center, Sicurezza to their existing unchanged URLs", () => {
     render(<GlobalSidebar />);
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/amazon");
     expect(screen.getByRole("link", { name: "P&L" })).toHaveAttribute("href", "/amazon/pl");
     expect(screen.getByRole("link", { name: "Pagamenti" })).toHaveAttribute("href", "/amazon/payments");
-    expect(screen.getByRole("link", { name: "Prodotti" })).toHaveAttribute("href", "/prodotti");
     expect(screen.getByRole("link", { name: "COGS" })).toHaveAttribute("href", "/amazon/cogs");
     expect(screen.getByRole("link", { name: "Magazzino" })).toHaveAttribute("href", "/amazon/inventory");
     expect(screen.getByRole("link", { name: /advertising/i })).toHaveAttribute("href", "/amazon/ppc");
