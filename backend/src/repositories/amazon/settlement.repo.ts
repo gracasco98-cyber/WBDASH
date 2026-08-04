@@ -129,6 +129,29 @@ export async function findTransactionsForOrders(
 }
 
 /**
+ * Find settlement transactions for the given ASINs within a date range,
+ * current account only. Used to resolve real fees/refunds per product
+ * (product-performance.repo.ts) — same underlying table as
+ * findTransactionsForOrders, but keyed by asin instead of orderId.
+ */
+export async function findTransactionsForAsins(
+  prisma: PrismaClient,
+  params: { asins: string[]; marketplace?: string; dateFrom: Date; dateTo: Date }
+): Promise<Array<{ asin: string | null; marketplace: string; amountType: string; amount: number }>> {
+  if (params.asins.length === 0) return [];
+  const rows = await prisma.amazonSettlementTransaction.findMany({
+    where: {
+      amazonAccountId: getCurrentAccountId(),
+      asin: { in: params.asins },
+      postedDate: { gte: params.dateFrom, lte: params.dateTo },
+      ...(params.marketplace && params.marketplace !== "all" ? { marketplace: params.marketplace } : {}),
+    },
+    select: { asin: true, marketplace: true, amountType: true, amount: true },
+  });
+  return rows.map((r) => ({ ...r, amount: toNum(r.amount) }));
+}
+
+/**
  * Count all AmazonSettlementTransaction rows for the current account via raw SQL.
  * Returns 0 if the table doesn't exist yet.
  */

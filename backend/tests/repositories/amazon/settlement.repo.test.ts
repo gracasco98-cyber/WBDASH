@@ -12,6 +12,7 @@ import {
   deleteSettlementTransactions,
   createSettlementTransactions,
   findTransactionsForOrders,
+  findTransactionsForAsins,
   countSettlementTransactions,
 } from "../../../src/repositories/amazon/settlement.repo";
 
@@ -205,6 +206,28 @@ describe("countSettlementTransactions", () => {
       await createSettlementTransactions(db.prisma, txData as any);
       const count = await countSettlementTransactions(db.prisma);
       expect(count).toBe(txData.length);
+    });
+  });
+});
+
+// ─── findTransactionsForAsins ────────────────────────────────────────────────
+
+describe("findTransactionsForAsins", () => {
+  it("returns fee/refund transactions for the given ASINs within a date range", async () => {
+    await runWithAccount(accountId, async () => {
+      await createSettlementTransactions(db.prisma, [
+        { settlementId: "S1", transactionType: "Order", orderId: "O1", asin: "B0ABC123", sku: "SKU-RSV-01", marketplace: "IT", amountType: "Commission", amount: -1.5, currency: "EUR", postedDate: new Date("2026-08-01") },
+        { settlementId: "S1", transactionType: "Refund", orderId: "O2", asin: "B0ABC123", sku: "SKU-RSV-01", marketplace: "IT", amountType: "Principal", amount: -20, currency: "EUR", postedDate: new Date("2026-08-02") },
+        { settlementId: "S1", transactionType: "Order", orderId: "O3", asin: "B0OTHER", sku: "SKU-X", marketplace: "IT", amountType: "Commission", amount: -3, currency: "EUR", postedDate: new Date("2026-08-01") },
+      ] as any);
+
+      const rows = await findTransactionsForAsins(db.prisma, {
+        asins: ["B0ABC123"],
+        dateFrom: new Date("2026-08-01"),
+        dateTo: new Date("2026-08-03"),
+      });
+      expect(rows).toHaveLength(2);
+      expect(rows.every(r => r.asin === "B0ABC123")).toBe(true);
     });
   });
 });

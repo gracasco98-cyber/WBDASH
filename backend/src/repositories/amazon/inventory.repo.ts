@@ -4,6 +4,27 @@
 import type { PrismaClient } from "@prisma/client";
 import { getCurrentAccountId } from "../../context/account-context";
 
+// ─── Read operations ──────────────────────────────────────────────────────────
+
+/**
+ * Current stock (qtyTotal) per asin+marketplace, for the given ASINs, current account only.
+ */
+export async function findInventoryForAsins(
+  prisma: PrismaClient,
+  params: { asins: string[]; marketplace?: string }
+): Promise<Array<{ asin: string; marketplace: string; qtyTotal: number }>> {
+  if (params.asins.length === 0) return [];
+  const rows = await (prisma as any).amazonInventory.findMany({
+    where: {
+      amazonAccountId: getCurrentAccountId(),
+      asin: { in: params.asins },
+      ...(params.marketplace && params.marketplace !== "all" ? { marketplace: params.marketplace } : {}),
+    },
+    select: { asin: true, marketplace: true, qtyTotal: true },
+  });
+  return rows;
+}
+
 // ─── Write operations ─────────────────────────────────────────────────────────
 
 /**
