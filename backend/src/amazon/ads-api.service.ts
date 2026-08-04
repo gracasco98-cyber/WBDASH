@@ -277,6 +277,80 @@ export async function fetchSPCampaignReport(
   }));
 }
 
+// ── SP Advertised Product Report (async, per-ASIN) ───────────────────────────
+export interface AdvertisedProductReport {
+  campaignId: string;
+  adGroupId: string;
+  advertisedAsin: string;
+  advertisedSku: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  sales: number;
+  orders: number;
+}
+
+/**
+ * Fetch per-ASIN Sponsored Products spend/sales via the Reports v3
+ * "spAdvertisedProduct" report — same mechanism as fetchSPCampaignReport,
+ * different reportTypeId/groupBy/columns. Column names are Amazon's
+ * documented Reports v3 schema; if the account rejects the request with a
+ * 400, the error message (via adsRequest/fetch's thrown text) will name the
+ * invalid field — adjust the `columns` array accordingly, this is the
+ * validation step this task exists for.
+ */
+export async function fetchSPAdvertisedProductReport(
+  profileId: string,
+  startDate: string,
+  endDate?: string
+): Promise<AdvertisedProductReport[]> {
+  const end = endDate ?? startDate;
+  const token = await getAdsApiToken();
+  const hdrs: Record<string, string> = {
+    "Amazon-Advertising-API-ClientId": ADS_CLIENT_ID(),
+    "Amazon-Advertising-API-Scope":    profileId,
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    Accept:         "application/json",
+  };
+
+  const body = {
+    name: `SP Advertised Product ${startDate}:${end}`,
+    startDate,
+    endDate: end,
+    configuration: {
+      adProduct:    "SPONSORED_PRODUCTS",
+      groupBy:      ["advertiser"],
+      columns:      ["campaignId", "adGroupId", "advertisedAsin", "advertisedSku",
+                     "impressions", "clicks", "cost", "purchases30d", "sales30d"],
+      reportTypeId: "spAdvertisedProduct",
+      timeUnit:     "SUMMARY",
+      format:       "GZIP_JSON",
+    },
+  };
+
+  const reportId = await createOrReuseReport("/reporting/reports", body, hdrs, "Ads Advertised Product Report");
+  console.log(`[Ads Advertised Product Report] Polling ${reportId} for ${profileId} ${startDate}→${end}`);
+  const dlUrl = await pollReportUntilDone(reportId, hdrs, "Ads Advertised Product Report");
+
+  const dl = await fetch(dlUrl);
+  if (!dl.ok) throw new Error(`[Ads Advertised Product Report] Download failed ${dl.status}`);
+  const buf = Buffer.from(await dl.arrayBuffer());
+  const { gunzipSync } = await import("zlib");
+  const data = JSON.parse(gunzipSync(buf).toString("utf8")) as any[];
+  return data.map((r: any) => ({
+    campaignId:     String(r.campaignId  ?? ""),
+    adGroupId:      String(r.adGroupId   ?? ""),
+    advertisedAsin: r.advertisedAsin ?? "",
+    advertisedSku:  r.advertisedSku  ?? "",
+    impressions:    Number(r.impressions ?? 0),
+    clicks:         Number(r.clicks      ?? 0),
+    spend:          Number(r.cost ?? r.spend ?? 0),
+    sales:          Number(r.sales30d ?? r.sales ?? 0),
+    orders:         Number(r.purchases30d ?? r.orders ?? 0),
+  }));
+}
+
 /** Check if Advertising API is configured for the current account */
 export async function isAdsConfigured(): Promise<boolean> {
   try {
