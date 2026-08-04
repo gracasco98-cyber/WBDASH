@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { formatDateToIso, addDays } from "@/lib/periodUtils";
 
 // ── next/navigation ── AppHeader (useRouter) and GlobalSidebar (usePathname)
 // both call into the App Router hooks, which aren't safe to render outside a
@@ -54,12 +55,6 @@ vi.mock("@/lib/api", () => ({
 
 import ProdottiPage from "./page";
 
-function isoDaysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
-}
-
 describe("ProdottiPage", () => {
   beforeEach(() => {
     mockGet.mockClear();
@@ -93,8 +88,8 @@ describe("ProdottiPage", () => {
     render(<ProdottiPage />);
     await screen.findByRole("heading", { name: "Prodotti" });
 
-    const expectedFrom = isoDaysAgo(29);
-    const expectedTo = isoDaysAgo(0);
+    const expectedFrom = formatDateToIso(addDays(new Date(), -29));
+    const expectedTo = formatDateToIso(new Date());
 
     // PeriodTiles fires its own 4 fixed-preset calls independently (all with
     // marketplace "all" too) — match on the from/to pair unique to "last30"
