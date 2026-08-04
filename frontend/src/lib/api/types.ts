@@ -660,6 +660,7 @@ export interface ProductPerformanceRow {
   realAcos: number | null;
   amazonFees: number;
   hasRealFees: boolean;
+  hasRealCogs: boolean;
   cogs: number;
   stock: number;
   grossProfit: number;
