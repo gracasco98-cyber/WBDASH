@@ -77,6 +77,24 @@ describe("ProductsPerformanceTable", () => {
     expect(dashes.length).toBeGreaterThanOrEqual(3); // ads, acos, bsr
   });
 
+  it("shows an estimated-data badge on Fee Amazon and COGS when hasRealFees/hasRealCogs are false", async () => {
+    const estimatedRow = { ...baseRow, hasRealFees: false, hasRealCogs: false };
+    const estimatedGroups: ProductPerformanceGroup[] = [
+      {
+        product: { id: "p1", name: "Resveratrolo 500mg", brand: null },
+        rows: [estimatedRow],
+        aggregate: estimatedRow,
+      },
+    ];
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={estimatedGroups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    // Parent row: Fee Amazon + COGS badges (2)
+    expect(screen.getAllByText("≈")).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: /espandi resveratrolo 500mg/i }));
+    // Expanded child row adds its own Fee Amazon + COGS badges (2 more, 4 total)
+    expect(screen.getAllByText("≈")).toHaveLength(4);
+  });
+
   it("renders a fetched thumbnail on the child row for a resolved ASIN", async () => {
     mockCatalogImages.mockResolvedValue({ B0ABC123: "https://example.com/img.jpg" });
     const user = userEvent.setup();
