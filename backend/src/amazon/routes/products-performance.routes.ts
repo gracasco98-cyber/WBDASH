@@ -3,38 +3,22 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
 import { resolveProductPerformance } from "../../repositories/amazon/product-performance.repo";
-import { moveIdentifier, renameProduct } from "../../repositories/amazon/product.repo";
-import { isAdsConfigured, getConfiguredProfiles, fetchSPAdvertisedProductReport } from "../ads-api.service";
+import { moveIdentifier, renameProduct, findAllProducts } from "../../repositories/amazon/product.repo";
+import { findAdSpendForAsins } from "../../repositories/amazon/ad-spend.repo";
 import { getDateRange } from "../utils/datetime";
 
 export const productsPerformanceRouter = Router();
 
 async function buildAdsSpendMap(
+  asins: string[],
   marketplace: string,
-  from: string,
-  to: string
+  dateFrom: Date,
+  dateTo: Date
 ): Promise<Map<string, { spend: number }> | undefined> {
-  if (!(await isAdsConfigured())) return undefined;
-  try {
-    const profiles = await getConfiguredProfiles();
-    const targetProfiles = marketplace && marketplace !== "all"
-      ? profiles.filter((p) => p.marketplace === marketplace)
-      : profiles;
-
-    const map = new Map<string, { spend: number }>();
-    for (const profile of targetProfiles) {
-      const rows = await fetchSPAdvertisedProductReport(profile.profileId, from, to);
-      for (const row of rows) {
-        if (!row.advertisedAsin) continue;
-        const existing = map.get(row.advertisedAsin);
-        map.set(row.advertisedAsin, { spend: (existing?.spend ?? 0) + row.spend });
-      }
-    }
-    return map;
-  } catch (err) {
-    console.warn("[products/performance] Ads spend unavailable, rendering '—':", err);
-    return undefined;
-  }
+  if (asins.length === 0) return undefined;
+  const rows = await findAdSpendForAsins(prisma, { asins, marketplace, dateFrom, dateTo });
+  if (rows.length === 0) return undefined;
+  return new Map(rows.map((r) => [r.asin, { spend: r.spend }]));
 }
 
 productsPerformanceRouter.get("/products/performance", async (req: Request, res: Response) => {
@@ -44,10 +28,15 @@ productsPerformanceRouter.get("/products/performance", async (req: Request, res:
     const dateFrom = range.gte ?? new Date(Date.now() - 30 * 86400000);
     const dateTo = range.lte ?? new Date();
 
-    const adsSpendByAsin = await buildAdsSpendMap(marketplace, dateFrom.toISOString().slice(0, 10), dateTo.toISOString().slice(0, 10));
+    const productIdList = productIds ? productIds.split(",") : undefined;
+    const products = await findAllProducts(prisma, { status: "ACTIVE" });
+    const scoped = productIdList ? products.filter((p) => productIdList.includes(p.id)) : products;
+    const asins = scoped.flatMap((p) => p.identifiers.filter((i) => i.channelType === "AMAZON" && i.asin).map((i) => i.asin as string));
+
+    const adsSpendByAsin = await buildAdsSpendMap(asins, marketplace, dateFrom, dateTo);
 
     const groups = await resolveProductPerformance(prisma, {
-      productIds: productIds ? productIds.split(",") : undefined,
+      productIds: productIdList,
       marketplace,
       dateFrom,
       dateTo,

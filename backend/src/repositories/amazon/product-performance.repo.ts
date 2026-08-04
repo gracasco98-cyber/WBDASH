@@ -24,6 +24,7 @@ export interface ProductPerformanceRow {
   realAcos: number | null;
   amazonFees: number;
   hasRealFees: boolean;
+  hasRealCogs: boolean;
   cogs: number;
   stock: number;
   grossProfit: number;
@@ -157,6 +158,7 @@ export async function resolveProductPerformance(
       const hasRealFees = realFees !== undefined;
       const amazonFees = hasRealFees ? realFees! : sold.sales * FEE_ESTIMATE_PCT + sold.units * FEE_ESTIMATE_PER_UNIT;
       const cogsInfo = cogsByKey.get(key) ?? cogsByKey.get(`ALL::${ident.asin}`);
+      const hasRealCogs = cogsInfo !== undefined;
       const cogs = cogsInfo ? (cogsInfo.cogsPerUnit + cogsInfo.shippingCost) * sold.units : 0;
       const adsInfo = params.adsSpendByAsin?.get(ident.asin as string);
       const adsSpend = adsInfo ? adsInfo.spend : null;
@@ -179,6 +181,7 @@ export async function resolveProductPerformance(
         realAcos,
         amazonFees,
         hasRealFees,
+        hasRealCogs,
         cogs,
         stock: stockByKey.get(key) ?? 0,
         bsr: null, // AmazonProductSnapshot.bsr exists but is never populated (spec §Scope, out of scope)
@@ -204,8 +207,9 @@ export async function resolveProductPerformance(
         // AND (same role `0` plays for the sum reducers above), so the seed must
         // start at `true` for this to combine correctly across the reduce.
         hasRealFees: acc.hasRealFees && r.hasRealFees,
+        hasRealCogs: acc.hasRealCogs && r.hasRealCogs,
       }),
-      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, adsSpend: null as number | null, hasAnyAds: false, hasRealFees: true }
+      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, adsSpend: null as number | null, hasAnyAds: false, hasRealFees: true, hasRealCogs: true }
     );
 
     const aggDerived = deriveMetrics({
@@ -220,7 +224,7 @@ export async function resolveProductPerformance(
       refundPct: aggBase.sales > 0 ? aggBase.refundsAmount / aggBase.sales : 0,
       adsSpend: aggBase.hasAnyAds ? aggBase.adsSpend : null,
       realAcos: aggBase.hasAnyAds && aggBase.adsSpend !== null && aggBase.sales > 0 ? aggBase.adsSpend / aggBase.sales : null,
-      amazonFees: aggBase.amazonFees, hasRealFees: aggBase.hasRealFees, cogs: aggBase.cogs, stock: aggBase.stock,
+      amazonFees: aggBase.amazonFees, hasRealFees: aggBase.hasRealFees, hasRealCogs: aggBase.hasRealCogs, cogs: aggBase.cogs, stock: aggBase.stock,
       ...aggDerived,
     };
 

@@ -5,10 +5,8 @@ import { setupTestDb, truncateAll, createTestAmazonAccount, type TestDb } from "
 import { runWithAccount } from "../../src/context/account-context";
 import { createProduct, createIdentifier } from "../../src/repositories/amazon/product.repo";
 
-vi.mock("../../src/amazon/ads-api.service", () => ({
-  isAdsConfigured: vi.fn(async () => false),
-  getConfiguredProfiles: vi.fn(async () => []),
-  fetchSPAdvertisedProductReport: vi.fn(async () => []),
+vi.mock("../../src/repositories/amazon/ad-spend.repo", () => ({
+  findAdSpendForAsins: vi.fn(async () => []),
 }));
 
 let db: TestDb;

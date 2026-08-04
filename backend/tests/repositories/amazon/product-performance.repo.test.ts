@@ -101,6 +101,23 @@ describe("resolveProductPerformance", () => {
     });
   });
 
+  it("hasRealCogs reflects whether a COGS row exists for the identifier", async () => {
+    await runWithAccount(accountId, async () => {
+      await seedOneProductWithSales();
+      const withoutCogs = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      expect(withoutCogs[0].rows[0].hasRealCogs).toBe(false);
+      expect(withoutCogs[0].rows[0].cogs).toBe(0);
+
+      await upsertCogs(db.prisma, { asin: "B0ABC123", marketplace: "IT", cogsPerUnit: 4, shippingCost: 0.5 });
+      const withCogs = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      expect(withCogs[0].rows[0].hasRealCogs).toBe(true);
+    });
+  });
+
   it("includes stock from inventory", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
