@@ -178,6 +178,7 @@ model AmazonAccount {
   cogsPriceEntries     AmazonCogsPriceEntry[]
   inventory            AmazonInventory[]
   adSnapshots          AmazonAdSnapshot[]
+  advertisedProductSnapshots AmazonAdvertisedProductSnapshot[]
   adKeywordSnapshots   AmazonAdKeywordSnapshot[]
   adSearchTerms        AmazonAdSearchTerm[]
   adKeywords           AmazonAdKeyword[]
@@ -455,6 +456,29 @@ model AmazonAdSnapshot {
   @@index([snapshotDate])
   @@index([marketplace])
   @@index([campaignId])
+}
+
+model AmazonAdvertisedProductSnapshot {
+  id              String   @id @default(cuid())
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id])
+  snapshotDate    DateTime @db.Date
+  marketplace     String
+  asin            String
+  campaignId      String
+  spend           Decimal  @default(0) @db.Decimal(14, 4)
+  sales           Decimal  @default(0) @db.Decimal(14, 4)
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  orders          Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([amazonAccountId, snapshotDate, marketplace, asin, campaignId])
+  @@index([amazonAccountId])
+  @@index([snapshotDate])
+  @@index([asin])
+  @@index([marketplace])
 }
 
 // Per-keyword daily metrics (from spKeywords report)
