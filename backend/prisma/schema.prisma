@@ -710,3 +710,40 @@ model AmazonForecastSnapshot {
   @@index([periodEnd])
   @@index([settlementId])
 }
+
+enum ChannelType {
+  AMAZON
+  SHOPIFY
+}
+
+enum ProductStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  brand       String?
+  status      ProductStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  identifiers ProductIdentifier[]
+
+  @@index([status])
+}
+
+model ProductIdentifier {
+  id          String      @id @default(cuid())
+  productId   String
+  product     Product     @relation(fields: [productId], references: [id])
+  channelType ChannelType
+  marketplace String
+  asin        String?
+  sku         String?
+  createdAt   DateTime    @default(now())
+
+  @@unique([channelType, marketplace, asin])
+  @@index([productId])
+  @@index([sku])
+}
