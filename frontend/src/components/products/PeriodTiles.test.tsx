@@ -2,24 +2,30 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { formatDateToIso, addDays } from "@/lib/periodUtils";
-import PeriodTiles from "./PeriodTiles";
+import PeriodTiles, { sumAggregate } from "./PeriodTiles";
+import type { ProductPerformanceRow } from "@/lib/api";
 
 const setPreset = vi.fn();
 vi.mock("@/hooks/usePeriodFilter", () => ({
   usePeriodFilter: () => ({ state: { preset: "yesterday", from: "", to: "", compareMode: "none" }, setPreset, setDateRange: vi.fn(), setCompareMode: vi.fn(), reset: vi.fn() }),
 }));
 
+let mockMarketplace = "all";
+vi.mock("@/hooks/useMarketplaceFilter", () => ({
+  useMarketplaceFilter: () => ({ marketplace: mockMarketplace, setMarketplace: vi.fn() }),
+}));
+
 const mockGet = vi.fn(async (_params: unknown) => ({
   groups: [{
     product: { id: "p1", name: "X", brand: null },
     rows: [],
-    aggregate: { identifierId: "i1", asin: "", marketplace: "ALL", sku: null, units: 5, sales: 100, promo: 0, refundsAmount: 0, refundsCount: 0, refundPct: 0, adsSpend: 5, realAcos: 0.05, amazonFees: 15, hasRealFees: true, hasRealCogs: true, cogs: 20, stock: 10, grossProfit: 60, netProfit: 60, estimatedPayout: 80, margin: 0.6, roi: 3, avgSellingPrice: 20, bsr: null },
+    aggregate: { identifierId: "i1", asin: "", marketplace: "ALL", sku: null, units: 5, sales: 100, promo: 0, refundsAmount: 0, refundsCount: 0, refundPct: 0, adsSpend: 5, realAcos: 0.05, amazonFees: 15, hasRealFees: true, hasRealCogs: true, cogs: 20, stock: 10, hasStockData: true, grossProfit: 60, netProfit: 60, estimatedPayout: 80, margin: 0.6, roi: 3, avgSellingPrice: 20, bsr: null },
   }],
 }));
 vi.mock("@/lib/api", () => ({ api: { productPerformance: { get: (params: unknown) => mockGet(params) } } }));
 
 describe("PeriodTiles", () => {
-  beforeEach(() => { mockGet.mockClear(); setPreset.mockClear(); });
+  beforeEach(() => { mockGet.mockClear(); setPreset.mockClear(); mockMarketplace = "all"; });
 
   it("fetches 5 fixed presets independently of the active period", async () => {
     render(<PeriodTiles />);
@@ -35,13 +41,32 @@ describe("PeriodTiles", () => {
     expect(setPreset).toHaveBeenCalledWith("today");
   });
 
-  it("highlights the tile matching the current global preset via its border style", async () => {
+  it("highlights the tile matching the current global preset via its border class", async () => {
     render(<PeriodTiles />);
     await screen.findAllByText(/€/);
     const yesterdayTile = screen.getByRole("button", { name: /ieri/i });
     const todayTile = screen.getByRole("button", { name: /oggi/i });
-    expect(yesterdayTile).toHaveStyle({ border: "2px solid #111" });
-    expect(todayTile).not.toHaveStyle({ border: "2px solid #111" });
+    expect(yesterdayTile).toHaveClass("border-accent-primary");
+    expect(todayTile).not.toHaveClass("border-accent-primary");
+  });
+
+  it("scopes every tile fetch to the globally selected Amazon marketplace", async () => {
+    mockMarketplace = "AMAZON_DE";
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+    expect(mockGet).toHaveBeenCalledTimes(5);
+    for (const [params] of mockGet.mock.calls as [any][]) {
+      expect(params.marketplace).toBe("DE");
+    }
+  });
+
+  it("falls back to 'all' when the global filter is a Shopify channel, not an Amazon one", async () => {
+    mockMarketplace = "SHOPIFY_CH";
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+    for (const [params] of mockGet.mock.calls as [any][]) {
+      expect(params.marketplace).toBe("all");
+    }
   });
 
   it("handles fetch error gracefully without crashing, keeps tiles rendered with placeholder values", async () => {
@@ -80,5 +105,37 @@ describe("PeriodTiles", () => {
       );
       expect(call).toBeDefined();
     });
+  });
+});
+
+describe("sumAggregate", () => {
+  const row = (overrides: Partial<ProductPerformanceRow>): ProductPerformanceRow => ({
+    identifierId: "i", asin: "A", marketplace: "IT", sku: null, units: 1, sales: 10, promo: 0,
+    refundsAmount: 0, refundsCount: 0, refundPct: 0, adsSpend: null, realAcos: null, amazonFees: 1,
+    hasRealFees: true, hasRealCogs: true, cogs: 2, stock: 3, hasStockData: true,
+    grossProfit: 7, netProfit: 7, estimatedPayout: 9, margin: 0.7, roi: 3.5, avgSellingPrice: 10, bsr: null,
+    ...overrides,
+  });
+
+  it("claims verified data only when EVERY contributing row is verified (AND-logic)", () => {
+    // The old OR-logic let a single verified row make the whole total look
+    // verified — the exact inversion of the safeguard these flags exist for.
+    const mixed = sumAggregate([row({}), row({ hasRealFees: false, hasRealCogs: false, hasStockData: false })])!;
+    expect(mixed.hasRealFees).toBe(false);
+    expect(mixed.hasRealCogs).toBe(false);
+    expect(mixed.hasStockData).toBe(false);
+  });
+
+  it("claims verified data when all rows are verified, and still sums the numbers", () => {
+    const allReal = sumAggregate([row({}), row({ sales: 30, units: 2 })])!;
+    expect(allReal.hasRealFees).toBe(true);
+    expect(allReal.hasRealCogs).toBe(true);
+    expect(allReal.hasStockData).toBe(true);
+    expect(allReal.sales).toBe(40);
+    expect(allReal.units).toBe(3);
+  });
+
+  it("returns null for an empty row set", () => {
+    expect(sumAggregate([])).toBeNull();
   });
 });

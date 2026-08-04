@@ -1,17 +1,20 @@
 "use client";
 import { useEffect, useState } from "react";
 import { usePeriodFilter } from "@/hooks/usePeriodFilter";
+import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
+import { isAmazonChannel, amazonChannelCode } from "@/components/dashboard/FilterBar";
 import type { PeriodPreset } from "@/context/PeriodContext";
 import { api } from "@/lib/api";
 import type { ProductPerformanceRow } from "@/lib/api";
 import { formatDateToIso } from "@/lib/periodUtils";
+import { fmtEur } from "./MetricRow";
 
-const TILES: { preset: PeriodPreset; label: string; color: string }[] = [
-  { preset: "today", label: "Oggi", color: "linear-gradient(135deg,#4f7fe8,#3b6fd8)" },
-  { preset: "yesterday", label: "Ieri", color: "linear-gradient(135deg,#4aa89a,#3d9188)" },
-  { preset: "last7", label: "7 giorni", color: "linear-gradient(135deg,#4aa89a,#3d9188)" },
-  { preset: "last14", label: "14 giorni", color: "linear-gradient(135deg,#4aa89a,#3d9188)" },
-  { preset: "last30", label: "30 giorni", color: "linear-gradient(135deg,#4aa89a,#3d9188)" },
+const TILES: { preset: PeriodPreset; label: string; accent: string }[] = [
+  { preset: "today", label: "Oggi", accent: "border-l-accent-blue" },
+  { preset: "yesterday", label: "Ieri", accent: "border-l-accent-primary" },
+  { preset: "last7", label: "7 giorni", accent: "border-l-accent-primary" },
+  { preset: "last14", label: "14 giorni", accent: "border-l-accent-primary" },
+  { preset: "last30", label: "30 giorni", accent: "border-l-accent-primary" },
 ];
 
 function presetDateRange(preset: PeriodPreset): { from: string; to: string } {
@@ -27,7 +30,10 @@ function presetDateRange(preset: PeriodPreset): { from: string; to: string } {
   }
 }
 
-function sumAggregate(rows: ProductPerformanceRow[]): ProductPerformanceRow | null {
+/** Exported for direct unit testing: the hasRealFees / hasRealCogs / hasStockData
+ *  flags it computes are not surfaced in this component's UI, so they are
+ *  otherwise unobservable. */
+export function sumAggregate(rows: ProductPerformanceRow[]): ProductPerformanceRow | null {
   if (rows.length === 0) return null;
   // Explicit zeroed initial value — reduce() without one uses rows[0] as the
   // seed and silently leaves every field it doesn't touch at row 0's value
@@ -46,10 +52,15 @@ function sumAggregate(rows: ProductPerformanceRow[]): ProductPerformanceRow | nu
       netProfit: acc.netProfit + r.netProfit,
       estimatedPayout: acc.estimatedPayout + r.estimatedPayout,
       adsSpend: r.adsSpend !== null ? (acc.adsSpend ?? 0) + r.adsSpend : acc.adsSpend,
-      hasRealFees: acc.hasRealFees || r.hasRealFees,
-      hasRealCogs: acc.hasRealCogs || r.hasRealCogs,
+      // AND-logic with a `true` seed, matching resolveProductPerformance's
+      // aggregate and ProductsPerformanceTable's buildRowsByMarketplace: the
+      // total only claims "verified" when EVERY contributing product is. OR-logic
+      // inverts exactly the safeguard these flags exist to provide.
+      hasRealFees: acc.hasRealFees && r.hasRealFees,
+      hasRealCogs: acc.hasRealCogs && r.hasRealCogs,
+      hasStockData: acc.hasStockData && r.hasStockData,
     }),
-    { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0, adsSpend: null as number | null, hasRealFees: false, hasRealCogs: false }
+    { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0, adsSpend: null as number | null, hasRealFees: true, hasRealCogs: true, hasStockData: true }
   );
   return {
     identifierId: "", asin: "", marketplace: "ALL", sku: null, bsr: null,
@@ -62,11 +73,13 @@ function sumAggregate(rows: ProductPerformanceRow[]): ProductPerformanceRow | nu
   };
 }
 
-const fmtEur = (n: number) => `€ ${n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 export default function PeriodTiles() {
   const { state, setPreset } = usePeriodFilter();
-  const [totals, setTotals] = useState<Record<PeriodPreset, ProductPerformanceRow | null>>({} as any);
+  const { marketplace: globalMarketplace } = useMarketplaceFilter();
+  // Same translation the home page applies before hitting the product-performance
+  // endpoint: only Amazon channels narrow the scope, everything else is "all".
+  const productMarketplace = isAmazonChannel(globalMarketplace) ? (amazonChannelCode(globalMarketplace) ?? "all") : "all";
+  const [totals, setTotals] = useState<Partial<Record<PeriodPreset, ProductPerformanceRow | null>>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -75,21 +88,21 @@ export default function PeriodTiles() {
         const results = await Promise.all(
           TILES.map(async ({ preset }) => {
             const { from, to } = presetDateRange(preset);
-            const { groups } = await api.productPerformance.get({ marketplace: "all", from, to });
+            const { groups } = await api.productPerformance.get({ marketplace: productMarketplace, from, to });
             return [preset, sumAggregate(groups.map((g) => g.aggregate))] as const;
           })
         );
-        if (!cancelled) setTotals(Object.fromEntries(results) as any);
+        if (!cancelled) setTotals(Object.fromEntries(results));
       } catch (err) {
         if (!cancelled) console.error("[PeriodTiles] Failed to load period tiles:", err);
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [productMarketplace]);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
-      {TILES.map(({ preset, label, color }) => {
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
+      {TILES.map(({ preset, label, accent }) => {
         const totalRow = totals[preset];
         const active = state.preset === preset;
         return (
@@ -97,17 +110,16 @@ export default function PeriodTiles() {
             key={preset}
             aria-label={label}
             onClick={() => setPreset(preset)}
-            style={{
-              textAlign: "left", background: "#fff", border: active ? "2px solid #111" : "1px solid #e5e7eb",
-              borderRadius: 8, overflow: "hidden", cursor: "pointer", padding: 0,
-            }}
+            className={`text-left rounded-lg overflow-hidden p-0 cursor-pointer border transition-colors bg-bg-card hover:bg-bg-hover ${
+              active ? "border-accent-primary" : "border-bg-border"
+            }`}
           >
-            <div style={{ background: color, color: "#fff", padding: "10px 14px" }}>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>{label}</div>
+            <div className={`bg-bg-hover px-3.5 py-2.5 border-l-2 ${accent}`}>
+              <div className="font-semibold text-[13px] text-zinc-200">{label}</div>
             </div>
-            <div style={{ padding: "12px 14px", fontSize: 11, color: "#374151" }}>
-              <div style={{ color: "#9ca3af", fontSize: 10 }}>Ricavi</div>
-              <div style={{ fontSize: 19, fontWeight: 700, color: "#111" }}>{totalRow ? fmtEur(totalRow.sales) : "—"}</div>
+            <div className="px-3.5 py-3 text-[11px] text-zinc-400">
+              <div className="text-zinc-500 text-[10px]">Ricavi</div>
+              <div className="text-[19px] font-bold text-white tabular-nums">{totalRow ? fmtEur(totalRow.sales) : "—"}</div>
             </div>
           </button>
         );
