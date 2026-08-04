@@ -53,11 +53,15 @@ export type {
   AmazonForecastAdditionalEU,
   AmazonPaymentForecast,
   AmazonSyncJob,
+  ProductPerformanceRow,
+  ProductPerformanceGroup,
+  ProductPerformanceResponse,
 } from "./types";
 
 // Import domain modules
 import { shopify } from "./shopify";
 import { amazon } from "./amazon";
+import { productPerformance } from "./product-performance";
 
 // Compose the `api` object that all callers use via `import { api } from "@/lib/api"`
 export const api = {
@@ -82,4 +86,5 @@ export const api = {
 
   // ── Amazon ───────────────────────────────────────────────────────────────
   amazon,
+  productPerformance,
 };

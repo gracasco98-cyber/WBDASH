@@ -644,3 +644,38 @@ export interface AmazonSyncJob {
   startedAt: string;
   completedAt: string | null;
 }
+
+export interface ProductPerformanceRow {
+  asin: string;
+  marketplace: string;
+  sku: string | null;
+  units: number;
+  sales: number;
+  promo: number;
+  refundsAmount: number;
+  refundsCount: number;
+  refundPct: number;
+  adsSpend: number | null;
+  realAcos: number | null;
+  amazonFees: number;
+  hasRealFees: boolean;
+  cogs: number;
+  stock: number;
+  grossProfit: number;
+  netProfit: number;
+  estimatedPayout: number;
+  margin: number;
+  roi: number;
+  avgSellingPrice: number;
+  bsr: number | null;
+}
+
+export interface ProductPerformanceGroup {
+  product: { id: string; name: string; brand: string | null };
+  rows: ProductPerformanceRow[];
+  aggregate: ProductPerformanceRow;
+}
+
+export interface ProductPerformanceResponse {
+  groups: ProductPerformanceGroup[];
+}
