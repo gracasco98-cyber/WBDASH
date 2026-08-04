@@ -53,9 +53,9 @@ export async function findCogsForAsins(
     where: {
       amazonAccountId: getCurrentAccountId(),
       asin: { in: asins },
-      OR: (marketplace && marketplace !== "all")
-        ? [{ marketplace }, { marketplace: "ALL" }]
-        : [{ marketplace: "IT" }, { marketplace: "ALL" }],
+      ...(marketplace && marketplace !== "all"
+        ? { OR: [{ marketplace }, { marketplace: "ALL" }] }
+        : {}),
     },
   });
   return rows.map(normalizeCogsRow);
