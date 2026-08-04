@@ -14,7 +14,7 @@ export async function findInventoryForAsins(
   params: { asins: string[]; marketplace?: string }
 ): Promise<Array<{ asin: string; marketplace: string; qtyTotal: number }>> {
   if (params.asins.length === 0) return [];
-  const rows = await (prisma as any).amazonInventory.findMany({
+  const rows = await prisma.amazonInventory.findMany({
     where: {
       amazonAccountId: getCurrentAccountId(),
       asin: { in: params.asins },
