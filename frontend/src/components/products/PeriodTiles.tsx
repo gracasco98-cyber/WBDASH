@@ -4,24 +4,26 @@ import { usePeriodFilter } from "@/hooks/usePeriodFilter";
 import type { PeriodPreset } from "@/context/PeriodContext";
 import { api } from "@/lib/api";
 import type { ProductPerformanceRow } from "@/lib/api";
+import { formatDateToIso } from "@/lib/periodUtils";
 
 const TILES: { preset: PeriodPreset; label: string; color: string }[] = [
-  { preset: "today", label: "Oggi", color: "#3b6fd8" },
-  { preset: "yesterday", label: "Ieri", color: "#3d9188" },
-  { preset: "last7", label: "7 giorni", color: "#3d9188" },
-  { preset: "last14", label: "14 giorni", color: "#3d9188" },
+  { preset: "today", label: "Oggi", color: "linear-gradient(135deg,#4f7fe8,#3b6fd8)" },
+  { preset: "yesterday", label: "Ieri", color: "linear-gradient(135deg,#4aa89a,#3d9188)" },
+  { preset: "last7", label: "7 giorni", color: "linear-gradient(135deg,#4aa89a,#3d9188)" },
+  { preset: "last14", label: "14 giorni", color: "linear-gradient(135deg,#4aa89a,#3d9188)" },
+  { preset: "last30", label: "30 giorni", color: "linear-gradient(135deg,#4aa89a,#3d9188)" },
 ];
 
 function presetDateRange(preset: PeriodPreset): { from: string; to: string } {
   const today = new Date();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
   const daysAgo = (n: number) => { const d = new Date(today); d.setDate(d.getDate() - n); return d; };
   switch (preset) {
-    case "today": return { from: iso(today), to: iso(today) };
-    case "yesterday": return { from: iso(daysAgo(1)), to: iso(daysAgo(1)) };
-    case "last7": return { from: iso(daysAgo(6)), to: iso(today) };
-    case "last14": return { from: iso(daysAgo(13)), to: iso(today) };
-    default: return { from: iso(today), to: iso(today) };
+    case "today": return { from: formatDateToIso(today), to: formatDateToIso(today) };
+    case "yesterday": return { from: formatDateToIso(daysAgo(1)), to: formatDateToIso(daysAgo(1)) };
+    case "last7": return { from: formatDateToIso(daysAgo(6)), to: formatDateToIso(today) };
+    case "last14": return { from: formatDateToIso(daysAgo(13)), to: formatDateToIso(today) };
+    case "last30": return { from: formatDateToIso(daysAgo(29)), to: formatDateToIso(today) };
+    default: return { from: formatDateToIso(today), to: formatDateToIso(today) };
   }
 }
 
@@ -45,8 +47,9 @@ function sumAggregate(rows: ProductPerformanceRow[]): ProductPerformanceRow | nu
       estimatedPayout: acc.estimatedPayout + r.estimatedPayout,
       adsSpend: r.adsSpend !== null ? (acc.adsSpend ?? 0) + r.adsSpend : acc.adsSpend,
       hasRealFees: acc.hasRealFees || r.hasRealFees,
+      hasRealCogs: acc.hasRealCogs || r.hasRealCogs,
     }),
-    { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0, adsSpend: null as number | null, hasRealFees: false }
+    { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0, adsSpend: null as number | null, hasRealFees: false, hasRealCogs: false }
   );
   return {
     identifierId: "", asin: "", marketplace: "ALL", sku: null, bsr: null,
@@ -85,7 +88,7 @@ export default function PeriodTiles() {
   }, []);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
       {TILES.map(({ preset, label, color }) => {
         const totalRow = totals[preset];
         const active = state.preset === preset;
