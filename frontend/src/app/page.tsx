@@ -1,18 +1,18 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { api, Summary, TimePoint, Order, AmazonSummary } from "@/lib/api";
+import { api, Summary, TimePoint, Order, AmazonSummary, ProductPerformanceGroup } from "@/lib/api";
 import { getMeta, formatEUR, formatCompact } from "@/lib/marketplaces";
 import SalesTabs from "@/components/dashboard/SalesTabs";
 import ChartsTabs from "@/components/dashboard/ChartsTabs";
 import SyncStatus from "@/components/dashboard/SyncStatus";
 import FilterBar, { isAmazonChannel, amazonChannelCode } from "@/components/dashboard/FilterBar";
 import GlobalPeriodSelector from "@/components/dashboard/GlobalPeriodSelector";
-import CrossChannelProducts from "@/components/dashboard/CrossChannelProducts";
+import PeriodTiles from "@/components/products/PeriodTiles";
+import ProductsPerformanceTable, { GroupBy } from "@/components/products/ProductsPerformanceTable";
 import OrderToastContainer, { LiveOrder } from "@/components/dashboard/OrderToast";
 import HourChannelModal from "@/components/dashboard/HourChannelModal";
 import ShopifyBIOverview from "@/components/dashboard/ShopifyBIOverview";
-import SellerboardKpiCards from "@/components/dashboard/SellerboardKpiCards";
 import OverviewViewTabs, { DashboardView } from "@/components/dashboard/OverviewViewTabs";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import ProductBIOverview, { SelectedProduct } from "@/components/dashboard/ProductBIOverview";
@@ -125,6 +125,19 @@ export default function DashboardPage() {
   // Detect if the selected marketplace is an Amazon channel (AMAZON_IT, AMAZON_DE, etc.)
   const isAmazonMp  = isAmazonChannel(marketplace);
   const amazonMpCode = amazonChannelCode(marketplace);   // "IT" | "DE" | "FR" | "ES" | null
+
+  // ── Products performance (BUSINESS INTELLIGENCE / PRODOTTI sections) ──────
+  // Declared after isAmazonMp/amazonMpCode since loadProductGroups depends on them.
+  const [productsGroupBy, setProductsGroupBy] = useState<GroupBy>("marketplace");
+  const [productGroups, setProductGroups] = useState<ProductPerformanceGroup[]>([]);
+
+  const loadProductGroups = useCallback(async () => {
+    const productMarketplace = isAmazonMp ? (amazonMpCode ?? "all") : "all";
+    const { groups } = await api.productPerformance.get({ marketplace: productMarketplace, from: apiFrom, to: apiTo });
+    setProductGroups(groups);
+  }, [isAmazonMp, amazonMpCode, apiFrom, apiTo]);
+
+  useEffect(() => { loadProductGroups(); }, [loadProductGroups]);
 
   const params = useCallback(() => {
     const p: Record<string, string> = { filter, status };
@@ -358,26 +371,7 @@ export default function DashboardPage() {
                   onClear={() => setSelectedProduct(null)}
                 />
               ) : (
-                <SellerboardKpiCards
-                  activePeriod={filter}
-                  onPeriodSelect={(period: string) => {
-                    if (period === "custom") {
-                      setPreset("custom");
-                    } else {
-                      setPreset(period as any);
-                    }
-                  }}
-                  setFrom={(from: string) => {
-                    if (periodState.preset === "custom" && periodState.to) {
-                      setDateRange(from, periodState.to);
-                    }
-                  }}
-                  setTo={(to: string) => {
-                    if (periodState.preset === "custom" && periodState.from) {
-                      setDateRange(periodState.from, to);
-                    }
-                  }}
-                />
+                <PeriodTiles />
               )
             )}
           </>
@@ -446,11 +440,12 @@ export default function DashboardPage() {
           <SectionBar label="Prodotti" visible={sections.products} onToggle={() => toggleSection("products")} />
           {sections.products && (
             <div className="mt-2">
-              <CrossChannelProducts
-                filter={filter}
-                from={apiFrom}
-                to={apiTo}
-                marketplace={marketplace}
+              <ProductsPerformanceTable
+                groups={productGroups}
+                groupBy={productsGroupBy}
+                onGroupByChange={setProductsGroupBy}
+                onRenamed={loadProductGroups}
+                onMoved={loadProductGroups}
               />
             </div>
           )}
