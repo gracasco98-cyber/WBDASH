@@ -26,7 +26,7 @@ interface RowEntry {
   key: string;
   label: string;
   metrics: ProductPerformanceRow;
-  children?: { key: string; label: string; metrics: ProductPerformanceRow; identifierId?: string }[];
+  children?: { key: string; label: string; metrics: ProductPerformanceRow }[];
 }
 
 function buildRowsByProduct(groups: ProductPerformanceGroup[]): RowEntry[] {
@@ -65,7 +65,7 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
       { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0, adsSpend: null as number | null }
     );
     const aggregate: ProductPerformanceRow = {
-      asin: "", marketplace: mp, sku: null, bsr: null, hasRealFees: rows.some((r) => r.hasRealFees),
+      identifierId: "", asin: "", marketplace: mp, sku: null, bsr: null, hasRealFees: rows.every((r) => r.hasRealFees),
       refundPct: sum.sales > 0 ? sum.refundsAmount / sum.sales : 0,
       realAcos: sum.adsSpend !== null && sum.sales > 0 ? sum.adsSpend / sum.sales : null,
       margin: sum.sales > 0 ? sum.netProfit / sum.sales : 0,
@@ -224,7 +224,7 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
                               placeholder="ID prodotto destinazione"
                               style={{ fontSize: 10, width: 160 }}
                             />
-                            <button onClick={() => handleMove(child.key)} style={{ fontSize: 10, marginLeft: 4 }}>OK</button>
+                            <button onClick={() => handleMove(child.metrics.identifierId)} style={{ fontSize: 10, marginLeft: 4 }}>OK</button>
                           </span>
                         )}
                       </MetricCell>

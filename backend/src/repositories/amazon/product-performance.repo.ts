@@ -10,6 +10,7 @@ import { findTransactionsForAsins } from "./settlement.repo";
 import { findCogsForAsins } from "./cogs.repo";
 
 export interface ProductPerformanceRow {
+  identifierId: string;
   asin: string;
   marketplace: string;
   sku: string | null;
@@ -164,6 +165,7 @@ export async function resolveProductPerformance(
       const derived = deriveMetrics({ sales: sold.sales, refundsAmount: refund.amount, amazonFees, cogs, adsSpend, units: sold.units });
 
       return {
+        identifierId: ident.id,
         asin: ident.asin as string,
         marketplace: ident.marketplace,
         sku: ident.sku,
@@ -212,7 +214,7 @@ export async function resolveProductPerformance(
     });
 
     const aggregate: ProductPerformanceRow = {
-      asin: "", marketplace: "ALL", sku: null, bsr: null,
+      identifierId: "", asin: "", marketplace: "ALL", sku: null, bsr: null,
       units: aggBase.units, sales: aggBase.sales, promo: aggBase.promo,
       refundsAmount: aggBase.refundsAmount, refundsCount: aggBase.refundsCount,
       refundPct: aggBase.sales > 0 ? aggBase.refundsAmount / aggBase.sales : 0,

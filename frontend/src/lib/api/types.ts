@@ -646,6 +646,7 @@ export interface AmazonSyncJob {
 }
 
 export interface ProductPerformanceRow {
+  identifierId: string;
   asin: string;
   marketplace: string;
   sku: string | null;

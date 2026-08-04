@@ -5,7 +5,7 @@ import ProductsPerformanceTable from "./ProductsPerformanceTable";
 import type { ProductPerformanceGroup } from "@/lib/api";
 
 const baseRow = {
-  asin: "B0ABC123", marketplace: "IT", sku: "SKU-RSV-01",
+  identifierId: "ident-1", asin: "B0ABC123", marketplace: "IT", sku: "SKU-RSV-01",
   units: 10, sales: 200, promo: 5, refundsAmount: 2, refundsCount: 1, refundPct: 0.01,
   adsSpend: 8, realAcos: 0.04, amazonFees: 35, hasRealFees: true, cogs: 45, stock: 184,
   grossProfit: 110, netProfit: 110, estimatedPayout: 155, margin: 0.55, roi: 2.44,

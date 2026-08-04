@@ -19,7 +19,7 @@ beforeEach(async () => {
 
 async function seedOneProductWithSales() {
   const product = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
-  await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-01" });
+  const identifier = await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-01" });
   // AmazonOrderItem has an FK to AmazonOrder(amazonAccountId, amazonOrderId) — the
   // parent order row must exist first (see orders.repo.test.ts for the same pattern).
   await db.prisma.amazonOrder.create({
@@ -37,13 +37,13 @@ async function seedOneProductWithSales() {
       purchaseDate: new Date("2026-08-01"),
     } as any,
   });
-  return product;
+  return { product, identifier };
 }
 
 describe("resolveProductPerformance", () => {
   it("computes units/sales/promo from AmazonOrderItem for a single product+marketplace", async () => {
     await runWithAccount(accountId, async () => {
-      const product = await seedOneProductWithSales();
+      const { product, identifier } = await seedOneProductWithSales();
       const groups = await resolveProductPerformance(db.prisma, {
         marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
       });
@@ -52,6 +52,7 @@ describe("resolveProductPerformance", () => {
       expect(group.rows[0].units).toBe(10);
       expect(group.rows[0].sales).toBe(200);
       expect(group.rows[0].promo).toBe(5);
+      expect(group.rows[0].identifierId).toBe(identifier.id);
       expect(group.aggregate.units).toBe(10);
     });
   });
