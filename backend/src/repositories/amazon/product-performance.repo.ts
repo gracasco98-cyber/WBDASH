@@ -1,0 +1,218 @@
+// product-performance.repo.ts — Resolves BI metrics per Product, joined at
+// request time across AmazonOrderItem, AmazonSettlementTransaction,
+// AmazonProductCogs, and AmazonInventory via ProductIdentifier. No
+// materialized aggregation table in this phase (see spec §Rischi).
+import type { PrismaClient } from "@prisma/client";
+import { getCurrentAccountId } from "../../context/account-context";
+import { findAllProducts } from "./product.repo";
+import { findInventoryForAsins } from "./inventory.repo";
+import { findTransactionsForAsins } from "./settlement.repo";
+import { findCogsForAsins } from "./cogs.repo";
+
+export interface ProductPerformanceRow {
+  asin: string;
+  marketplace: string;
+  sku: string | null;
+  units: number;
+  sales: number;
+  promo: number;
+  refundsAmount: number;
+  refundsCount: number;
+  refundPct: number;
+  adsSpend: number | null;
+  realAcos: number | null;
+  amazonFees: number;
+  hasRealFees: boolean;
+  cogs: number;
+  stock: number;
+  grossProfit: number;
+  netProfit: number;
+  estimatedPayout: number;
+  margin: number;
+  roi: number;
+  avgSellingPrice: number;
+  bsr: number | null;
+}
+
+export interface ProductPerformanceGroup {
+  product: { id: string; name: string; brand: string | null };
+  rows: ProductPerformanceRow[];
+  aggregate: ProductPerformanceRow;
+}
+
+const FEE_ESTIMATE_PCT = 0.15;
+const FEE_ESTIMATE_PER_UNIT = 3.80;
+
+function deriveMetrics(base: {
+  sales: number; refundsAmount: number; amazonFees: number; cogs: number; adsSpend: number | null; units: number;
+}): { grossProfit: number; netProfit: number; estimatedPayout: number; margin: number; roi: number; avgSellingPrice: number } {
+  const ads = base.adsSpend ?? 0;
+  const grossProfit = base.sales - base.refundsAmount - base.amazonFees - base.cogs - ads;
+  const netProfit = grossProfit; // Expenses feature not built in this phase — netto = lordo (spec §Scope)
+  const estimatedPayout = base.sales - base.refundsAmount - base.amazonFees - ads;
+  const margin = base.sales > 0 ? netProfit / base.sales : 0;
+  const roi = base.cogs > 0 ? netProfit / base.cogs : 0;
+  const avgSellingPrice = base.units > 0 ? base.sales / base.units : 0;
+  return { grossProfit, netProfit, estimatedPayout, margin, roi, avgSellingPrice };
+}
+
+export async function resolveProductPerformance(
+  prisma: PrismaClient,
+  params: {
+    productIds?: string[];
+    marketplace: string;
+    dateFrom: Date;
+    dateTo: Date;
+    adsSpendByAsin?: Map<string, { spend: number }>;
+  }
+): Promise<ProductPerformanceGroup[]> {
+  const products = await findAllProducts(prisma, { status: "ACTIVE" });
+  const scoped = params.productIds
+    ? products.filter((p) => params.productIds!.includes(p.id))
+    : products;
+
+  const amazonIdentifiers = scoped.flatMap((p) =>
+    p.identifiers
+      .filter((i) => i.channelType === "AMAZON" && i.asin)
+      .filter((i) => !params.marketplace || params.marketplace === "all" || i.marketplace === params.marketplace)
+      .map((i) => ({ ...i, productId: p.id }))
+  );
+  const asins = [...new Set(amazonIdentifiers.map((i) => i.asin as string))];
+
+  if (asins.length === 0) return [];
+
+  const [orderItemRows, transactions, cogsRows, inventoryRows] = await Promise.all([
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (prisma.amazonOrderItem.groupBy as any)({
+      by: ["asin", "marketplace"],
+      where: {
+        amazonAccountId: getCurrentAccountId(),
+        asin: { in: asins },
+        purchaseDate: { gte: params.dateFrom, lte: params.dateTo },
+      },
+      _sum: { itemPrice: true, promotionDiscount: true, quantityShipped: true },
+    }) as Promise<
+      Array<{
+        asin: string;
+        marketplace: string;
+        _sum: { itemPrice: unknown; promotionDiscount: unknown; quantityShipped: number | null };
+      }>
+    >,
+    findTransactionsForAsins(prisma, { asins, dateFrom: params.dateFrom, dateTo: params.dateTo }),
+    findCogsForAsins(prisma, { asins, marketplace: params.marketplace }),
+    findInventoryForAsins(prisma, { asins, marketplace: params.marketplace }),
+  ]);
+
+  const salesByKey = new Map<string, { units: number; sales: number; promo: number }>();
+  for (const r of orderItemRows) {
+    const key = `${r.marketplace}::${r.asin}`;
+    salesByKey.set(key, {
+      units: Number(r._sum.quantityShipped ?? 0),
+      sales: Number(r._sum.itemPrice ?? 0),
+      promo: Number(r._sum.promotionDiscount ?? 0),
+    });
+  }
+
+  const feesByKey = new Map<string, number>();
+  const refundsByKey = new Map<string, { amount: number; count: number }>();
+  for (const t of transactions) {
+    const key = `${t.marketplace}::${t.asin}`;
+    if (t.amountType === "Principal" && t.amount < 0) {
+      const cur = refundsByKey.get(key) ?? { amount: 0, count: 0 };
+      refundsByKey.set(key, { amount: cur.amount + Math.abs(t.amount), count: cur.count + 1 });
+    } else if (t.amount < 0) {
+      feesByKey.set(key, (feesByKey.get(key) ?? 0) + Math.abs(t.amount));
+    }
+  }
+
+  const cogsByAsin = new Map<string, { cogsPerUnit: number; shippingCost: number }>();
+  for (const c of cogsRows as Array<{ asin: string; cogsPerUnit: number; shippingCost: number }>) {
+    if (!cogsByAsin.has(c.asin)) cogsByAsin.set(c.asin, { cogsPerUnit: c.cogsPerUnit, shippingCost: c.shippingCost });
+  }
+
+  const stockByKey = new Map<string, number>();
+  for (const inv of inventoryRows) {
+    const key = `${inv.marketplace}::${inv.asin}`;
+    stockByKey.set(key, (stockByKey.get(key) ?? 0) + inv.qtyTotal);
+  }
+
+  const groups: ProductPerformanceGroup[] = [];
+
+  for (const product of scoped) {
+    const productIdentifiers = amazonIdentifiers.filter((i) => i.productId === product.id);
+    if (productIdentifiers.length === 0) continue;
+
+    const rows: ProductPerformanceRow[] = productIdentifiers.map((ident) => {
+      const key = `${ident.marketplace}::${ident.asin}`;
+      const sold = salesByKey.get(key) ?? { units: 0, sales: 0, promo: 0 };
+      const refund = refundsByKey.get(key) ?? { amount: 0, count: 0 };
+      const realFees = feesByKey.get(key);
+      const hasRealFees = realFees !== undefined;
+      const amazonFees = hasRealFees ? realFees! : sold.sales * FEE_ESTIMATE_PCT + sold.units * FEE_ESTIMATE_PER_UNIT;
+      const cogsInfo = cogsByAsin.get(ident.asin as string);
+      const cogs = cogsInfo ? (cogsInfo.cogsPerUnit + cogsInfo.shippingCost) * sold.units : 0;
+      const adsInfo = params.adsSpendByAsin?.get(ident.asin as string);
+      const adsSpend = adsInfo ? adsInfo.spend : null;
+      const realAcos = adsSpend !== null && sold.sales > 0 ? adsSpend / sold.sales : null;
+
+      const derived = deriveMetrics({ sales: sold.sales, refundsAmount: refund.amount, amazonFees, cogs, adsSpend, units: sold.units });
+
+      return {
+        asin: ident.asin as string,
+        marketplace: ident.marketplace,
+        sku: ident.sku,
+        units: sold.units,
+        sales: sold.sales,
+        promo: sold.promo,
+        refundsAmount: refund.amount,
+        refundsCount: refund.count,
+        refundPct: sold.sales > 0 ? refund.amount / sold.sales : 0,
+        adsSpend,
+        realAcos,
+        amazonFees,
+        hasRealFees,
+        cogs,
+        stock: stockByKey.get(key) ?? 0,
+        bsr: null, // AmazonProductSnapshot.bsr exists but is never populated (spec §Scope, out of scope)
+        ...derived,
+      };
+    });
+
+    const aggBase = rows.reduce(
+      (acc, r) => ({
+        units: acc.units + r.units,
+        sales: acc.sales + r.sales,
+        promo: acc.promo + r.promo,
+        refundsAmount: acc.refundsAmount + r.refundsAmount,
+        refundsCount: acc.refundsCount + r.refundsCount,
+        amazonFees: acc.amazonFees + r.amazonFees,
+        cogs: acc.cogs + r.cogs,
+        stock: acc.stock + r.stock,
+        adsSpend: r.adsSpend !== null ? (acc.adsSpend ?? 0) + r.adsSpend : acc.adsSpend,
+        hasAnyAds: acc.hasAnyAds || r.adsSpend !== null,
+        hasRealFees: acc.hasRealFees || r.hasRealFees,
+      }),
+      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, adsSpend: null as number | null, hasAnyAds: false, hasRealFees: false }
+    );
+
+    const aggDerived = deriveMetrics({
+      sales: aggBase.sales, refundsAmount: aggBase.refundsAmount, amazonFees: aggBase.amazonFees,
+      cogs: aggBase.cogs, adsSpend: aggBase.adsSpend, units: aggBase.units,
+    });
+
+    const aggregate: ProductPerformanceRow = {
+      asin: "", marketplace: "ALL", sku: null, bsr: null,
+      units: aggBase.units, sales: aggBase.sales, promo: aggBase.promo,
+      refundsAmount: aggBase.refundsAmount, refundsCount: aggBase.refundsCount,
+      refundPct: aggBase.sales > 0 ? aggBase.refundsAmount / aggBase.sales : 0,
+      adsSpend: aggBase.hasAnyAds ? aggBase.adsSpend : null,
+      realAcos: aggBase.hasAnyAds && aggBase.adsSpend !== null && aggBase.sales > 0 ? aggBase.adsSpend / aggBase.sales : null,
+      amazonFees: aggBase.amazonFees, hasRealFees: aggBase.hasRealFees, cogs: aggBase.cogs, stock: aggBase.stock,
+      ...aggDerived,
+    };
+
+    groups.push({ product: { id: product.id, name: product.name, brand: product.brand }, rows, aggregate });
+  }
+
+  return groups;
+}
