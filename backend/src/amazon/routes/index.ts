@@ -4,6 +4,7 @@ import { Router } from "express";
 import { ordersRouter } from "./orders.routes";
 import { ordersExportRouter } from "./orders-export.routes";
 import { productsRouter } from "./products.routes";
+import { productsPerformanceRouter } from "./products-performance.routes";
 import { settlementRouter } from "./settlement.routes";
 import { settlementTransactionsRouter } from "./settlement-transactions.routes";
 import { paymentsAuxRouter } from "./payments-aux.routes";
@@ -28,6 +29,9 @@ amazonRouter.use("/", ordersExportRouter);
 
 // Products domain: /products, /products/:asin/history, /pl
 amazonRouter.use("/", productsRouter);
+
+// Products performance domain: /products/performance, /products/:id, /products/identifiers/:id
+amazonRouter.use("/", productsPerformanceRouter);
 
 // Settlement domain: /dashboard, /payments
 amazonRouter.use("/", settlementRouter);
