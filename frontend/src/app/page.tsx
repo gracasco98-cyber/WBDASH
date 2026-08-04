@@ -82,7 +82,7 @@ function SectionBar({
 
 export default function DashboardPage() {
   const [activeView, setActiveView] = useState<DashboardView>("tiles");
-  const { state: periodState, setPreset, setDateRange } = usePeriodFilter();
+  const { state: periodState, setPreset } = usePeriodFilter();
   const { marketplace, setMarketplace } = useMarketplaceFilter();
   const [status, setStatus] = useState("all");
 
