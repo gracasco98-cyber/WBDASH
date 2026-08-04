@@ -1,5 +1,5 @@
 "use client";
-import { useState, Fragment } from "react";
+import { useState, useEffect, Fragment } from "react";
 import type { ProductPerformanceGroup, ProductPerformanceRow } from "@/lib/api";
 import { api } from "@/lib/api";
 
@@ -21,6 +21,7 @@ const MARKETPLACE_LABEL: Record<string, string> = {
 const fmtEur = (n: number) => `€ ${n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtPct = (n: number) => `${(n * 100).toLocaleString("it-IT", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
 const dash = (v: number | null, fmt: (n: number) => string) => (v === null ? "—" : fmt(v));
+const profitColor = (n: number) => (n < 0 ? "#dc2626" : "#0d9488");
 
 interface RowEntry {
   key: string;
@@ -65,7 +66,9 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
       { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0, adsSpend: null as number | null }
     );
     const aggregate: ProductPerformanceRow = {
-      identifierId: "", asin: "", marketplace: mp, sku: null, bsr: null, hasRealFees: rows.every((r) => r.hasRealFees),
+      identifierId: "", asin: "", marketplace: mp, sku: null, bsr: null,
+      hasRealFees: rows.every((r) => r.hasRealFees),
+      hasRealCogs: rows.every((r) => r.hasRealCogs),
       refundPct: sum.sales > 0 ? sum.refundsAmount / sum.sales : 0,
       realAcos: sum.adsSpend !== null && sum.sales > 0 ? sum.adsSpend / sum.sales : null,
       margin: sum.sales > 0 ? sum.netProfit / sum.sales : 0,
@@ -93,8 +96,17 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [movingId, setMovingId] = useState<string | null>(null);
   const [targetProductId, setTargetProductId] = useState("");
+  const [images, setImages] = useState<Record<string, string | null>>({});
 
   const rows = groupBy === "product" ? buildRowsByProduct(groups) : buildRowsByMarketplace(groups);
+
+  useEffect(() => {
+    const asins = [...new Set(groups.flatMap((g) => g.rows.map((r) => r.asin)).filter(Boolean))];
+    if (asins.length === 0) return;
+    let cancelled = false;
+    api.amazon.catalogImages(asins).then((map) => { if (!cancelled) setImages(map); }).catch((err) => console.error("[ProductsPerformanceTable] Failed to load thumbnails:", err));
+    return () => { cancelled = true; };
+  }, [groups]);
 
   const toggle = (key: string) => setExpanded((prev) => {
     const next = new Set(prev);
@@ -105,16 +117,26 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
   const handleRename = async (productId: string, currentName: string) => {
     const name = window.prompt("Nuovo nome prodotto:", currentName);
     if (!name || name === currentName) return;
-    await api.productPerformance.rename(productId, name);
-    onRenamed();
+    try {
+      await api.productPerformance.rename(productId, name);
+      onRenamed();
+    } catch (err) {
+      console.error("[ProductsPerformanceTable] Rename failed:", err);
+      window.alert("Impossibile rinominare il prodotto. Riprova.");
+    }
   };
 
   const handleMove = async (identifierId: string) => {
     if (!targetProductId) return;
-    await api.productPerformance.moveIdentifier(identifierId, targetProductId);
-    setMovingId(null);
-    setTargetProductId("");
-    onMoved();
+    try {
+      await api.productPerformance.moveIdentifier(identifierId, targetProductId);
+      setMovingId(null);
+      setTargetProductId("");
+      onMoved();
+    } catch (err) {
+      console.error("[ProductsPerformanceTable] Move failed:", err);
+      window.alert("Impossibile spostare il prodotto. Riprova.");
+    }
   };
 
   return (
@@ -189,13 +211,19 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
                     <MetricCell>{fmtEur(m.promo)}</MetricCell>
                     <MetricCell>{dash(m.adsSpend, fmtEur)}</MetricCell>
                     <MetricCell>{fmtPct(m.refundPct)}</MetricCell>
-                    <MetricCell>{fmtEur(m.amazonFees)}</MetricCell>
-                    <MetricCell>{fmtEur(m.cogs)}</MetricCell>
-                    <MetricCell>{fmtEur(m.grossProfit)}</MetricCell>
-                    <MetricCell>{fmtEur(m.netProfit)}</MetricCell>
+                    <MetricCell>
+                      {fmtEur(m.amazonFees)}
+                      {!m.hasRealFees && <span title="Stimato — settlement non ancora disponibile" style={{ color: "#f59e0b", fontSize: 9, marginLeft: 3 }}>≈</span>}
+                    </MetricCell>
+                    <MetricCell>
+                      {fmtEur(m.cogs)}
+                      {!m.hasRealCogs && <span title="Stimato — nessun COGS configurato per questo ASIN" style={{ color: "#f59e0b", fontSize: 9, marginLeft: 3 }}>≈</span>}
+                    </MetricCell>
+                    <MetricCell><span style={{ color: profitColor(m.grossProfit), fontWeight: 600 }}>{fmtEur(m.grossProfit)}</span></MetricCell>
+                    <MetricCell><span style={{ color: profitColor(m.netProfit), fontWeight: 600 }}>{fmtEur(m.netProfit)}</span></MetricCell>
                     <MetricCell>{fmtEur(m.estimatedPayout)}</MetricCell>
-                    <MetricCell>{fmtPct(m.margin)}</MetricCell>
-                    <MetricCell>{fmtPct(m.roi)}</MetricCell>
+                    <MetricCell><span style={{ color: profitColor(m.margin), fontWeight: 600 }}>{fmtPct(m.margin)}</span></MetricCell>
+                    <MetricCell><span style={{ color: profitColor(m.roi), fontWeight: 600 }}>{fmtPct(m.roi)}</span></MetricCell>
                     <MetricCell>{dash(m.bsr, (n) => String(n))}</MetricCell>
                     <MetricCell>{fmtEur(m.avgSellingPrice)}</MetricCell>
                     <MetricCell>{dash(m.realAcos, fmtPct)}</MetricCell>
@@ -204,9 +232,16 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
                   {isOpen && entry.children?.map((child) => (
                     <tr key={child.key} style={{ background: "#f9fafb" }}>
                       <MetricCell>
-                        <span style={{ marginLeft: 20, color: "#6b7280" }}>
-                          ↳ {child.label} — <span>{child.metrics.asin}</span>
-                        </span>
+                        <div style={{ marginLeft: 20, display: "flex", alignItems: "center", gap: 8 }}>
+                          {images[child.metrics.asin] ? (
+                            <img src={images[child.metrics.asin]!} alt="" style={{ width: 22, height: 22, borderRadius: 5, objectFit: "cover", flexShrink: 0 }} />
+                          ) : (
+                            <div style={{ width: 22, height: 22, borderRadius: 5, background: "#eef0ff", flexShrink: 0 }} />
+                          )}
+                          <span style={{ marginLeft: 4, color: "#6b7280" }}>
+                            ↳ {child.label} — <span>{child.metrics.asin}</span>
+                          </span>
+                        </div>
                         {groupBy === "product" && (
                           <button
                             onClick={() => setMovingId(child.key)}
@@ -234,13 +269,19 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
                       <MetricCell>{fmtEur(child.metrics.promo)}</MetricCell>
                       <MetricCell>{dash(child.metrics.adsSpend, fmtEur)}</MetricCell>
                       <MetricCell>{fmtPct(child.metrics.refundPct)}</MetricCell>
-                      <MetricCell>{fmtEur(child.metrics.amazonFees)}</MetricCell>
-                      <MetricCell>{fmtEur(child.metrics.cogs)}</MetricCell>
-                      <MetricCell>{fmtEur(child.metrics.grossProfit)}</MetricCell>
-                      <MetricCell>{fmtEur(child.metrics.netProfit)}</MetricCell>
+                      <MetricCell>
+                        {fmtEur(child.metrics.amazonFees)}
+                        {!child.metrics.hasRealFees && <span title="Stimato — settlement non ancora disponibile" style={{ color: "#f59e0b", fontSize: 9, marginLeft: 3 }}>≈</span>}
+                      </MetricCell>
+                      <MetricCell>
+                        {fmtEur(child.metrics.cogs)}
+                        {!child.metrics.hasRealCogs && <span title="Stimato — nessun COGS configurato per questo ASIN" style={{ color: "#f59e0b", fontSize: 9, marginLeft: 3 }}>≈</span>}
+                      </MetricCell>
+                      <MetricCell><span style={{ color: profitColor(child.metrics.grossProfit), fontWeight: 600 }}>{fmtEur(child.metrics.grossProfit)}</span></MetricCell>
+                      <MetricCell><span style={{ color: profitColor(child.metrics.netProfit), fontWeight: 600 }}>{fmtEur(child.metrics.netProfit)}</span></MetricCell>
                       <MetricCell>{fmtEur(child.metrics.estimatedPayout)}</MetricCell>
-                      <MetricCell>{fmtPct(child.metrics.margin)}</MetricCell>
-                      <MetricCell>{fmtPct(child.metrics.roi)}</MetricCell>
+                      <MetricCell><span style={{ color: profitColor(child.metrics.margin), fontWeight: 600 }}>{fmtPct(child.metrics.margin)}</span></MetricCell>
+                      <MetricCell><span style={{ color: profitColor(child.metrics.roi), fontWeight: 600 }}>{fmtPct(child.metrics.roi)}</span></MetricCell>
                       <MetricCell>{dash(child.metrics.bsr, (n) => String(n))}</MetricCell>
                       <MetricCell>{fmtEur(child.metrics.avgSellingPrice)}</MetricCell>
                       <MetricCell>{dash(child.metrics.realAcos, fmtPct)}</MetricCell>
