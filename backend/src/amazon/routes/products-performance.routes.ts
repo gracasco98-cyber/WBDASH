@@ -9,6 +9,13 @@ import { getDateRange } from "../utils/datetime";
 
 export const productsPerformanceRouter = Router();
 
+/**
+ * Builds the ads-spend lookup keyed by `${marketplace}::${asin}` — the same
+ * composite-key convention resolveProductPerformance uses for every other
+ * per-identifier map (sales, fees, refunds, stock, COGS). Keying by ASIN alone
+ * made every marketplace's identifier row claim the whole cross-marketplace
+ * spend, which the product aggregate then double-counted.
+ */
 async function buildAdsSpendMap(
   asins: string[],
   marketplace: string,
@@ -18,7 +25,7 @@ async function buildAdsSpendMap(
   if (asins.length === 0) return undefined;
   const rows = await findAdSpendForAsins(prisma, { asins, marketplace, dateFrom, dateTo });
   if (rows.length === 0) return undefined;
-  return new Map(rows.map((r) => [r.asin, { spend: r.spend }]));
+  return new Map(rows.map((r) => [`${r.marketplace}::${r.asin}`, { spend: r.spend }]));
 }
 
 productsPerformanceRouter.get("/products/performance", async (req: Request, res: Response) => {
@@ -33,14 +40,14 @@ productsPerformanceRouter.get("/products/performance", async (req: Request, res:
     const scoped = productIdList ? products.filter((p) => productIdList.includes(p.id)) : products;
     const asins = scoped.flatMap((p) => p.identifiers.filter((i) => i.channelType === "AMAZON" && i.asin).map((i) => i.asin as string));
 
-    const adsSpendByAsin = await buildAdsSpendMap(asins, marketplace, dateFrom, dateTo);
+    const adsSpendByKey = await buildAdsSpendMap(asins, marketplace, dateFrom, dateTo);
 
     const groups = await resolveProductPerformance(prisma, {
       productIds: productIdList,
       marketplace,
       dateFrom,
       dateTo,
-      adsSpendByAsin,
+      adsSpendByKey,
     });
 
     res.json({ groups });

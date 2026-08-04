@@ -5,8 +5,10 @@ import { setupTestDb, truncateAll, createTestAmazonAccount, type TestDb } from "
 import { runWithAccount } from "../../src/context/account-context";
 import { createProduct, createIdentifier } from "../../src/repositories/amazon/product.repo";
 
+// findAdSpendForAsins now returns { asin, marketplace, spend } — marketplace is
+// part of the shape because the route keys its ads map by `${marketplace}::${asin}`.
 vi.mock("../../src/repositories/amazon/ad-spend.repo", () => ({
-  findAdSpendForAsins: vi.fn(async () => []),
+  findAdSpendForAsins: vi.fn(async (): Promise<Array<{ asin: string; marketplace: string; spend: number }>> => []),
 }));
 
 let db: TestDb;
@@ -63,6 +65,38 @@ describe("GET /products/performance", () => {
     expect(res.status).toBe(200);
     expect(res.body.groups).toHaveLength(1);
     expect(res.body.groups[0].aggregate.units).toBe(5);
+  });
+
+  it("attributes ad spend to the right marketplace when one ASIN sells on two", async () => {
+    // End-to-end guard for the ASIN-only ads key bug: IT and DE are separate
+    // ProductIdentifier rows for the same ASIN. Each must receive only its own
+    // marketplace's spend, and the aggregate must sum to 27 — not 2 × 27.
+    const { findAdSpendForAsins } = await import("../../src/repositories/amazon/ad-spend.repo");
+    (findAdSpendForAsins as any).mockResolvedValueOnce([
+      { asin: "B0ABC123", marketplace: "IT", spend: 20 },
+      { asin: "B0ABC123", marketplace: "DE", spend: 7 },
+    ]);
+
+    await runWithAccount(accountId, async () => {
+      const product = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-IT" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "DE", asin: "B0ABC123", sku: "SKU-RSV-DE" });
+      for (const mp of ["IT", "DE"] as const) {
+        await db.prisma.amazonOrder.create({
+          data: { amazonAccountId: accountId, amazonOrderId: `O-${mp}`, purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"), orderStatus: "Shipped", marketplace: mp },
+        });
+        await db.prisma.amazonOrderItem.create({
+          data: { amazonAccountId: accountId, amazonOrderId: `O-${mp}`, orderItemId: `I-${mp}`, asin: "B0ABC123", sku: `SKU-RSV-${mp}`, productTitle: "Resveratrolo", marketplace: mp, quantityOrdered: 5, quantityShipped: 5, itemPrice: 100, promotionDiscount: 0, purchaseDate: new Date("2026-08-01") } as any,
+        });
+      }
+    });
+
+    const res = await request(app).get("/products/performance").query({ marketplace: "all", from: "2026-08-01", to: "2026-08-02" });
+    expect(res.status).toBe(200);
+    const group = res.body.groups[0];
+    expect(group.rows.find((r: any) => r.marketplace === "IT").adsSpend).toBe(20);
+    expect(group.rows.find((r: any) => r.marketplace === "DE").adsSpend).toBe(7);
+    expect(group.aggregate.adsSpend).toBeCloseTo(27, 2);
   });
 });
 

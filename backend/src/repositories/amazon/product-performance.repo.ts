@@ -65,7 +65,11 @@ export async function resolveProductPerformance(
     marketplace: string;
     dateFrom: Date;
     dateTo: Date;
-    adsSpendByAsin?: Map<string, { spend: number }>;
+    /** Keyed by `${marketplace}::${asin}` — same convention as every other
+     *  per-identifier map below. An asin-only key would hand each marketplace's
+     *  identifier row the combined cross-marketplace spend, which the product
+     *  aggregate would then count once per marketplace. */
+    adsSpendByKey?: Map<string, { spend: number }>;
   }
 ): Promise<ProductPerformanceGroup[]> {
   const products = await findAllProducts(prisma, { status: "ACTIVE" });
@@ -160,7 +164,7 @@ export async function resolveProductPerformance(
       const cogsInfo = cogsByKey.get(key) ?? cogsByKey.get(`ALL::${ident.asin}`);
       const hasRealCogs = cogsInfo !== undefined;
       const cogs = cogsInfo ? (cogsInfo.cogsPerUnit + cogsInfo.shippingCost) * sold.units : 0;
-      const adsInfo = params.adsSpendByAsin?.get(ident.asin as string);
+      const adsInfo = params.adsSpendByKey?.get(key);
       const adsSpend = adsInfo ? adsInfo.spend : null;
       const realAcos = adsSpend !== null && sold.sales > 0 ? adsSpend / sold.sales : null;
 

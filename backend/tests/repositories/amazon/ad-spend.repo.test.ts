@@ -14,7 +14,7 @@ beforeEach(async () => {
 });
 
 describe("ad-spend.repo", () => {
-  it("upserts a snapshot and sums spend per ASIN across the date range", async () => {
+  it("upserts a snapshot and sums spend per ASIN+marketplace across the date range", async () => {
     await runWithAccount(accountId, async () => {
       await upsertAdvertisedProductSnapshot(db.prisma, {
         snapshotDate: new Date("2026-08-01"), marketplace: "IT", asin: "B0ABC123", campaignId: "C1",
@@ -28,7 +28,7 @@ describe("ad-spend.repo", () => {
       const rows = await findAdSpendForAsins(db.prisma, {
         asins: ["B0ABC123"], dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-03"),
       });
-      expect(rows).toEqual([{ asin: "B0ABC123", spend: 15 }]);
+      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "IT", spend: 15 }]);
     });
   });
 
@@ -46,7 +46,7 @@ describe("ad-spend.repo", () => {
       const rows = await findAdSpendForAsins(db.prisma, {
         asins: ["B0ABC123"], dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-01"),
       });
-      expect(rows).toEqual([{ asin: "B0ABC123", spend: 12 }]);
+      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "IT", spend: 12 }]);
     });
   });
 
@@ -64,7 +64,27 @@ describe("ad-spend.repo", () => {
       const rows = await findAdSpendForAsins(db.prisma, {
         asins: ["B0ABC123"], marketplace: "DE", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-01"),
       });
-      expect(rows).toEqual([{ asin: "B0ABC123", spend: 7 }]);
+      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "DE", spend: 7 }]);
+    });
+  });
+
+  it("keeps the same ASIN's spend separate per marketplace when no marketplace filter is given", async () => {
+    await runWithAccount(accountId, async () => {
+      await upsertAdvertisedProductSnapshot(db.prisma, {
+        snapshotDate: new Date("2026-08-01"), marketplace: "IT", asin: "B0ABC123", campaignId: "C1",
+        spend: 10, sales: 100, impressions: 500, clicks: 20, orders: 3,
+      });
+      await upsertAdvertisedProductSnapshot(db.prisma, {
+        snapshotDate: new Date("2026-08-01"), marketplace: "DE", asin: "B0ABC123", campaignId: "C1",
+        spend: 7, sales: 70, impressions: 300, clicks: 12, orders: 2,
+      });
+
+      const rows = await findAdSpendForAsins(db.prisma, {
+        asins: ["B0ABC123"], marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-01"),
+      });
+      expect(rows).toHaveLength(2);
+      expect(rows).toContainEqual({ asin: "B0ABC123", marketplace: "IT", spend: 10 });
+      expect(rows).toContainEqual({ asin: "B0ABC123", marketplace: "DE", spend: 7 });
     });
   });
 });

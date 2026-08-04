@@ -133,7 +133,7 @@ describe("resolveProductPerformance", () => {
     });
   });
 
-  it("returns null adsSpend/realAcos when no adsSpendByAsin map is provided", async () => {
+  it("returns null adsSpend/realAcos when no adsSpendByKey map is provided", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
       const groups = await resolveProductPerformance(db.prisma, {
@@ -144,16 +144,60 @@ describe("resolveProductPerformance", () => {
     });
   });
 
-  it("uses adsSpendByAsin when provided, and computes realAcos", async () => {
+  it("uses adsSpendByKey when provided, and computes realAcos", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
       const groups = await resolveProductPerformance(db.prisma, {
         marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
-        adsSpendByAsin: new Map([["B0ABC123", { spend: 10 }]]),
+        adsSpendByKey: new Map([["IT::B0ABC123", { spend: 10 }]]),
       });
       const row = groups[0].rows[0];
       expect(row.adsSpend).toBe(10);
       expect(row.realAcos).toBeCloseTo(10 / 200, 4);
+    });
+  });
+
+  it("assigns ad spend per marketplace, never duplicating one marketplace's spend onto another", async () => {
+    await runWithAccount(accountId, async () => {
+      // Same ASIN on two marketplaces (IT + DE) under one product. The buggy code
+      // keyed the ads map by ASIN alone, so BOTH identifier rows received the same
+      // combined (IT+DE) spend, and the aggregate then summed it — doubling real
+      // ad spend and corrupting grossProfit/netProfit/margin/roi/realAcos.
+      const product = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-IT" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "DE", asin: "B0ABC123", sku: "SKU-RSV-DE" });
+
+      await db.prisma.amazonOrder.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-IT", purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"), orderStatus: "Shipped", marketplace: "IT" },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-IT", orderItemId: "I-IT", asin: "B0ABC123", sku: "SKU-RSV-IT", productTitle: "Resveratrolo 500mg", marketplace: "IT", quantityOrdered: 10, quantityShipped: 10, itemPrice: 200, itemTax: 0, promotionDiscount: 0, purchaseDate: new Date("2026-08-01") } as any,
+      });
+      await db.prisma.amazonOrder.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-DE", purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"), orderStatus: "Shipped", marketplace: "DE" },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O-DE", orderItemId: "I-DE", asin: "B0ABC123", sku: "SKU-RSV-DE", productTitle: "Resveratrolo 500mg", marketplace: "DE", quantityOrdered: 5, quantityShipped: 5, itemPrice: 100, itemTax: 0, promotionDiscount: 0, purchaseDate: new Date("2026-08-01") } as any,
+      });
+
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+        adsSpendByKey: new Map([
+          ["IT::B0ABC123", { spend: 20 }],
+          ["DE::B0ABC123", { spend: 7 }],
+        ]),
+      });
+      const group = groups.find((g) => g.product.id === product.id)!;
+      const itRow = group.rows.find((r) => r.marketplace === "IT")!;
+      const deRow = group.rows.find((r) => r.marketplace === "DE")!;
+
+      expect(itRow.adsSpend).toBe(20);
+      expect(deRow.adsSpend).toBe(7);
+      expect(itRow.realAcos).toBeCloseTo(20 / 200, 4);
+      expect(deRow.realAcos).toBeCloseTo(7 / 100, 4);
+      // Aggregate sums each marketplace's own spend once — 27, not 40 or 54.
+      expect(group.aggregate.adsSpend).toBeCloseTo(27, 2);
+      expect(group.aggregate.realAcos).toBeCloseTo(27 / 300, 4);
     });
   });
 

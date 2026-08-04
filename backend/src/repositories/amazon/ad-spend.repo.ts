@@ -54,17 +54,26 @@ export async function upsertAdvertisedProductSnapshot(
 }
 
 /**
- * Sums spend per ASIN across the date range (and every campaign), current
- * account only. Used by the products/performance route to build its ads
- * spend map without ever calling the Amazon Ads API in the request path.
+ * Sums spend per ASIN *and marketplace* across the date range (and every
+ * campaign), current account only. Used by the products/performance route to
+ * build its ads spend map without ever calling the Amazon Ads API in the
+ * request path.
+ *
+ * Grouping by marketplace as well as ASIN is load-bearing: the same ASIN is
+ * routinely sold on several marketplaces, each one a distinct ProductIdentifier
+ * row (unique on channelType+marketplace+asin). Grouping by ASIN alone returned
+ * one combined figure that every identifier row for that ASIN then claimed as
+ * its own, so the product aggregate summed the same spend once per marketplace
+ * — inflating ad spend and corrupting every profit/margin/ROI/ACOS figure
+ * derived from it.
  */
 export async function findAdSpendForAsins(
   prisma: PrismaClient,
   params: { asins: string[]; marketplace?: string; dateFrom: Date; dateTo: Date }
-): Promise<Array<{ asin: string; spend: number }>> {
+): Promise<Array<{ asin: string; marketplace: string; spend: number }>> {
   if (params.asins.length === 0) return [];
   const rows = await prisma.amazonAdvertisedProductSnapshot.groupBy({
-    by: ["asin"],
+    by: ["asin", "marketplace"],
     where: {
       amazonAccountId: getCurrentAccountId(),
       asin: { in: params.asins },
@@ -73,5 +82,5 @@ export async function findAdSpendForAsins(
     },
     _sum: { spend: true },
   });
-  return rows.map((r) => ({ asin: r.asin, spend: toNum(r._sum.spend ?? 0) }));
+  return rows.map((r) => ({ asin: r.asin, marketplace: r.marketplace, spend: toNum(r._sum.spend ?? 0) }));
 }
