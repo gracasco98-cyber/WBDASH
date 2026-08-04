@@ -93,7 +93,7 @@ describe("HomePage — product BI section", () => {
 
     // ProductsPerformanceTable's groupBy control (PRODOTTI section) — renders
     // unconditionally regardless of which top-nav tab (Tiles/Chart/P&L/Trends)
-    // is active, preserving CrossChannelProducts' prior behavior.
+    // is active, preserving the prior product-section behavior.
     expect(screen.getByLabelText(/raggruppa per/i)).toBeInTheDocument();
   });
 
