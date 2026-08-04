@@ -131,13 +131,35 @@ export default function DashboardPage() {
   const [productsGroupBy, setProductsGroupBy] = useState<GroupBy>("marketplace");
   const [productGroups, setProductGroups] = useState<ProductPerformanceGroup[]>([]);
 
-  const loadProductGroups = useCallback(async () => {
+  const fetchProductGroups = useCallback(() => {
     const productMarketplace = isAmazonMp ? (amazonMpCode ?? "all") : "all";
-    const { groups } = await api.productPerformance.get({ marketplace: productMarketplace, from: apiFrom, to: apiTo });
-    setProductGroups(groups);
+    return api.productPerformance.get({ marketplace: productMarketplace, from: apiFrom, to: apiTo });
   }, [isAmazonMp, amazonMpCode, apiFrom, apiTo]);
 
-  useEffect(() => { loadProductGroups(); }, [loadProductGroups]);
+  // Uncancellable on-demand reload — wired directly to ProductsPerformanceTable's
+  // onRenamed/onMoved callbacks (fired outside the effect below, after a mutation
+  // succeeds), so it always applies its result regardless of subsequent effect runs.
+  const loadProductGroups = useCallback(async () => {
+    try {
+      const { groups } = await fetchProductGroups();
+      setProductGroups(groups);
+    } catch (err) {
+      console.error("[DashboardPage] Failed to load product groups:", err);
+    }
+  }, [fetchProductGroups]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { groups } = await fetchProductGroups();
+        if (!cancelled) setProductGroups(groups);
+      } catch (err) {
+        if (!cancelled) console.error("[DashboardPage] Failed to load product groups:", err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fetchProductGroups]);
 
   const params = useCallback(() => {
     const p: Record<string, string> = { filter, status };

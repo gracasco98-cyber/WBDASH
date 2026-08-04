@@ -58,6 +58,7 @@ vi.mock("@/lib/api", () => ({
       summary: vi.fn(async () => null),
       timeseries: vi.fn(async () => []),
       products: vi.fn(async () => ({ products: [] })),
+      catalogImages: vi.fn(async () => ({})),
     },
     products: vi.fn(async () => ({ products: [] })),
     productPerformance: {
@@ -103,6 +104,19 @@ describe("HomePage — product BI section", () => {
     await vi.waitFor(() => {
       expect(mockProductPerformanceGet).toHaveBeenCalledWith(
         expect.objectContaining({ marketplace: "all" })
+      );
+    });
+  });
+
+  it("translates an Amazon marketplace filter to its Amazon channel code", async () => {
+    mockUseMarketplaceFilter.mockReturnValue({ marketplace: "AMAZON_IT", setMarketplace: vi.fn() });
+
+    render(<HomePage />);
+    await screen.findByLabelText(/raggruppa per/i);
+
+    await vi.waitFor(() => {
+      expect(mockProductPerformanceGet).toHaveBeenCalledWith(
+        expect.objectContaining({ marketplace: "IT" })
       );
     });
   });
