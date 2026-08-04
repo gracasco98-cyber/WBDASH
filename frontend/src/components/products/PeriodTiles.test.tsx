@@ -42,4 +42,20 @@ describe("PeriodTiles", () => {
     expect(yesterdayTile).toHaveStyle({ border: "2px solid #111" });
     expect(todayTile).not.toHaveStyle({ border: "2px solid #111" });
   });
+
+  it("handles fetch error gracefully without crashing, keeps tiles rendered with placeholder values", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockGet.mockRejectedValueOnce(new Error("API error"));
+    render(<PeriodTiles />);
+    // All 4 tile labels should still be rendered even if fetch fails
+    expect(screen.getByRole("button", { name: /oggi/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /ieri/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /7 giorni/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /14 giorni/i })).toBeInTheDocument();
+    // Verify component stays usable with "—" placeholder for all tiles
+    expect(screen.getAllByText("—")).toHaveLength(4);
+    // Verify error was logged
+    await vi.waitFor(() => expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[PeriodTiles] Failed to load period tiles:"), expect.any(Error)));
+    consoleErrorSpy.mockRestore();
+  });
 });

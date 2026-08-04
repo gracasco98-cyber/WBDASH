@@ -68,14 +68,18 @@ export default function PeriodTiles() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const results = await Promise.all(
-        TILES.map(async ({ preset }) => {
-          const { from, to } = presetDateRange(preset);
-          const { groups } = await api.productPerformance.get({ marketplace: "all", from, to });
-          return [preset, sumAggregate(groups.map((g) => g.aggregate))] as const;
-        })
-      );
-      if (!cancelled) setTotals(Object.fromEntries(results) as any);
+      try {
+        const results = await Promise.all(
+          TILES.map(async ({ preset }) => {
+            const { from, to } = presetDateRange(preset);
+            const { groups } = await api.productPerformance.get({ marketplace: "all", from, to });
+            return [preset, sumAggregate(groups.map((g) => g.aggregate))] as const;
+          })
+        );
+        if (!cancelled) setTotals(Object.fromEntries(results) as any);
+      } catch (err) {
+        if (!cancelled) console.error("[PeriodTiles] Failed to load period tiles:", err);
+      }
     })();
     return () => { cancelled = true; };
   }, []);
