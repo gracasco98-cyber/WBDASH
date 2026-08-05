@@ -2,7 +2,8 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 // Every operation is scoped to the current Amazon account (context/account-context.ts).
-import type { PrismaClient, AmazonSettlementTransaction, Prisma } from "@prisma/client";
+import type { PrismaClient, AmazonSettlementTransaction } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { toNum } from "../../utils/decimal";
 import { getCurrentAccountId } from "../../context/account-context";
 
@@ -372,4 +373,196 @@ export async function computeSettlementRatiosForCalibration(
     other: Number(r.other),
     reimb: Number(r.reimb),
   }));
+}
+
+// ─── Settlement detail / reconciliation (GET /payments/settlement/:id/transactions) ──
+
+export interface SettlementOrderGroup {
+  orderId: string;
+  sku: string | null;
+  marketplace: string;
+  postedDate: Date;
+  principal: number;
+  commission: number;
+  fbaFee: number;
+  shipping: number;
+  vat: number;
+  refundAmount: number;
+  otherAmount: number;
+  netAmount: number;
+  hasRefund: boolean;
+  lineCount: number;
+}
+
+/**
+ * Order-grouped transaction summary for one settlement, paginated, with an
+ * optional case-insensitive orderId/sku search. `search` is passed as a real
+ * bound parameter (Prisma.sql), not string-interpolated.
+ */
+export async function findSettlementOrderGroups(
+  prisma: PrismaClient,
+  params: { settlementId: string; search?: string; limit: number; offset: number }
+): Promise<SettlementOrderGroup[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const searchClause = params.search
+    ? Prisma.sql`AND ("orderId" ILIKE ${"%" + params.search + "%"} OR "sku" ILIKE ${"%" + params.search + "%"})`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<Array<{
+    orderId: string; sku: string | null; marketplace: string;
+    postedDate: Date; principal: number; commission: number; fbaFee: number;
+    shipping: number; vat: number; refundAmount: number; otherAmount: number;
+    netAmount: number; hasRefund: boolean; lineCount: bigint;
+  }>>`
+    SELECT
+      "orderId",
+      MAX("sku")                                                               AS sku,
+      "marketplace",
+      MIN("postedDate")                                                        AS "postedDate",
+      COALESCE(SUM(CASE WHEN "amountType" = 'Principal'                    AND "transactionType" = 'Order'  THEN amount END), 0)::FLOAT8 AS principal,
+      COALESCE(SUM(CASE WHEN "amountType" = 'Commission'                   AND "transactionType" = 'Order'  THEN amount END), 0)::FLOAT8 AS commission,
+      COALESCE(SUM(CASE WHEN "amountType" = 'FBAPerUnitFulfillmentFee'                                      THEN amount END), 0)::FLOAT8 AS "fbaFee",
+      COALESCE(SUM(CASE WHEN "amountType" IN ('Shipping','ShippingChargeback') AND "transactionType" = 'Order' THEN amount END), 0)::FLOAT8 AS shipping,
+      COALESCE(SUM(CASE WHEN "amountType" LIKE 'MarketplaceFacilitatorVAT%' OR "amountType" IN ('Tax','ShippingTax') THEN amount END), 0)::FLOAT8 AS vat,
+      COALESCE(SUM(CASE WHEN "transactionType" = 'Refund'                                                   THEN amount END), 0)::FLOAT8 AS "refundAmount",
+      COALESCE(SUM(CASE WHEN "transactionType" NOT IN ('Order','Refund')                                    THEN amount END), 0)::FLOAT8 AS "otherAmount",
+      COALESCE(SUM(amount), 0)::FLOAT8                                                                                   AS "netAmount",
+      BOOL_OR("transactionType" = 'Refund')                                                                              AS "hasRefund",
+      COUNT(*)::BIGINT                                                                                                    AS "lineCount"
+    FROM "AmazonSettlementTransaction"
+    WHERE "settlementId" = ${params.settlementId} AND "orderId" IS NOT NULL AND "amazonAccountId" = ${amazonAccountId} ${searchClause}
+    GROUP BY "orderId", "marketplace"
+    ORDER BY MIN("postedDate") DESC
+    LIMIT ${params.limit} OFFSET ${params.offset}
+  `;
+
+  return rows.map((r) => ({ ...r, lineCount: Number(r.lineCount) }));
+}
+
+/**
+ * Distinct order count for one settlement (for pagination), same search
+ * filter as findSettlementOrderGroups.
+ */
+export async function countSettlementOrderGroups(
+  prisma: PrismaClient,
+  params: { settlementId: string; search?: string }
+): Promise<number> {
+  const amazonAccountId = getCurrentAccountId();
+  const searchClause = params.search
+    ? Prisma.sql`AND ("orderId" ILIKE ${"%" + params.search + "%"} OR "sku" ILIKE ${"%" + params.search + "%"})`
+    : Prisma.empty;
+
+  const [{ total }] = await prisma.$queryRaw<[{ total: bigint }]>`
+    SELECT COUNT(DISTINCT "orderId") AS total
+    FROM "AmazonSettlementTransaction"
+    WHERE "settlementId" = ${params.settlementId} AND "orderId" IS NOT NULL AND "amazonAccountId" = ${amazonAccountId} ${searchClause}
+  `;
+  return Number(total);
+}
+
+export interface NonOrderMovement {
+  transactionType: string;
+  amountType: string;
+  amount: number;
+  currency: string;
+  postedDate: Date;
+  cnt: number;
+}
+
+/**
+ * Non-order settlement movements (ServiceFee, storage, advertising, etc.) —
+ * transactions with no orderId — for one settlement.
+ */
+export async function findNonOrderMovements(
+  prisma: PrismaClient,
+  settlementId: string
+): Promise<NonOrderMovement[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const rows = await prisma.$queryRaw<Array<{
+    transactionType: string; amountType: string; amount: number; currency: string; postedDate: Date; cnt: bigint;
+  }>>`
+    SELECT
+      "transactionType", "amountType", "currency",
+      SUM(amount)::FLOAT8       AS amount,
+      MIN("postedDate")         AS "postedDate",
+      COUNT(*)::BIGINT          AS cnt
+    FROM "AmazonSettlementTransaction"
+    WHERE "settlementId" = ${settlementId} AND ("orderId" IS NULL OR "orderId" = '') AND "amazonAccountId" = ${amazonAccountId}
+    GROUP BY "transactionType", "amountType", "currency"
+    ORDER BY SUM(amount) ASC
+  `;
+  return rows.map((r) => ({ ...r, cnt: Number(r.cnt) }));
+}
+
+export interface SettlementHeader {
+  totalAmount: number;
+  depositDate: Date | null;
+  startDate: Date;
+  endDate: Date;
+  currency: string;
+  marketplace: string;
+}
+
+/**
+ * Settlement header fields used for the reconciliation summary. Returns null
+ * if no settlement with this id exists for the current account (mirrors the
+ * original inline `.catch(() => null)` behavior).
+ */
+export async function findSettlementHeader(
+  prisma: PrismaClient,
+  settlementId: string
+): Promise<SettlementHeader | null> {
+  const amazonAccountId = getCurrentAccountId();
+  return (prisma as any).amazonSettlement.findUnique({
+    where: { amazonAccountId_settlementId: { amazonAccountId, settlementId } },
+    select: { totalAmount: true, depositDate: true, startDate: true, endDate: true, currency: true, marketplace: true },
+  }).catch(() => null);
+}
+
+export interface SettlementReconciliation {
+  computedNet: number;
+  orderNet: number;
+  nonOrderNet: number;
+}
+
+/**
+ * Computed net total (and its order vs. non-order split) for one settlement,
+ * used to reconcile against the settlement header's totalAmount.
+ */
+export async function computeSettlementReconciliation(
+  prisma: PrismaClient,
+  settlementId: string
+): Promise<SettlementReconciliation> {
+  const amazonAccountId = getCurrentAccountId();
+  const [row] = await prisma.$queryRaw<[{ computed_net: number; order_net: number; non_order_net: number }]>`
+    SELECT
+      COALESCE(SUM(amount),0)::FLOAT8 AS computed_net,
+      COALESCE(SUM(CASE WHEN "orderId" IS NOT NULL THEN amount ELSE 0 END),0)::FLOAT8 AS order_net,
+      COALESCE(SUM(CASE WHEN "orderId" IS NULL THEN amount ELSE 0 END),0)::FLOAT8 AS non_order_net
+    FROM "AmazonSettlementTransaction"
+    WHERE "settlementId" = ${settlementId} AND "amazonAccountId" = ${amazonAccountId}
+  `;
+  return { computedNet: row.computed_net, orderNet: row.order_net, nonOrderNet: row.non_order_net };
+}
+
+/**
+ * For each given orderId, the list of OTHER settlementIds (besides the one
+ * passed) it also has transactions in — used to flag orders whose payout is
+ * split across multiple settlements.
+ */
+export async function findCrossSettlementOrders(
+  prisma: PrismaClient,
+  params: { orderIds: string[]; excludeSettlementId: string }
+): Promise<Map<string, string[]>> {
+  if (params.orderIds.length === 0) return new Map();
+  const amazonAccountId = getCurrentAccountId();
+  const rows = await prisma.$queryRaw<Array<{ orderId: string; otherSettlements: string }>>`
+    SELECT "orderId", STRING_AGG(DISTINCT "settlementId", ',' ORDER BY "settlementId") AS "otherSettlements"
+    FROM "AmazonSettlementTransaction"
+    WHERE "orderId" IN (${Prisma.join(params.orderIds)})
+      AND "settlementId" != ${params.excludeSettlementId}
+      AND "amazonAccountId" = ${amazonAccountId}
+    GROUP BY "orderId"
+  `;
+  return new Map(rows.map((r) => [r.orderId, r.otherSettlements.split(",")]));
 }
