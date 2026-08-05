@@ -1,7 +1,8 @@
 // orders.repo.ts — Repository layer for AmazonOrder + AmazonOrderItem entities.
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
-import type { PrismaClient, AmazonOrder, AmazonOrderItem, Prisma } from "@prisma/client";
+import type { PrismaClient, AmazonOrder, AmazonOrderItem } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { toNum } from "../../utils/decimal";
 import { getCurrentAccountId } from "../../context/account-context";
 
@@ -100,6 +101,63 @@ export async function findAmazonOrderDateRange(
   const [row] = await prisma.$queryRaw<[{ min: Date | null; max: Date | null }]>`
     SELECT MIN("purchaseDate") AS min, MAX("purchaseDate") AS max FROM "AmazonOrder" WHERE "amazonAccountId" = ${accountId}`;
   return row;
+}
+
+export interface AmazonOrderExportRow {
+  amazonOrderId: string;
+  marketplace: string;
+  purchaseDate: string;
+  orderStatus: string;
+  fulfillmentChannel: string;
+  salesChannel: string;
+  itemTotal: number;
+  currency: string;
+  isPaid: boolean;
+  settlementId: string | null;
+  depositDate: string | null;
+}
+
+/**
+ * Orders for CSV export (up to 50k), joined against the first matching
+ * settlement transaction (if any) to report paid/unpaid status. Uses a
+ * LATERAL join, which Prisma's query builder cannot express directly.
+ * Parameters are passed as real bound values (Prisma.sql), not string-
+ * interpolated, unlike the raw SQL this replaces.
+ */
+export async function findAmazonOrdersForExport(
+  prisma: PrismaClient,
+  params: { from: string; to: string; marketplace?: string; status?: string }
+): Promise<AmazonOrderExportRow[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const conditions = [Prisma.sql`o."purchaseDate" >= ${params.from}::date`];
+  conditions.push(Prisma.sql`o."purchaseDate" <= ${params.to}::date + interval '1 day'`);
+  conditions.push(Prisma.sql`o."amazonAccountId" = ${amazonAccountId}`);
+  if (params.marketplace) conditions.push(Prisma.sql`o.marketplace = ${params.marketplace}`);
+  if (params.status) conditions.push(Prisma.sql`o."orderStatus" = ${params.status}`);
+  const whereClause = Prisma.join(conditions, " AND ");
+
+  return prisma.$queryRaw<AmazonOrderExportRow[]>`
+    SELECT
+      o."amazonOrderId", o.marketplace, o."purchaseDate"::text, o."orderStatus",
+      o."fulfillmentChannel", o."salesChannel", o."itemTotal"::FLOAT8, o.currency,
+      CASE WHEN st."orderId" IS NOT NULL THEN true ELSE false END AS "isPaid",
+      st."settlementId",
+      s."depositDate"::date::text AS "depositDate"
+    FROM "AmazonOrder" o
+    LEFT JOIN LATERAL (
+      SELECT st2."settlementId", st2."orderId"
+      FROM "AmazonSettlementTransaction" st2
+      WHERE st2."amazonAccountId" = o."amazonAccountId"
+        AND st2."orderId" = o."amazonOrderId"
+        AND st2."amountType" = 'Principal'
+        AND st2."transactionType" = 'Order'
+      LIMIT 1
+    ) st ON true
+    LEFT JOIN "AmazonSettlement" s ON s."amazonAccountId" = o."amazonAccountId" AND s."settlementId" = st."settlementId"
+    WHERE ${whereClause}
+    ORDER BY o."purchaseDate" DESC
+    LIMIT 50000
+  `;
 }
 
 // ─── Read operations — AmazonOrderItem ────────────────────────────────────────

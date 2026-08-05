@@ -7,6 +7,9 @@ import {
   deleteAdSearchTerms,
   createAdSearchTerms,
   groupAdSnapshotsByCampaign,
+  findAdSnapshotCampaignNames,
+  findLatestAdSearchTermSync,
+  findAdSearchTerms,
 } from "../../repositories/amazon/ads.repo";
 import { getLiveStructure } from "../ads-sync.service";
 import { getConfiguredProfiles, isAdsConfigured, fetchSPSearchTermReport } from "../ads-api.service";
@@ -147,15 +150,7 @@ ppcExtraRouter.get("/ppc/products", async (req: Request, res: Response) => {
       marketplace: mpFilter,
     });
 
-    type NameRow = { campaignId: string; marketplace: string; campaignName: string };
-    const nameRows = await prisma.$queryRawUnsafe<NameRow[]>(`
-      SELECT DISTINCT ON ("campaignId", marketplace)
-        "campaignId", marketplace, "campaignName"
-      FROM "AmazonAdSnapshot"
-      WHERE "amazonAccountId" = '${getCurrentAccountId()}'
-      ${mpFilter ? `AND marketplace = '${mpFilter.replace(/'/g, "")}'` : ""}
-      ORDER BY "campaignId", marketplace, "snapshotDate" DESC
-    `);
+    const nameRows = await findAdSnapshotCampaignNames(prisma, { marketplace: mpFilter });
     const nameMap = new Map<string, string>();
     for (const r of nameRows) nameMap.set(`${r.campaignId}::${r.marketplace}`, r.campaignName);
 
@@ -277,47 +272,23 @@ ppcExtraRouter.get("/ppc/search-terms", async (req: Request, res: Response) => {
     // ── 2. Fall back to DB if cache is empty ──────────────────────────────────
     if (rows.length === 0) {
       source = "db";
-      const where: any = { amazonAccountId };
-      if (mpFilter)   where.marketplace = mpFilter;
-      if (campaignId) where.campaignId  = campaignId;
-      if (wastedOnly === "true") where.isWasted = true;
 
-      const latest = await (prisma as any).amazonAdSearchTerm.findFirst({
-        where: mpFilter ? { amazonAccountId, marketplace: mpFilter } : { amazonAccountId },
-        orderBy: { syncedAt: "desc" },
-        select: { dateFrom: true, dateTo: true, syncedAt: true },
-      });
+      const latest = await findLatestAdSearchTermSync(prisma, { marketplace: mpFilter });
 
       if (latest) {
-        where.dateFrom = latest.dateFrom;
-        where.dateTo   = latest.dateTo;
         dateFrom       = latest.dateFrom;
         dateTo         = latest.dateTo;
         generatedAt    = latest.syncedAt.getTime();
 
-        const dbRows = await (prisma as any).amazonAdSearchTerm.findMany({
-          where,
-          orderBy: { [sortBy === "acos" ? "acos" : sortBy === "sales" ? "sales" : sortBy === "orders" ? "orders" : sortBy === "clicks" ? "clicks" : "spend"]: sortDir === "asc" ? "asc" : "desc" },
+        rows = await findAdSearchTerms(prisma, {
+          marketplace: mpFilter,
+          campaignId,
+          wastedOnly: wastedOnly === "true",
+          dateFrom: latest.dateFrom,
+          dateTo: latest.dateTo,
+          sortBy,
+          sortDir: sortDir === "asc" ? "asc" : "desc",
         });
-        rows = dbRows.map((r: any) => ({
-          query:        r.query,
-          keywordText:  r.keywordText,
-          matchType:    r.matchType,
-          campaignId:   r.campaignId,
-          campaignName: r.campaignName,
-          adGroupId:    r.adGroupId,
-          marketplace:  r.marketplace,
-          impressions:  r.impressions,
-          clicks:       r.clicks,
-          spend:        r.spend,
-          sales:        r.sales,
-          orders:       r.orders,
-          acos:         r.acos,
-          roas:         r.roas,
-          ctr:          r.ctr,
-          cpc:          r.cpc,
-          isWasted:     r.isWasted,
-        }));
       }
     }
 

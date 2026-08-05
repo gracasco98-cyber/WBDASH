@@ -148,3 +148,98 @@ export async function createAdSearchTerms(
   }
   return total;
 }
+
+/**
+ * Most recent sync metadata (date range + syncedAt) for the current account,
+ * optionally scoped to one marketplace. Used as a fallback when the in-memory
+ * search-term cache is empty, to know which period the DB rows cover.
+ */
+export async function findLatestAdSearchTermSync(
+  prisma: PrismaClient,
+  params: { marketplace?: string }
+): Promise<{ dateFrom: string; dateTo: string; syncedAt: Date } | null> {
+  const amazonAccountId = getCurrentAccountId();
+  return (prisma as any).amazonAdSearchTerm.findFirst({
+    where: params.marketplace ? { amazonAccountId, marketplace: params.marketplace } : { amazonAccountId },
+    orderBy: { syncedAt: "desc" },
+    select: { dateFrom: true, dateTo: true, syncedAt: true },
+  });
+}
+
+export interface AdSearchTermRow {
+  query: string;
+  keywordText: string;
+  matchType: string;
+  campaignId: string;
+  campaignName: string;
+  adGroupId: string;
+  marketplace: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  sales: number;
+  orders: number;
+  acos: number | null;
+  roas: number | null;
+  ctr: number;
+  cpc: number;
+  isWasted: boolean;
+}
+
+const SEARCH_TERM_SORT_FIELDS = ["acos", "sales", "orders", "clicks", "spend"] as const;
+export type AdSearchTermSortField = typeof SEARCH_TERM_SORT_FIELDS[number];
+
+/**
+ * Search term rows for the current account, one exact (dateFrom, dateTo)
+ * period, with optional marketplace/campaign/wasted-only filters. `sortBy`
+ * is validated against a fixed allow-list rather than passed through raw,
+ * since it ends up as an object key in the ORDER BY clause.
+ */
+export async function findAdSearchTerms(
+  prisma: PrismaClient,
+  params: {
+    marketplace?: string;
+    campaignId?: string;
+    wastedOnly?: boolean;
+    dateFrom: string;
+    dateTo: string;
+    sortBy: string;
+    sortDir: "asc" | "desc";
+  }
+): Promise<AdSearchTermRow[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const where: Record<string, unknown> = { amazonAccountId, dateFrom: params.dateFrom, dateTo: params.dateTo };
+  if (params.marketplace) where.marketplace = params.marketplace;
+  if (params.campaignId) where.campaignId = params.campaignId;
+  if (params.wastedOnly) where.isWasted = true;
+
+  const sortField: AdSearchTermSortField = (SEARCH_TERM_SORT_FIELDS as readonly string[]).includes(params.sortBy)
+    ? (params.sortBy as AdSearchTermSortField)
+    : "spend";
+
+  return (prisma as any).amazonAdSearchTerm.findMany({
+    where,
+    orderBy: { [sortField]: params.sortDir },
+  });
+}
+
+/**
+ * Distinct (campaignId, marketplace) → most recent campaignName, for the
+ * current account. Used to attach a human-readable campaign name to ad
+ * snapshot aggregates that are only keyed by campaignId.
+ */
+export async function findAdSnapshotCampaignNames(
+  prisma: PrismaClient,
+  params: { marketplace?: string }
+): Promise<Array<{ campaignId: string; marketplace: string; campaignName: string }>> {
+  const amazonAccountId = getCurrentAccountId();
+  const mpFilter = params.marketplace ? `AND marketplace = '${params.marketplace.replace(/'/g, "")}'` : "";
+  return prisma.$queryRawUnsafe<Array<{ campaignId: string; marketplace: string; campaignName: string }>>(`
+    SELECT DISTINCT ON ("campaignId", marketplace)
+      "campaignId", marketplace, "campaignName"
+    FROM "AmazonAdSnapshot"
+    WHERE "amazonAccountId" = '${amazonAccountId}'
+    ${mpFilter}
+    ORDER BY "campaignId", marketplace, "snapshotDate" DESC
+  `);
+}

@@ -2,10 +2,9 @@
 // Split from orders.routes.ts to keep each file ≤500 LOC.
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
-import { findAmazonOrdersWithItems } from "../../repositories/amazon/orders.repo";
+import { findAmazonOrdersWithItems, findAmazonOrdersForExport } from "../../repositories/amazon/orders.repo";
 import { getDateRange } from "../utils/datetime";
 import { toCsv } from "./orders.routes";
-import { getCurrentAccountId } from "../../context/account-context";
 
 export const ordersExportRouter = Router();
 
@@ -56,46 +55,17 @@ ordersExportRouter.get("/export/orders", async (req: Request, res: Response) => 
 // Download all orders (up to 50k) as CSV with isPaid status
 ordersExportRouter.get("/orders/export", async (req: Request, res: Response) => {
   try {
-    const amazonAccountId = getCurrentAccountId();
     const { marketplace, status, filter, from, to } = req.query as Record<string, string>;
     const range = getDateRange(filter ?? "last90", from, to);
     const dfStr = (range.gte ?? new Date(Date.now() - 90 * 86400000)).toISOString().split("T")[0];
     const dtStr = (range.lte ?? new Date()).toISOString().split("T")[0];
 
-    const mpWhere  = marketplace && marketplace !== "all" ? `AND o.marketplace = '${marketplace.replace(/'/g,"''")}' ` : "";
-    const stWhere  = status && status !== "all" ? `AND o."orderStatus" = '${status.replace(/'/g,"''")}' ` : "";
-
-    type ExportRow = {
-      amazonOrderId: string; marketplace: string; purchaseDate: string;
-      orderStatus: string; fulfillmentChannel: string; salesChannel: string;
-      itemTotal: number; currency: string; isPaid: boolean; settlementId: string | null; depositDate: string | null;
-    };
-
-    const rows = await prisma.$queryRawUnsafe<ExportRow[]>(`
-      SELECT
-        o."amazonOrderId", o.marketplace, o."purchaseDate"::text, o."orderStatus",
-        o."fulfillmentChannel", o."salesChannel", o."itemTotal"::FLOAT8, o.currency,
-        CASE WHEN st."orderId" IS NOT NULL THEN true ELSE false END AS "isPaid",
-        st."settlementId",
-        s."depositDate"::date::text AS "depositDate"
-      FROM "AmazonOrder" o
-      LEFT JOIN LATERAL (
-        SELECT st2."settlementId", st2."orderId"
-        FROM "AmazonSettlementTransaction" st2
-        WHERE st2."amazonAccountId" = o."amazonAccountId"
-          AND st2."orderId" = o."amazonOrderId"
-          AND st2."amountType" = 'Principal'
-          AND st2."transactionType" = 'Order'
-        LIMIT 1
-      ) st ON true
-      LEFT JOIN "AmazonSettlement" s ON s."amazonAccountId" = o."amazonAccountId" AND s."settlementId" = st."settlementId"
-      WHERE o."purchaseDate" >= '${dfStr}'::date
-        AND o."purchaseDate" <= '${dtStr}'::date + interval '1 day'
-        AND o."amazonAccountId" = '${amazonAccountId}'
-        ${mpWhere}${stWhere}
-      ORDER BY o."purchaseDate" DESC
-      LIMIT 50000
-    `);
+    const rows = await findAmazonOrdersForExport(prisma, {
+      from: dfStr,
+      to: dtStr,
+      marketplace: marketplace && marketplace !== "all" ? marketplace : undefined,
+      status: status && status !== "all" ? status : undefined,
+    });
 
     const csv = toCsv(
       ["Order ID", "Marketplace", "Data Ordine", "Stato", "Canale", "Fulfillment", "Importo", "Valuta", "Pagato", "Settlement ID", "Data Deposito"],

@@ -15,6 +15,7 @@ import {
   groupAmazonItemsByAsin,
   findAmazonOrderDateRange,
   countDistinctOrdersForSnapshot,
+  findAmazonOrdersForExport,
 } from "../../../src/repositories/amazon/orders.repo";
 
 let db: TestDb;
@@ -279,6 +280,70 @@ describe("countDistinctOrdersForSnapshot", () => {
         to: new Date("2026-04-10T23:59:59Z"),
       });
       expect(count).toBe(0);
+    });
+  });
+});
+
+// ─── findAmazonOrdersForExport ─────────────────────────────────────────────────
+
+describe("findAmazonOrdersForExport", () => {
+  it("returns orders within the date range, marked unpaid when no settlement transaction exists", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await findAmazonOrdersForExport(db.prisma, {
+        from: "2026-04-10", to: "2026-04-12",
+      });
+      const ids = rows.map(r => r.amazonOrderId);
+      expect(ids).toContain("AZ-IT-001");
+      expect(ids).toContain("AZ-IT-002");
+      expect(ids).toContain("AZ-IT-003");
+      expect(ids).not.toContain("AZ-DE-001"); // Apr 9, before range
+      expect(rows.every(r => r.isPaid === false)).toBe(true);
+      expect(rows.every(r => r.settlementId === null)).toBe(true);
+    });
+  });
+
+  it("filters by marketplace", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await findAmazonOrdersForExport(db.prisma, {
+        from: "2026-04-08", to: "2026-04-13", marketplace: "DE",
+      });
+      expect(rows.every(r => r.marketplace === "DE")).toBe(true);
+      expect(rows.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("filters by status", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await findAmazonOrdersForExport(db.prisma, {
+        from: "2026-04-08", to: "2026-04-13", status: "Cancelled",
+      });
+      expect(rows.every(r => r.orderStatus === "Cancelled")).toBe(true);
+      expect(rows.map(r => r.amazonOrderId)).toContain("AZ-IT-CANCEL");
+    });
+  });
+
+  it("marks an order paid when a matching settlement transaction exists", async () => {
+    await db.prisma.amazonSettlement.create({
+      data: {
+        amazonAccountId: accountId, settlementId: "SETT-EXPORT-1", marketplace: "IT",
+        startDate: new Date("2026-04-01"), endDate: new Date("2026-04-14"),
+        depositDate: new Date("2026-04-16"), totalAmount: 100,
+      },
+    });
+    await db.prisma.amazonSettlementTransaction.create({
+      data: {
+        amazonAccountId: accountId, settlementId: "SETT-EXPORT-1",
+        transactionType: "Order", orderId: "AZ-IT-001", marketplace: "IT",
+        amountType: "Principal", amount: 90, postedDate: new Date("2026-04-14"),
+      },
+    });
+
+    await runWithAccount(accountId, async () => {
+      const rows = await findAmazonOrdersForExport(db.prisma, { from: "2026-04-10", to: "2026-04-10" });
+      const row = rows.find(r => r.amazonOrderId === "AZ-IT-001");
+      expect(row?.isPaid).toBe(true);
+      expect(row?.settlementId).toBe("SETT-EXPORT-1");
+      expect(row?.depositDate).toBe("2026-04-16");
     });
   });
 });
