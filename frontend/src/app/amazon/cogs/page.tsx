@@ -102,14 +102,14 @@ function ProductImage({ url, title }: { url: string | null; title: string | null
   const [err, setErr] = useState(false);
   if (!url || err) {
     return (
-      <div className="w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700/60 flex items-center justify-center shrink-0">
+      <div className="w-12 h-12 rounded-xl bg-bg-hover border border-bg-border flex items-center justify-center shrink-0">
         <Package size={16} className="text-zinc-600" />
       </div>
     );
   }
   return (
     <img src={url} alt={title ?? ""} onError={() => setErr(true)}
-      className="w-12 h-12 rounded-xl object-contain bg-zinc-800 border border-zinc-700/60 shrink-0" />
+      className="w-12 h-12 rounded-xl object-contain bg-bg-hover border border-bg-border shrink-0" />
   );
 }
 
@@ -184,7 +184,7 @@ function EntryForm({ asin, sku, productTitle, imageUrl, marketplace, initial, on
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-700/60 rounded-xl p-4 space-y-4">
+    <div className="bg-bg-card border border-bg-border rounded-xl p-4 space-y-4">
       <div className="flex items-center gap-2">
         <div className="w-1 h-4 rounded-full bg-blue-400" />
         <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wide">
@@ -238,7 +238,7 @@ function EntryForm({ asin, sku, productTitle, imageUrl, marketplace, initial, on
             className="bg-zinc-800 border border-zinc-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 placeholder-zinc-700" />
         </label>
       </div>
-      <div className="bg-zinc-800/40 rounded-lg px-4 py-3 flex flex-wrap items-center gap-6 text-xs">
+      <div className="bg-bg-hover rounded-lg px-4 py-3 flex flex-wrap items-center gap-6 text-xs">
         <span className="text-zinc-500">Prezzo: <span className="text-white font-mono font-semibold">{fmtEur(Number(form.pricePerUnit) || 0)}</span></span>
         <span className="text-zinc-500">Spediz.: <span className="text-zinc-300 font-mono">{fmtEur(Number(form.shippingCost) || 0)}</span></span>
         <span className="text-blue-400 font-semibold">Totale/unità: {fmtEur((Number(form.pricePerUnit) || 0) + (Number(form.shippingCost) || 0))}</span>
@@ -280,17 +280,17 @@ function AsinPanel({ group, onRefresh, onEditCogs }: {
   }
 
   return (
-    <div className="border-t border-zinc-800 bg-zinc-950/60 px-6 py-5 space-y-6">
+    <div className="border-t border-bg-border bg-bg-hover px-6 py-5 space-y-6">
 
       {/* Marketplace COGS */}
       <div>
         <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-3">
           COGS per marketplace · {group.rows.length} configurazioni
         </p>
-        <div className="rounded-lg border border-zinc-800 overflow-hidden">
+        <div className="rounded-lg border border-bg-border overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-black/30 border-b border-zinc-800">
+              <tr className="bg-bg-hover border-b border-bg-border">
                 {["Marketplace", "Costo/unità", "Spediz.", "Totale/unità", "IVA", "SKU", "Note", ""].map(h => (
                   <th key={h} className="px-3 py-2 text-left text-zinc-600 font-medium uppercase tracking-wide first:pl-4 whitespace-nowrap">{h}</th>
                 ))}
@@ -358,10 +358,10 @@ function AsinPanel({ group, onRefresh, onEditCogs }: {
         )}
 
         {sortedEntries.length > 0 ? (
-          <div className="rounded-lg border border-zinc-800 overflow-hidden">
+          <div className="rounded-lg border border-bg-border overflow-hidden">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-black/30 border-b border-zinc-800">
+                <tr className="bg-bg-hover border-b border-bg-border">
                   {["Data", "Fornitore", "MP", "Prezzo/un.", "Spediz.", "Totale", "Qtà", "Note", ""].map(h => (
                     <th key={h} className="px-3 py-2 text-left text-zinc-600 font-medium uppercase tracking-wide first:pl-4">{h}</th>
                   ))}
@@ -451,7 +451,7 @@ function CogsEditDrawer({ item, onSave, onClose }: {
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+      <div className="bg-bg-card border border-bg-border rounded-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3">
           <span className="text-2xl">{MP_FLAGS[item.marketplace] ?? "🌐"}</span>
           <div>
@@ -473,7 +473,7 @@ function CogsEditDrawer({ item, onSave, onClose }: {
               className="bg-zinc-800 border border-zinc-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
           </label>
         </div>
-        <div className="bg-zinc-800/50 rounded-lg px-3 py-2.5 text-xs text-zinc-500 space-y-0.5">
+        <div className="bg-bg-hover rounded-lg px-3 py-2.5 text-xs text-zinc-500 space-y-0.5">
           <div className="text-zinc-400 font-medium mb-1">Riepilogo</div>
           <div>Prodotto: <span className="text-white font-mono">{fmtEur(form.cogsPerUnit)}</span></div>
           <div>Spedizione: <span className="text-white font-mono">{fmtEur(form.shippingCost)}</span></div>
@@ -625,13 +625,13 @@ export default function CogsPage() {
         {loading ? (
           Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="flex items-center gap-4 px-4 py-3.5 border-b border-bg-border/30 animate-pulse">
-              <div className="w-12 h-12 rounded-xl bg-zinc-800 shrink-0" />
+              <div className="w-12 h-12 rounded-xl bg-bg-border shrink-0" />
               <div className="flex-1 space-y-2">
-                <div className="h-3 w-52 rounded bg-zinc-800" />
-                <div className="h-2 w-32 rounded bg-zinc-800" />
+                <div className="h-3 w-52 rounded bg-bg-border" />
+                <div className="h-2 w-32 rounded bg-bg-border" />
               </div>
-              <div className="w-20 h-4 rounded bg-zinc-800" />
-              <div className="w-20 h-4 rounded bg-zinc-800" />
+              <div className="w-20 h-4 rounded bg-bg-border" />
+              <div className="w-20 h-4 rounded bg-bg-border" />
             </div>
           ))
         ) : filtered.length === 0 ? (
