@@ -10,7 +10,7 @@ const COMING_SOON = ["Fornitori", "Clienti", "Categorie contabili", "Trasportato
 
 function BancheTab() {
   const [rows, setRows] = useState<BankAccount[]>([]);
-  const load = useCallback(() => { api.purchasing.bankAccounts.list().then(setRows); }, []);
+  const load = useCallback(() => { api.purchasing.bankAccounts.list().then(setRows).catch(() => {}); }, []);
   useEffect(() => { load(); }, [load]);
   return (
     <div className="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
@@ -41,7 +41,7 @@ function BancheTab() {
 
 function MagazziniTab() {
   const [rows, setRows] = useState<Warehouse[]>([]);
-  useEffect(() => { api.purchasing.warehouses.list().then(setRows); }, []);
+  useEffect(() => { api.purchasing.warehouses.list().then(setRows).catch(() => {}); }, []);
   return (
     <div className="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
       <table className="w-full text-xs">
@@ -69,7 +69,7 @@ function MagazziniTab() {
 
 function CondizioniPagamentoTab() {
   const [rows, setRows] = useState<PaymentTerm[]>([]);
-  useEffect(() => { api.purchasing.paymentTerms.list().then(setRows); }, []);
+  useEffect(() => { api.purchasing.paymentTerms.list().then(setRows).catch(() => {}); }, []);
   return (
     <div className="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
       <table className="w-full text-xs">
@@ -124,9 +124,15 @@ export default function AnagraficheePage() {
                 </button>
               ))}
               {COMING_SOON.map(label => (
-                <span key={label} className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-600 border border-bg-border cursor-not-allowed" title="Prossimamente">
+                <button
+                  key={label}
+                  disabled
+                  title="Prossimamente"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-600 border border-bg-border cursor-not-allowed flex items-center gap-1.5"
+                >
                   {label}
-                </span>
+                  <span className="text-[9px] uppercase tracking-wide text-zinc-700 border border-zinc-800 rounded px-1 py-0.5 shrink-0">Prossimamente</span>
+                </button>
               ))}
             </div>
             {tab === "banche" && <BancheTab />}
