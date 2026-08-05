@@ -87,7 +87,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
       continue;
     // Divider
     } else if (/^---+$/.test(line.trim())) {
-      nodes.push(<hr key={i} className="border-zinc-700/50 my-2" />);
+      nodes.push(<hr key={i} className="border-bg-border my-2" />);
     // Empty line
     } else if (line.trim() === "") {
       nodes.push(<div key={i} className="h-1.5" />);
@@ -110,7 +110,7 @@ function formatInline(text: string): React.ReactNode {
       return <strong key={i} className="text-zinc-100 font-semibold">{part.slice(2, -2)}</strong>;
     }
     if (/^`.*`$/.test(part)) {
-      return <code key={i} className="bg-zinc-800 text-emerald-400 px-1 py-0.5 rounded text-[10px] font-mono">{part.slice(1, -1)}</code>;
+      return <code key={i} className="bg-bg-border text-emerald-400 px-1 py-0.5 rounded text-[10px] font-mono">{part.slice(1, -1)}</code>;
     }
     // Preserve emoji and color emoji labels
     return <span key={i}>{part}</span>;
@@ -223,7 +223,7 @@ export default function ChatWidget() {
         onClick={() => setOpen(o => !o)}
         className={`fixed chat-safe-bottom right-6 z-50 flex items-center justify-center rounded-full shadow-2xl transition-all duration-300 ${
           open
-            ? "bg-zinc-700 hover:bg-zinc-600 rotate-90"
+            ? "bg-bg-border hover:bg-bg-hover rotate-90"
             : "bg-accent-primary hover:bg-accent-primary/90 scale-100 hover:scale-105"
         }`}
         style={{ width: 52, height: 52 }}
@@ -245,14 +245,14 @@ export default function ChatWidget() {
 
       {/* ── Chat panel ──────────────────────────────────────────────────────── */}
       <div
-        className={`fixed bottom-[76px] right-3 sm:right-6 z-50 flex flex-col rounded-2xl shadow-2xl border border-zinc-700/80 bg-zinc-950 transition-all duration-300 origin-bottom-right w-[calc(100vw-1.5rem)] sm:w-[400px] h-[520px] sm:h-[600px] ${
+        className={`fixed bottom-[76px] right-3 sm:right-6 z-50 flex flex-col rounded-2xl shadow-2xl border border-bg-border bg-bg-card transition-all duration-300 origin-bottom-right w-[calc(100vw-1.5rem)] sm:w-[400px] h-[520px] sm:h-[600px] ${
           open
             ? "opacity-100 scale-100 pointer-events-auto"
             : "opacity-0 scale-95 pointer-events-none"
         }`}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-bg-border shrink-0">
           <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-accent-primary/15 border border-accent-primary/20">
             <Sparkles size={14} className="text-accent-primary" />
           </div>
@@ -262,12 +262,12 @@ export default function ChatWidget() {
           </div>
           {messages.length > 0 && (
             <button onClick={reset} title="Nuova conversazione"
-              className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors">
+              className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-bg-hover transition-colors">
               <RotateCcw size={13} />
             </button>
           )}
           <button onClick={() => setOpen(false)}
-            className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors">
+            className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-bg-hover transition-colors">
             <ChevronDown size={15} />
           </button>
         </div>
@@ -293,7 +293,7 @@ export default function ChatWidget() {
                 <div className="text-[9px] text-zinc-600 uppercase tracking-wider font-medium mb-2">Domande suggerite</div>
                 {SUGGESTED.map((s, i) => (
                   <button key={i} onClick={() => send(s)}
-                    className="w-full text-left px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 text-[11px] hover:text-zinc-200 hover:border-zinc-600 transition-colors">
+                    className="w-full text-left px-3 py-2 rounded-xl bg-bg-hover border border-bg-border text-zinc-400 text-[11px] hover:text-zinc-200 hover:border-accent-primary/40 transition-colors">
                     {s}
                   </button>
                 ))}
@@ -308,7 +308,7 @@ export default function ChatWidget() {
                     ? "bg-accent-primary/20 border border-accent-primary/30"
                     : msg.error
                     ? "bg-red-500/15 border border-red-500/20"
-                    : "bg-zinc-800 border border-zinc-700"
+                    : "bg-bg-hover border border-bg-border"
                 }`}>
                   {msg.role === "user"
                     ? <User size={13} className="text-accent-primary" />
@@ -321,7 +321,7 @@ export default function ChatWidget() {
                     ? "bg-accent-primary/15 border border-accent-primary/25 text-zinc-200 rounded-tr-sm"
                     : msg.error
                     ? "bg-red-500/8 border border-red-500/15 text-red-300 rounded-tl-sm"
-                    : "bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-tl-sm"
+                    : "bg-bg-hover border border-bg-border text-zinc-300 rounded-tl-sm"
                 }`}>
                   {msg.role === "assistant" && !msg.error
                     ? <div className="space-y-0.5">{renderMarkdown(msg.content)}</div>
@@ -329,9 +329,9 @@ export default function ChatWidget() {
                   }
                   {/* Meta: tools used + response time */}
                   {msg.toolsUsed && msg.toolsUsed.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-zinc-800">
+                    <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-bg-border">
                       {msg.toolsUsed.map((t, i) => (
-                        <span key={i} className="px-1.5 py-0.5 bg-zinc-800 rounded text-[9px] text-zinc-500 font-mono">
+                        <span key={i} className="px-1.5 py-0.5 bg-bg-border rounded text-[9px] text-zinc-500 font-mono">
                           {t.replace("get_", "").replace(/_/g, " ")}
                         </span>
                       ))}
@@ -348,10 +348,10 @@ export default function ChatWidget() {
           {/* Loading indicator */}
           {loading && (
             <div className="flex gap-2.5">
-              <div className="w-7 h-7 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
+              <div className="w-7 h-7 rounded-xl bg-bg-hover border border-bg-border flex items-center justify-center shrink-0">
                 <Bot size={13} className="text-zinc-400" />
               </div>
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl rounded-tl-sm px-4 py-3">
+              <div className="bg-bg-hover border border-bg-border rounded-2xl rounded-tl-sm px-4 py-3">
                 <div className="flex items-center gap-1.5">
                   <Loader2 size={12} className="text-accent-primary animate-spin" />
                   <span className="text-zinc-500 text-[11px]">Analizzando i dati…</span>
@@ -364,8 +364,8 @@ export default function ChatWidget() {
         </div>
 
         {/* Input area */}
-        <div className="shrink-0 px-3 py-3 border-t border-zinc-800">
-          <div className="flex items-end gap-2 bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 focus-within:border-accent-primary/50 transition-colors">
+        <div className="shrink-0 px-3 py-3 border-t border-bg-border">
+          <div className="flex items-end gap-2 bg-bg-hover border border-bg-border rounded-xl px-3 py-2.5 focus-within:border-accent-primary/50 transition-colors">
             <textarea
               ref={inputRef}
               value={input}
