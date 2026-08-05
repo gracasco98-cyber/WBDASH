@@ -566,3 +566,149 @@ export async function findCrossSettlementOrders(
   `;
   return new Map(rows.map((r) => [r.orderId, r.otherSettlements.split(",")]));
 }
+
+// ─── Payments auxiliary endpoints (dd7-reserve, export, fees, reimbursements) ──
+
+/**
+ * Current Amazon reserve amount per marketplace, from settlement
+ * transactions (Current/Previous Reserve Amount Balance types).
+ */
+export async function computeCurrentReserveByMarketplace(
+  prisma: PrismaClient
+): Promise<Map<string, number>> {
+  const amazonAccountId = getCurrentAccountId();
+  const rows = await prisma.$queryRaw<Array<{ marketplace: string; current_reserve: number }>>`
+    SELECT s.marketplace,
+      SUM(CASE WHEN t."transactionType"='Current Reserve Amount' THEN t.amount ELSE 0 END)::FLOAT8 AS current_reserve
+    FROM "AmazonSettlementTransaction" t
+    JOIN "AmazonSettlement" s ON s."amazonAccountId" = t."amazonAccountId" AND s."settlementId" = t."settlementId"
+    WHERE s.marketplace IN ('IT','DE','ES','FR')
+      AND t."transactionType" IN ('Current Reserve Amount','Previous Reserve Amount Balance')
+      AND t."amazonAccountId" = ${amazonAccountId}
+    GROUP BY s.marketplace
+  `;
+  return new Map(rows.map((r) => [r.marketplace, r.current_reserve]));
+}
+
+export interface SettlementExportRow {
+  settlementId: string;
+  marketplace: string;
+  startDate: string;
+  endDate: string;
+  depositDate: string | null;
+  totalAmount: number;
+  currency: string;
+  principal: number;
+  commission: number;
+  fbaFees: number;
+  refundsTotal: number;
+  ppcCost: number;
+  otherSvcFees: number;
+  reserved: number;
+  computedNet: number;
+  orderCount: number;
+}
+
+/**
+ * Full settlement list with fee breakdown, for CSV export. Optionally
+ * scoped to one marketplace.
+ */
+export async function findSettlementsForExport(
+  prisma: PrismaClient,
+  params: { marketplace?: string }
+): Promise<SettlementExportRow[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const mpWhere = params.marketplace ? Prisma.sql`AND s.marketplace = ${params.marketplace}` : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<Array<{
+    settlementId: string; marketplace: string; start_date: string; end_date: string;
+    deposit_date: string | null; total_amount: number; currency: string;
+    principal: number; commission: number; fba_fees: number; refunds_total: number;
+    ppc_cost: number; other_svc_fees: number; reserved: number; computed_net: number; order_count: number;
+  }>>`
+    SELECT
+      s."settlementId", s.marketplace,
+      s."startDate"::date::text AS start_date, s."endDate"::date::text AS end_date,
+      s."depositDate"::date::text AS deposit_date,
+      s."totalAmount"::FLOAT8 AS total_amount, s.currency,
+      COALESCE(SUM(CASE WHEN t."amountType"='Principal' AND t."transactionType"='Order' AND t.marketplace!='EU' THEN t.amount ELSE 0 END),0)::FLOAT8 AS principal,
+      COALESCE(SUM(CASE WHEN t."amountType" IN ('Commission','VariableClosingFee') AND t."transactionType"='Order' AND t.marketplace!='EU' THEN t.amount ELSE 0 END),0)::FLOAT8 AS commission,
+      COALESCE(SUM(CASE WHEN t."amountType" IN ('FBAPerUnitFulfillmentFee','FBAPerOrderFulfillmentFee','FBAWeightBasedFee','FulfillmentFee') AND t.marketplace!='EU' THEN t.amount ELSE 0 END),0)::FLOAT8 AS fba_fees,
+      COALESCE(SUM(CASE WHEN t."transactionType"='Refund' AND t.marketplace!='EU' THEN t.amount ELSE 0 END),0)::FLOAT8 AS refunds_total,
+      COALESCE(SUM(CASE WHEN t."transactionType"='ServiceFee' AND (t."amountType" ILIKE '%advertising%' OR t."amountType" ILIKE '%cost per click%') THEN t.amount ELSE 0 END),0)::FLOAT8 AS ppc_cost,
+      COALESCE(SUM(CASE WHEN t.marketplace='EU' AND NOT (t."transactionType"='ServiceFee' AND t."amountType" ILIKE '%advertising%') AND t."amountType" NOT IN ('Current Reserve Amount','Previous Reserve Amount Balance') THEN t.amount ELSE 0 END),0)::FLOAT8 AS other_svc_fees,
+      COALESCE(SUM(CASE WHEN t."amountType" IN ('Current Reserve Amount','Previous Reserve Amount Balance') THEN t.amount ELSE 0 END),0)::FLOAT8 AS reserved,
+      COALESCE(SUM(t.amount),0)::FLOAT8 AS computed_net,
+      COUNT(DISTINCT CASE WHEN t."transactionType"='Order' AND t."orderId" IS NOT NULL THEN t."orderId" END)::INTEGER AS order_count
+    FROM "AmazonSettlement" s
+    LEFT JOIN "AmazonSettlementTransaction" t ON t."amazonAccountId" = s."amazonAccountId" AND t."settlementId" = s."settlementId"
+    WHERE s."amazonAccountId" = ${amazonAccountId} ${mpWhere}
+    GROUP BY s."settlementId", s.marketplace, s."startDate", s."endDate", s."depositDate", s."totalAmount", s.currency
+    ORDER BY s."endDate" DESC
+  `;
+
+  return rows.map((r) => ({
+    settlementId: r.settlementId, marketplace: r.marketplace, startDate: r.start_date, endDate: r.end_date,
+    depositDate: r.deposit_date, totalAmount: r.total_amount, currency: r.currency,
+    principal: r.principal, commission: r.commission, fbaFees: r.fba_fees, refundsTotal: r.refunds_total,
+    ppcCost: r.ppc_cost, otherSvcFees: r.other_svc_fees, reserved: r.reserved, computedNet: r.computed_net,
+    orderCount: r.order_count,
+  }));
+}
+
+export interface FeeBreakdownRow {
+  amountType: string;
+  total: number;
+  count: number;
+}
+
+/** Fee totals grouped by amountType, within a date range, for the current account. */
+export async function computeFeeBreakdown(
+  prisma: PrismaClient,
+  params: { dateFrom: Date; dateTo: Date; marketplace?: string }
+): Promise<FeeBreakdownRow[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const mpWhere = params.marketplace ? Prisma.sql`AND marketplace = ${params.marketplace}` : Prisma.empty;
+  const rows = await prisma.$queryRaw<Array<{ amountType: string; total: number; count: number }>>`
+    SELECT
+      "amountType",
+      COALESCE(SUM(ABS(amount)), 0)::FLOAT8 AS total,
+      COUNT(*)::INTEGER AS count
+    FROM "AmazonSettlementTransaction"
+    WHERE "postedDate" >= ${params.dateFrom}::timestamp
+      AND "postedDate" <= ${params.dateTo}::timestamp
+      AND "amazonAccountId" = ${amazonAccountId}
+      ${mpWhere}
+    GROUP BY "amountType"
+    ORDER BY total DESC
+  `;
+  return rows;
+}
+
+export interface ReimbursementMonthRow {
+  month: string;
+  amount: number;
+  count: number;
+}
+
+/** Monthly reimbursement/compensation totals, for the current account. */
+export async function computeReimbursementsByMonth(
+  prisma: PrismaClient,
+  params: { marketplace?: string }
+): Promise<ReimbursementMonthRow[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const mpWhere = params.marketplace ? Prisma.sql`AND marketplace = ${params.marketplace}` : Prisma.empty;
+  const rows = await prisma.$queryRaw<Array<{ month: string; amount: number; count: number }>>`
+    SELECT
+      TO_CHAR(DATE_TRUNC('month', "postedDate"), 'YYYY-MM') AS month,
+      COALESCE(SUM(amount), 0)::FLOAT8 AS amount,
+      COUNT(*)::INTEGER AS count
+    FROM "AmazonSettlementTransaction"
+    WHERE ("amountType" ILIKE '%reimburse%' OR "amountType" ILIKE '%compensat%')
+      AND "amazonAccountId" = ${amazonAccountId}
+      ${mpWhere}
+    GROUP BY DATE_TRUNC('month', "postedDate")
+    ORDER BY 1 DESC
+  `;
+  return rows;
+}
