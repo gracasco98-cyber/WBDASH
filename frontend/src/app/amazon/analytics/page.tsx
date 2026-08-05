@@ -310,7 +310,7 @@ export default function AnalyticsPage() {
                             <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${
                               a.severity === "high" ? "bg-red-500/20 text-red-400" :
                               a.severity === "medium" ? "bg-amber-500/20 text-amber-400" :
-                              "bg-zinc-700 text-zinc-400"
+                              "bg-bg-hover text-zinc-400"
                             }`}>{a.severity}</span>
                             <span className={`text-xs px-2 py-0.5 rounded font-medium ${
                               a.direction === "spike" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"

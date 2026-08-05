@@ -220,7 +220,7 @@ export default function AmazonRevenueChart({ data, loading, hourlyMode = false, 
               />
               <Tooltip
                 content={<CustomTooltip hourlyMode={true} visibleMps={[]} />}
-                cursor={{ stroke: "var(--bg-border)", strokeWidth: 1 }}
+                cursor={{ stroke: "var(--text-secondary)", strokeWidth: 1 }}
               />
               {dateLabels.map((date, idx) => (
                 <Line

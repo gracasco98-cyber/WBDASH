@@ -21,12 +21,13 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="it" data-theme="dark">
+    <html lang="it" data-theme="light">
       <head>
-        {/* Apply saved theme before first paint to prevent flash */}
+        {/* Apply saved theme before first paint to prevent flash. Default is light
+            (matches ThemeProvider's default) unless the visitor explicitly saved 'dark'. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){}})();`,
           }}
         />
       </head>
