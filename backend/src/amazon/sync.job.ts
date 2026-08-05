@@ -532,12 +532,11 @@ export async function runFullAmazonDatabaseSync(dateFrom: Date | string): Promis
     // ── PHASE 3: VERIFICATION ─────────────────────────────────────────────────
     emit("Phase 3: Verification", "Running", 96, "Counting records in all tables...");
     try {
-      const [orders, items, snapshots, adSnapshots, settlements, syncJobs] = await Promise.all([
+      const [orders, items, snapshots, adSnapshots, syncJobs] = await Promise.all([
         countAllAmazonOrders(prisma),
         countAllAmazonOrderItems(prisma),
         countAllAmazonProductSnapshots(prisma),
         countAllAdSnapshots(prisma),
-        (prisma as any).amazonSettlementEntry?.count().catch(() => 0) ?? Promise.resolve(0),
         countSyncJobsByStatus(prisma, "done"),
       ]);
       const summary = `Orders: ${orders} | Items: ${items} | Snapshots: ${snapshots} | AdSnapshots: ${adSnapshots} | SyncJobs done: ${syncJobs}`;

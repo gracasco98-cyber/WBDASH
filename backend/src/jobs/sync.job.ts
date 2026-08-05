@@ -6,6 +6,14 @@ import {
 } from "../services/shopify.service";
 import { processOrderBatch } from "../services/order.service";
 import { runDailySnapshotJob } from "../services/product.service";
+import {
+  initSyncState,
+  findSyncState,
+  updateSyncProgress,
+  completeSyncState,
+  markSyncStateError,
+  completeIncrementalSync,
+} from "../repositories/shopify/sync-state.repo";
 
 // ─── Initial historical sync (90 days back) ───────────────────────────────────
 export async function runInitialSync(): Promise<void> {
@@ -14,11 +22,7 @@ export async function runInitialSync(): Promise<void> {
 
   console.log("[Sync] Starting historical sync from", ninety.toISOString());
 
-  await prisma.syncState.upsert({
-    where: { id: "main" },
-    create: { id: "main", status: "running" },
-    update: { status: "running", error: null },
-  });
+  await initSyncState(prisma);
 
   let totalSynced = 0;
 
@@ -28,37 +32,21 @@ export async function runInitialSync(): Promise<void> {
       totalSynced += ok;
       console.log(`[Sync] Progress: ${totalSynced} orders upserted`);
 
-      await prisma.syncState.update({
-        where: { id: "main" },
-        data: { totalSynced, lastSyncAt: new Date() },
-      });
+      await updateSyncProgress(prisma, totalSynced);
     });
 
-    await prisma.syncState.update({
-      where: { id: "main" },
-      data: {
-        status: "idle",
-        lastSyncAt: new Date(),
-        totalSynced,
-      },
-    });
+    await completeSyncState(prisma, totalSynced);
 
     console.log(`[Sync] Historical sync complete. Total: ${totalSynced}`);
   } catch (err) {
     await logError("initial-sync", err);
-    await prisma.syncState.update({
-      where: { id: "main" },
-      data: {
-        status: "error",
-        error: err instanceof Error ? err.message : String(err),
-      },
-    });
+    await markSyncStateError(prisma, err instanceof Error ? err.message : String(err));
   }
 }
 
 // ─── Incremental polling (every 60s) ─────────────────────────────────────────
 export async function runIncrementalSync(): Promise<void> {
-  const state = await prisma.syncState.findUnique({ where: { id: "main" } });
+  const state = await findSyncState(prisma);
   const since = state?.lastSyncAt
     ? new Date(state.lastSyncAt.getTime() - 5 * 60 * 1000) // 5 min overlap
     : new Date(Date.now() - 10 * 60 * 1000); // fallback: last 10 min
@@ -72,14 +60,7 @@ export async function runIncrementalSync(): Promise<void> {
       synced += ok;
     });
 
-    await prisma.syncState.update({
-      where: { id: "main" },
-      data: {
-        lastSyncAt: new Date(),
-        status: "idle",
-        totalSynced: { increment: synced },
-      },
-    });
+    await completeIncrementalSync(prisma, synced);
 
     if (synced > 0) {
       console.log(`[Sync] Incremental: ${synced} orders updated`);

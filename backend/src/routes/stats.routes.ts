@@ -13,6 +13,8 @@ import {
   findOrdersForReclassification,
   updateOrderMarketplace,
 } from "../repositories/shopify/orders.repo";
+import { findSyncState } from "../repositories/shopify/sync-state.repo";
+import { findRecentErrors } from "../repositories/shopify/error-log.repo";
 
 const router = Router();
 
@@ -688,7 +690,7 @@ router.post("/sync", async (req: Request, res: Response) => {
 // ─── GET /api/stats/sync-status ──────────────────────────────────────────────
 router.get("/sync-status", async (_req: Request, res: Response) => {
   try {
-    const state = await prisma.syncState.findUnique({ where: { id: "main" } });
+    const state = await findSyncState(prisma);
     res.json(state);
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -698,10 +700,7 @@ router.get("/sync-status", async (_req: Request, res: Response) => {
 // ─── GET /api/stats/errors ────────────────────────────────────────────────────
 router.get("/errors", async (_req: Request, res: Response) => {
   try {
-    const errors = await prisma.appErrorLog.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    });
+    const errors = await findRecentErrors(prisma);
     res.json(errors);
   } catch (err) {
     res.status(500).json({ error: String(err) });
