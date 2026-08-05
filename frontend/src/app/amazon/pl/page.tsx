@@ -36,8 +36,8 @@ function Cell({ v, type = "neutral", bold }: { v: number | null; type?: CellType
 
 function TotalsRow({ data }: { data: any }) {
   return (
-    <tr className="border-t-2 border-zinc-600 bg-zinc-800/50 font-semibold">
-      <td className="px-3 py-3 text-zinc-200 font-bold text-sm sticky left-0 bg-zinc-800/90">TOTALE</td>
+    <tr className="border-t-2 border-bg-border bg-bg-hover font-semibold">
+      <td className="px-3 py-3 text-zinc-200 font-bold text-sm sticky left-0 bg-bg-hover">TOTALE</td>
       <Cell v={data.grossRevenue}  type="revenue" bold />
       <Cell v={-data.refunds}      type="cost"    bold />
       <Cell v={data.netSales}      type="revenue" bold />
@@ -129,7 +129,7 @@ export default function PLPage() {
             <Globe size={13} className="text-zinc-500" />
             <select value={marketplace} onChange={(e) => setMarketplace(e.target.value)}
               className="bg-transparent text-sm text-zinc-300 outline-none cursor-pointer">
-              {MARKETPLACES.map((m) => <option key={m.value} value={m.value} className="bg-zinc-900">{m.label}</option>)}
+              {MARKETPLACES.map((m) => <option key={m.value} value={m.value} className="bg-bg-card">{m.label}</option>)}
             </select>
           </div>
           <button onClick={exportCSV}
@@ -167,9 +167,9 @@ export default function PLPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-xs min-w-[1200px]">
             <thead>
-              <tr className="border-b border-bg-border bg-zinc-800/30">
+              <tr className="border-b border-bg-border bg-bg-hover">
                 {COLS.map((c) => (
-                  <th key={c.label} className={`px-3 py-3 ${c.label === "Mese" ? "text-left sticky left-0 bg-zinc-900" : "text-right"} text-zinc-500 font-medium uppercase tracking-wide whitespace-nowrap`}>
+                  <th key={c.label} className={`px-3 py-3 ${c.label === "Mese" ? "text-left sticky left-0 bg-bg-hover" : "text-right"} text-zinc-500 font-medium uppercase tracking-wide whitespace-nowrap`}>
                     <span className="flex items-center gap-1 justify-end">
                       {c.label}
                       {c.tip && <span title={c.tip}><Info size={10} className="text-zinc-600" /></span>}
@@ -192,7 +192,7 @@ export default function PLPage() {
               ) : (
                 <>
                   {months_data.map((m) => (
-                    <tr key={m.month} className="hover:bg-zinc-800/20 transition-colors">
+                    <tr key={m.month} className="hover:bg-bg-hover transition-colors">
                       <td className="px-3 py-2.5 text-zinc-300 font-medium sticky left-0 bg-bg-card">
                         {monthLabel(m.month)}
                         {!m.hasRealFees && <span className="ml-1 text-amber-400/60 text-[10px]">~</span>}
