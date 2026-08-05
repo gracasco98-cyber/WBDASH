@@ -15,6 +15,7 @@
   --bg-hover:  #16161f;
   --bg-border: #1e1e2e;
   --body-color: #e2e2f0;
+  --text-secondary: #a1a1aa;  /* muted text for secondary elements */
   --scrollbar-track:  #0a0a0f;
   --scrollbar-thumb:  #2a2a3e;
   --scrollbar-thumb-hover: #3a3a5e;
@@ -26,6 +27,7 @@
   --bg-hover:  #f0f1f6;       /* light hover */
   --bg-border: #e4e5ef;       /* visible but subtle */
   --body-color: #111827;      /* near-black text for maximum contrast */
+  --text-secondary: #6b7280;  /* muted text for secondary elements */
   --scrollbar-track:  #f5f6fa;
   --scrollbar-thumb:  #c7c9d9;
   --scrollbar-thumb-hover: #9395a8;

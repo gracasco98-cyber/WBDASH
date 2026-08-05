@@ -204,23 +204,23 @@ export default function AmazonRevenueChart({ data, loading, hourlyMode = false, 
         <>
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={transformedData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-border)" vertical={false} />
               <XAxis
                 dataKey="time"
-                tick={{ fill: "#3f3f46", fontSize: 10 }}
+                tick={{ fill: "var(--text-secondary)", fontSize: 10 }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
                 tickFormatter={fmtEurCompact}
-                tick={{ fill: "#3f3f46", fontSize: 10 }}
+                tick={{ fill: "var(--text-secondary)", fontSize: 10 }}
                 axisLine={false}
                 tickLine={false}
                 width={52}
               />
               <Tooltip
                 content={<CustomTooltip hourlyMode={true} visibleMps={[]} />}
-                cursor={{ stroke: "#d4d4d8", strokeWidth: 1 }}
+                cursor={{ stroke: "var(--bg-border)", strokeWidth: 1 }}
               />
               {dateLabels.map((date, idx) => (
                 <Line
