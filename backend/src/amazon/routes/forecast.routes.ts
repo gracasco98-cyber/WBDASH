@@ -3,6 +3,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
 import { getCurrentAccountId } from "../../context/account-context";
 import { getCalibration, saveForecastSnapshot, getCalibrationStatus, computeComponentBreakdown } from "../forecast";
+import { computeHistoricalFeeRatiosByMarketplace } from "../../repositories/amazon/settlement.repo";
 
 export const forecastRouter = Router();
 
@@ -20,70 +21,7 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
     const ALL_EU_MARKETPLACES = ["IT", "DE", "ES", "FR", "NL", "PL", "UK", "SE"];
 
     // ── 1. Historical fee ratios (verified against real bank transfers) ─────────
-    const feeRatioRows = await prisma.$queryRawUnsafe<{
-      marketplace: string;
-      gross_sales: number; real_payout: number;
-      payout_ratio: number;
-      r_commission: number; r_fba: number; r_ads: number;
-      r_ads_vat: number; r_dsf: number; r_storage: number;
-      r_inbound: number; r_prep: number; r_refunds: number;
-      r_other: number; r_reimb: number;
-      avg_storage_per_sett: number; avg_inbound_per_sett: number;
-      n_sett: number;
-    }[]>(`
-      WITH sett AS (
-        SELECT marketplace, SUM("totalAmount") AS real_payout, COUNT(*) AS n_sett
-        FROM "AmazonSettlement" WHERE marketplace = ANY(ARRAY['IT','DE','ES','FR']) AND "amazonAccountId" = '${amazonAccountId}'
-        GROUP BY marketplace
-      ),
-      txn AS (
-        SELECT s.marketplace,
-          SUM(CASE WHEN t."amountType"='Principal' AND t."transactionType"='Order' THEN t.amount ELSE 0 END) AS gross,
-          (-SUM(CASE WHEN t."amountType"='Commission' THEN t.amount ELSE 0 END)) AS commission,
-          (-SUM(CASE WHEN t."amountType"='FBAPerUnitFulfillmentFee' THEN t.amount ELSE 0 END)) AS fba,
-          (-SUM(CASE WHEN t."amountType"='Cost of Advertising' THEN t.amount ELSE 0 END)) AS ads,
-          (-SUM(CASE WHEN t."amountType"='TaxAmount' AND t."transactionType"='ServiceFee' THEN t.amount ELSE 0 END)) AS ads_vat,
-          (-SUM(CASE WHEN t."amountType"='DigitalServicesFee' THEN t.amount ELSE 0 END)) AS dsf,
-          (-SUM(CASE WHEN t."transactionType" IN ('Storage Fee','StorageRenewalBilling') THEN t.amount ELSE 0 END)) AS storage,
-          (-SUM(CASE WHEN t."transactionType"='Inbound Transportation Fee' THEN t.amount ELSE 0 END)) AS inbound,
-          (-SUM(CASE WHEN t."transactionType" IN ('WarehousePrep','RemovalComplete','DisposalComplete') THEN t.amount ELSE 0 END)) AS prep,
-          (-SUM(CASE WHEN t."transactionType"='Refund' THEN t.amount ELSE 0 END)) AS refunds,
-          (-SUM(CASE WHEN t."amountType"='OtherAmount'
-              AND t."transactionType" NOT IN ('Storage Fee','StorageRenewalBilling','WarehousePrep','RemovalComplete',
-                'DisposalComplete','Inbound Transportation Fee','Current Reserve Amount',
-                'Previous Reserve Amount Balance','REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST',
-                'WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND') THEN t.amount ELSE 0 END)) AS other,
-          SUM(CASE WHEN t."amountType"='OtherAmount'
-              AND t."transactionType" IN ('REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST','WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND')
-              THEN t.amount ELSE 0 END) AS reimb,
-          COUNT(DISTINCT t."settlementId") AS n_sett
-        FROM "AmazonSettlementTransaction" t
-        JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId" AND s."amazonAccountId" = t."amazonAccountId"
-        WHERE s.marketplace = ANY(ARRAY['IT','DE','ES','FR']) AND s."amazonAccountId" = '${amazonAccountId}'
-        GROUP BY s.marketplace
-      )
-      SELECT
-        txn.marketplace,
-        txn.gross::FLOAT8 AS gross_sales,
-        sett.real_payout::FLOAT8 AS real_payout,
-        (sett.real_payout / NULLIF(txn.gross,0))::FLOAT8 AS payout_ratio,
-        (txn.commission / NULLIF(txn.gross,0))::FLOAT8 AS r_commission,
-        (txn.fba       / NULLIF(txn.gross,0))::FLOAT8 AS r_fba,
-        (txn.ads       / NULLIF(txn.gross,0))::FLOAT8 AS r_ads,
-        (txn.ads_vat   / NULLIF(txn.gross,0))::FLOAT8 AS r_ads_vat,
-        (txn.dsf       / NULLIF(txn.gross,0))::FLOAT8 AS r_dsf,
-        (txn.storage   / NULLIF(txn.gross,0))::FLOAT8 AS r_storage,
-        (txn.inbound   / NULLIF(txn.gross,0))::FLOAT8 AS r_inbound,
-        (txn.prep      / NULLIF(txn.gross,0))::FLOAT8 AS r_prep,
-        (txn.refunds   / NULLIF(txn.gross,0))::FLOAT8 AS r_refunds,
-        (txn.other     / NULLIF(txn.gross,0))::FLOAT8 AS r_other,
-        (txn.reimb     / NULLIF(txn.gross,0))::FLOAT8 AS r_reimb,
-        (txn.storage   / NULLIF(txn.n_sett,0))::FLOAT8 AS avg_storage_per_sett,
-        (txn.inbound   / NULLIF(txn.n_sett,0))::FLOAT8 AS avg_inbound_per_sett,
-        sett.n_sett::INTEGER AS n_sett
-      FROM txn JOIN sett ON sett.marketplace = txn.marketplace
-      ORDER BY txn.gross DESC
-    `);
+    const feeRatioRows = await computeHistoricalFeeRatiosByMarketplace(prisma, ["IT", "DE", "ES", "FR"]);
 
     type FR = typeof feeRatioRows[0];
     const frMap = new Map<string, FR>(feeRatioRows.map(r => [r.marketplace, r]));
@@ -316,7 +254,7 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
 
       const calib = calibMap.get(mp);
       const useCalib = calib !== null && calib !== undefined && calib.dataPoints >= 3;
-      const pr = useCalib ? calib!.payoutRatio : Number(fr.payout_ratio);
+      const pr = useCalib ? calib!.payoutRatio : fr.payoutRatio;
 
       const periodStart  = cycle.last_end;
       const periodEnd    = cycle.next_period_end;
@@ -354,21 +292,21 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
       const feeRatio = (calibField: number | undefined, rawField: number) =>
         r2(projectedGross * (useCalib && calibField !== undefined ? calibField : Number(rawField)));
 
-      const estCommission = feeRatio(calib?.rCommission, fr.r_commission);
-      const estFba        = feeRatio(calib?.rFba,        fr.r_fba);
+      const estCommission = feeRatio(calib?.rCommission, fr.rCommission);
+      const estFba        = feeRatio(calib?.rFba,        fr.rFba);
       const estAds = useCalib && calib!.avgAdsPerSett > 0
         ? r2(calib!.avgAdsPerSett)
-        : feeRatio(calib?.rAds, fr.r_ads);
-      const estAdsVat     = feeRatio(calib?.rAdsVat,     fr.r_ads_vat);
-      const estDsf        = feeRatio(calib?.rDsf,        fr.r_dsf);
-      const estStorage    = r2(useCalib && calib?.avgStoragePerSett ? calib!.avgStoragePerSett : Number(fr.avg_storage_per_sett));
-      const estInbound    = feeRatio(calib?.rInbound,    fr.r_inbound);
-      const estPrep       = feeRatio(calib?.rPrep,       fr.r_prep);
+        : feeRatio(calib?.rAds, fr.rAds);
+      const estAdsVat     = feeRatio(calib?.rAdsVat,     fr.rAdsVat);
+      const estDsf        = feeRatio(calib?.rDsf,        fr.rDsf);
+      const estStorage    = r2(useCalib && calib?.avgStoragePerSett ? calib!.avgStoragePerSett : fr.avgStoragePerSett);
+      const estInbound    = feeRatio(calib?.rInbound,    fr.rInbound);
+      const estPrep       = feeRatio(calib?.rPrep,       fr.rPrep);
       const estRefunds = useCalib && calib!.rRefundsSmoothed > 0
         ? r2(projectedGross * calib!.rRefundsSmoothed)
-        : feeRatio(calib?.rRefunds, fr.r_refunds);
-      const estOther      = feeRatio(calib?.rOther,      fr.r_other);
-      const estReimb      = feeRatio(calib?.rReimb,      fr.r_reimb);
+        : feeRatio(calib?.rRefunds, fr.rRefunds);
+      const estOther      = feeRatio(calib?.rOther,      fr.rOther);
+      const estReimb      = feeRatio(calib?.rReimb,      fr.rReimb);
 
       const estTotalFees = r2(projectedGross - projectedNet);
 
@@ -429,9 +367,9 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
         estTotalFees,
         payoutRatioPct: r1(pr * 100),
         feeBreakdown: {
-          commission:   estCommission,  commissionPct: r1(Number(fr.r_commission) * 100),
-          fbaFee:       estFba,         fbaPct:        r1(Number(fr.r_fba) * 100),
-          adsCost:      estAds,         adsPct:        r1(Number(fr.r_ads) * 100),
+          commission:   estCommission,  commissionPct: r1(fr.rCommission * 100),
+          fbaFee:       estFba,         fbaPct:        r1(fr.rFba * 100),
+          adsCost:      estAds,         adsPct:        r1(fr.rAds * 100),
           adsVat:       estAdsVat,
           dsf:          estDsf,
           storage:      estStorage,
@@ -441,9 +379,9 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
           otherCharges: estOther,
           reimbursements: estReimb,
         },
-        historicalGross:  r2(Number(fr.gross_sales)),
-        historicalPayout: r2(Number(fr.real_payout)),
-        nSettlements:     fr.n_sett,
+        historicalGross:  r2(fr.grossSales),
+        historicalPayout: r2(fr.realPayout),
+        nSettlements:     fr.nSett,
         periodStart,
         periodEnd,
         depositEst,

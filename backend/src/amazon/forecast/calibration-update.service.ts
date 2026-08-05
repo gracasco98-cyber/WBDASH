@@ -15,12 +15,12 @@
  */
 
 import { prisma } from "../../db";
-import { getCurrentAccountId } from "../../context/account-context";
 import {
   findCalibrationByMarketplace,
   updateCalibrationRecord,
   upsertCalibration,
 } from "../../repositories/amazon/forecast.repo";
+import { computeSettlementRatiosForCalibration } from "../../repositories/amazon/settlement.repo";
 import {
   detectBias,
   detectStructuralBreak,
@@ -92,66 +92,30 @@ interface SettlementRatios extends SettlementForSeasonality {
 // ─── Compute per-settlement ratios from DB ────────────────────────────────────
 
 async function computeSettlementRatios(marketplace: string, lastN = 30): Promise<SettlementRatios[]> {
-  const amazonAccountId = getCurrentAccountId();
-  const rows = await prisma.$queryRawUnsafe<{
-    settlement_id: string;
-    settlement_date: string;
-    real_payout: number; gross: number; commission: number; fba: number;
-    ads: number; ads_vat: number; dsf: number; storage: number;
-    inbound: number; prep: number; refunds: number; other: number; reimb: number;
-  }[]>(`
-    SELECT
-      s."settlementId" AS settlement_id,
-      s."endDate"::date::text AS settlement_date,
-      s."totalAmount"::FLOAT8 AS real_payout,
-      SUM(CASE WHEN t."amountType"='Principal' AND t."transactionType"='Order' THEN t.amount ELSE 0 END)::FLOAT8 AS gross,
-      ABS(SUM(CASE WHEN t."amountType"='Commission'                         THEN t.amount ELSE 0 END))::FLOAT8 AS commission,
-      ABS(SUM(CASE WHEN t."amountType"='FBAPerUnitFulfillmentFee'           THEN t.amount ELSE 0 END))::FLOAT8 AS fba,
-      ABS(SUM(CASE WHEN t."amountType"='Cost of Advertising'                THEN t.amount ELSE 0 END))::FLOAT8 AS ads,
-      ABS(SUM(CASE WHEN t."amountType"='TaxAmount' AND t."transactionType"='ServiceFee' THEN t.amount ELSE 0 END))::FLOAT8 AS ads_vat,
-      ABS(SUM(CASE WHEN t."amountType"='DigitalServicesFee'                 THEN t.amount ELSE 0 END))::FLOAT8 AS dsf,
-      ABS(SUM(CASE WHEN t."transactionType" IN ('Storage Fee','StorageRenewalBilling') THEN t.amount ELSE 0 END))::FLOAT8 AS storage,
-      ABS(SUM(CASE WHEN t."transactionType"='Inbound Transportation Fee'    THEN t.amount ELSE 0 END))::FLOAT8 AS inbound,
-      ABS(SUM(CASE WHEN t."transactionType" IN ('WarehousePrep','RemovalComplete','DisposalComplete') THEN t.amount ELSE 0 END))::FLOAT8 AS prep,
-      ABS(SUM(CASE WHEN t."transactionType"='Refund'                        THEN t.amount ELSE 0 END))::FLOAT8 AS refunds,
-      ABS(SUM(CASE WHEN t."amountType"='OtherAmount'
-          AND t."transactionType" NOT IN ('Storage Fee','StorageRenewalBilling','WarehousePrep','RemovalComplete',
-            'DisposalComplete','Inbound Transportation Fee','Current Reserve Amount',
-            'Previous Reserve Amount Balance','REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST',
-            'WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND') THEN t.amount ELSE 0 END))::FLOAT8 AS other,
-      SUM(CASE WHEN t."amountType"='OtherAmount'
-          AND t."transactionType" IN ('REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST','WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND')
-          THEN t.amount ELSE 0 END)::FLOAT8 AS reimb
-    FROM "AmazonSettlement" s
-    JOIN "AmazonSettlementTransaction" t ON t."settlementId" = s."settlementId" AND t."amazonAccountId" = s."amazonAccountId"
-    WHERE s.marketplace = '${marketplace}' AND s."amazonAccountId" = '${amazonAccountId}'
-    GROUP BY s."settlementId", s."endDate", s."totalAmount"
-    ORDER BY s."endDate" ASC
-    LIMIT ${lastN}
-  `);
+  const rows = await computeSettlementRatiosForCalibration(prisma, marketplace, lastN);
 
   return rows
-    .filter(r => r.gross > 0 && r.real_payout > 0)
+    .filter(r => r.gross > 0 && r.realPayout > 0)
     .map(r => ({
       marketplace,
-      settlementDate: r.settlement_date,
-      gross:         Number(r.gross),
-      realPayout:    Number(r.real_payout),
-      payoutRatio:   Number(r.real_payout) / Number(r.gross),
-      rCommission:   Number(r.commission)  / Number(r.gross),
-      rFba:          Number(r.fba)         / Number(r.gross),
-      rAds:          Number(r.ads)         / Number(r.gross),
-      rAdsVat:       Number(r.ads_vat)     / Number(r.gross),
-      rDsf:          Number(r.dsf)         / Number(r.gross),
-      rStorage:      Number(r.storage)     / Number(r.gross),
-      rInbound:      Number(r.inbound)     / Number(r.gross),
-      rPrep:         Number(r.prep)        / Number(r.gross),
-      rRefunds:      Number(r.refunds)     / Number(r.gross),
-      rOther:        Number(r.other)       / Number(r.gross),
-      rReimb:        Number(r.reimb)       / Number(r.gross),
-      storageAmt:    Number(r.storage),
-      inboundAmt:    Number(r.inbound),
-      adsAbs:        Number(r.ads),
+      settlementDate: r.settlementDate,
+      gross:         r.gross,
+      realPayout:    r.realPayout,
+      payoutRatio:   r.realPayout / r.gross,
+      rCommission:   r.commission / r.gross,
+      rFba:          r.fba        / r.gross,
+      rAds:          r.ads        / r.gross,
+      rAdsVat:       r.adsVat     / r.gross,
+      rDsf:          r.dsf        / r.gross,
+      rStorage:      r.storage    / r.gross,
+      rInbound:      r.inbound    / r.gross,
+      rPrep:         r.prep       / r.gross,
+      rRefunds:      r.refunds    / r.gross,
+      rOther:        r.other      / r.gross,
+      rReimb:        r.reimb      / r.gross,
+      storageAmt:    r.storage,
+      inboundAmt:    r.inbound,
+      adsAbs:        r.ads,
     }));
 }
 
