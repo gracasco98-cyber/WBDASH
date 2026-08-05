@@ -9,12 +9,12 @@ import type { ProductPerformanceRow } from "@/lib/api";
 import { formatDateToIso } from "@/lib/periodUtils";
 import { fmtEur } from "./MetricRow";
 
-const TILES: { preset: PeriodPreset; label: string; accent: string }[] = [
-  { preset: "today", label: "Oggi", accent: "border-l-accent-blue" },
-  { preset: "yesterday", label: "Ieri", accent: "border-l-accent-primary" },
-  { preset: "last7", label: "7 giorni", accent: "border-l-accent-primary" },
-  { preset: "last14", label: "14 giorni", accent: "border-l-accent-primary" },
-  { preset: "last30", label: "30 giorni", accent: "border-l-accent-primary" },
+const TILES: { preset: PeriodPreset; label: string; headerBg: string }[] = [
+  { preset: "today", label: "Oggi", headerBg: "#3b82f6" },
+  { preset: "yesterday", label: "Ieri", headerBg: "#14b8a6" },
+  { preset: "last7", label: "7 giorni", headerBg: "#2dd4bf" },
+  { preset: "last14", label: "14 giorni", headerBg: "#34d399" },
+  { preset: "last30", label: "30 giorni", headerBg: "#6ee7b7" },
 ];
 
 function presetDateRange(preset: PeriodPreset): { from: string; to: string } {
@@ -101,8 +101,8 @@ export default function PeriodTiles() {
   }, [productMarketplace]);
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
-      {TILES.map(({ preset, label, accent }) => {
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+      {TILES.map(({ preset, label, headerBg }) => {
         const totalRow = totals[preset];
         const active = state.preset === preset;
         return (
@@ -110,12 +110,12 @@ export default function PeriodTiles() {
             key={preset}
             aria-label={label}
             onClick={() => setPreset(preset)}
-            className={`text-left rounded-lg overflow-hidden p-0 cursor-pointer border transition-colors bg-bg-card hover:bg-bg-hover ${
-              active ? "border-accent-primary" : "border-bg-border"
+            className={`text-left rounded-lg overflow-hidden p-0 cursor-pointer border transition-shadow bg-bg-card hover:shadow-md ${
+              active ? "border-accent-primary shadow-sm" : "border-bg-border"
             }`}
           >
-            <div className={`bg-bg-hover px-3.5 py-2.5 border-l-2 ${accent}`}>
-              <div className="font-semibold text-[13px] text-zinc-200">{label}</div>
+            <div className="px-3.5 py-2.5" style={{ backgroundColor: headerBg }}>
+              <div className="font-semibold text-[13px] text-white">{label}</div>
             </div>
             <div className="px-3.5 py-3 text-[11px] text-zinc-400">
               <div className="text-zinc-500 text-[10px]">Ricavi</div>

@@ -315,6 +315,19 @@ export default function DashboardPage() {
     ? Object.entries(summary.byMarketplace).sort((a, b) => b[1].revenue - a[1].revenue)
     : [];
 
+  // Shared between the Tiles view (concatenated directly under PeriodTiles into one
+  // panel) and every other tab (rendered standalone below that tab's own content).
+  const productsTable = (
+    <ProductsPerformanceTable
+      groups={productGroups}
+      groupBy={productsGroupBy}
+      onGroupByChange={setProductsGroupBy}
+      onRenamed={loadProductGroups}
+      onMoved={loadProductGroups}
+    />
+  );
+  const productsBlock = sections.products && <div className="mt-2">{productsTable}</div>;
+
   return (
     <div className="min-h-screen bg-bg-base">
 
@@ -382,21 +395,25 @@ export default function DashboardPage() {
 
         {/* ── Main view area — driven by header tab (Tiles / Chart / P&L / Trends) ── */}
 
-        {/* TILES: Sellerboard KPI cards + product search */}
+        {/* TILES: BI tiles + product table concatenated into a single Sellerboard-style panel */}
         {activeView === "tiles" && (
-          <>
-            <SectionBar label="Business Intelligence" visible={sections.bi_overview} onToggle={() => toggleSection("bi_overview")} />
-            {sections.bi_overview && (
-              selectedProduct ? (
+          selectedProduct ? (
+            <>
+              <SectionBar label="Business Intelligence" visible={sections.bi_overview} onToggle={() => toggleSection("bi_overview")} />
+              {sections.bi_overview && (
                 <ProductBIOverview
                   product={selectedProduct}
                   onClear={() => setSelectedProduct(null)}
                 />
-              ) : (
-                <PeriodTiles />
-              )
-            )}
-          </>
+              )}
+            </>
+          ) : (
+            <div className="space-y-2">
+              <SectionBar label="Business Intelligence" visible={sections.bi_overview} onToggle={() => toggleSection("bi_overview")} />
+              {sections.bi_overview && <PeriodTiles />}
+              {productsBlock}
+            </div>
+          )
         )}
 
         {/* CHART: unified charts with tabs */}
@@ -458,20 +475,14 @@ export default function DashboardPage() {
         )}
 
         {/* ── Cross-channel product performance ──────────────────────────────── */}
-        <div className="animate-in" style={{ animationDelay: "100ms" }}>
-          <SectionBar label="Prodotti" visible={sections.products} onToggle={() => toggleSection("products")} />
-          {sections.products && (
-            <div className="mt-2">
-              <ProductsPerformanceTable
-                groups={productGroups}
-                groupBy={productsGroupBy}
-                onGroupByChange={setProductsGroupBy}
-                onRenamed={loadProductGroups}
-                onMoved={loadProductGroups}
-              />
-            </div>
-          )}
-        </div>
+        {/* On the Tiles view this is concatenated directly under PeriodTiles (see above) into
+            one Sellerboard-style panel; on other tabs it renders standalone below that tab's content. */}
+        {activeView !== "tiles" && (
+          <div className="animate-in" style={{ animationDelay: "100ms" }}>
+            <SectionBar label="Prodotti" visible={sections.products} onToggle={() => toggleSection("products")} />
+            {sections.products && <div className="mt-2">{productsTable}</div>}
+          </div>
+        )}
 
         {/* ── Charts row — only in Tiles view (desktop) ─────────────────────── */}
         {activeView === "tiles" && (
