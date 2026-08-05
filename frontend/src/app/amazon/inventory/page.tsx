@@ -68,11 +68,11 @@ function StatusPill({ status, daysRemaining }: { status: string; daysRemaining: 
 // ─── Stock progress bar ───────────────────────────────────────────────────────
 
 function StockBar({ days }: { days: number | null }) {
-  if (days === null) return <div className="w-full h-1.5 rounded-full bg-zinc-800" />;
+  if (days === null) return <div className="w-full h-1.5 rounded-full bg-bg-border" />;
   const pct   = Math.min(100, Math.max(0, (days / 90) * 100));
   const color = days <= 7 ? "bg-red-500" : days <= 30 ? "bg-amber-400" : days <= 60 ? "bg-blue-400" : "bg-emerald-400";
   return (
-    <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+    <div className="w-full h-1.5 rounded-full bg-bg-border overflow-hidden">
       <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
     </div>
   );
@@ -112,14 +112,14 @@ function VelocityCell({ velocity, byMarket }: { velocity: number; byMarket: Reco
       {open && hasBreakdown && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-20 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-2 min-w-[130px] text-xs">
+          <div className="absolute right-0 top-full mt-1 z-20 bg-bg-card border border-bg-border rounded-lg shadow-xl p-2 min-w-[130px] text-xs">
             {Object.entries(byMarket).filter(([, v]) => v > 0).sort(([, a], [, b]) => b - a).map(([mp, v]) => (
               <div key={mp} className="flex items-center justify-between gap-3 py-0.5">
                 <span className="text-zinc-400">{MP_FLAG[mp] ?? mp} {mp}</span>
                 <span className="font-mono text-zinc-200">{v.toFixed(1)}/gg</span>
               </div>
             ))}
-            <div className="border-t border-zinc-700 mt-1 pt-1 flex justify-between font-semibold">
+            <div className="border-t border-bg-border mt-1 pt-1 flex justify-between font-semibold">
               <span className="text-zinc-400">Totale EU</span>
               <span className="text-white">{velocity.toFixed(1)}/gg</span>
             </div>
@@ -309,7 +309,7 @@ export default function InventoryPage() {
               className={`rounded-xl p-4 transition-all ${clickable ? "cursor-pointer" : ""} ${
                 active
                   ? "bg-accent-primary/8 border-2 border-accent-primary/40 ring-1 ring-accent-primary/15"
-                  : "bg-bg-card border border-bg-border hover:border-zinc-600"
+                  : "bg-bg-card border border-bg-border hover:border-accent-primary/40"
               }`}
             >
               <div className="flex items-center gap-1.5 mb-2">
@@ -457,7 +457,7 @@ export default function InventoryPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-xs min-w-[1000px]">
             <thead>
-              <tr className="border-b border-bg-border bg-zinc-900/40">
+              <tr className="border-b border-bg-border bg-bg-hover">
                 <th className="px-4 py-3 text-left text-zinc-500 font-medium uppercase tracking-wide text-[10px] w-[280px]">Prodotto / ASIN</th>
                 <th className="px-3 py-3 text-left text-zinc-500 font-medium uppercase tracking-wide text-[10px]">Mercati</th>
                 <SortTh k="qty"      label="Disponibile"  right />
@@ -505,7 +505,7 @@ export default function InventoryPage() {
                   const rowBg = item.status === "critical" ? "bg-red-500/3 hover:bg-red-500/6"
                               : item.status === "low"      ? "bg-amber-500/3 hover:bg-amber-500/6"
                               : hasIssue                   ? "bg-orange-500/3 hover:bg-orange-500/6"
-                              : "hover:bg-zinc-800/20";
+                              : "hover:bg-bg-hover";
 
                   return (
                     // FIX: usa React.Fragment con key invece di <> senza key — React non aggiornava il DOM
@@ -518,9 +518,9 @@ export default function InventoryPage() {
                         <td className="px-4 py-3 w-[280px]">
                           <div className="flex items-center gap-2.5 min-w-0">
                             {item.imageUrl ? (
-                              <img src={item.imageUrl} alt="" className="w-9 h-9 rounded-lg object-contain bg-zinc-800/60 shrink-0 border border-zinc-700/30" />
+                              <img src={item.imageUrl} alt="" className="w-9 h-9 rounded-lg object-contain bg-bg-hover shrink-0 border border-bg-border" />
                             ) : (
-                              <div className="w-9 h-9 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-700/30">
+                              <div className="w-9 h-9 rounded-lg bg-bg-hover flex items-center justify-center shrink-0 border border-bg-border">
                                 <span className="text-zinc-600 text-[9px] font-mono">{item.asin.slice(0, 4)}</span>
                               </div>
                             )}
@@ -604,7 +604,7 @@ export default function InventoryPage() {
 
                       {/* ── Expanded row ── */}
                       {isExpanded && (
-                        <tr className="bg-zinc-900/30">
+                        <tr className="bg-bg-hover">
                           <td colSpan={9} className="px-6 py-4">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
 
@@ -654,7 +654,7 @@ export default function InventoryPage() {
                                       <span className="tabular-nums text-zinc-200 font-semibold">{v.toFixed(2)}/gg</span>
                                     </div>
                                   ))}
-                                <div className="border-t border-zinc-700/50 pt-1 flex justify-between font-bold">
+                                <div className="border-t border-bg-border pt-1 flex justify-between font-bold">
                                   <span className="text-zinc-400">Totale EU</span>
                                   <span className="text-white">{item.salesVelocity.toFixed(2)}/gg</span>
                                 </div>
@@ -671,13 +671,13 @@ export default function InventoryPage() {
                                   <span className="text-zinc-500">+ In arrivo</span>
                                   <span className="tabular-nums text-purple-400 font-semibold">{fmtN(item.inboundQuantity)}</span>
                                 </div>
-                                <div className="flex items-center justify-between border-t border-zinc-700/40 pt-1">
+                                <div className="flex items-center justify-between border-t border-bg-border pt-1">
                                   <span className="text-zinc-500">= Totale previsto</span>
                                   <span className="tabular-nums text-zinc-200 font-bold">{fmtN(item.fulfillableQuantity + item.inboundQuantity)}</span>
                                 </div>
                                 {item.salesVelocity > 0 && (
                                   <>
-                                    <div className="flex items-center justify-between border-t border-zinc-700/40 pt-1">
+                                    <div className="flex items-center justify-between border-t border-bg-border pt-1">
                                       <span className="text-zinc-500">Scorta att. dura</span>
                                       <span className={`tabular-nums font-bold ${(item.daysRemaining ?? 999) <= 7 ? "text-red-400" : (item.daysRemaining ?? 999) <= 30 ? "text-amber-400" : "text-emerald-400"}`}>
                                         {item.daysRemaining !== null ? `${item.daysRemaining} gg` : "—"}
@@ -691,7 +691,7 @@ export default function InventoryPage() {
                                     </div>
                                   </>
                                 )}
-                                <div className="flex items-center justify-between border-t border-zinc-700/40 pt-1">
+                                <div className="flex items-center justify-between border-t border-bg-border pt-1">
                                   <span className="text-zinc-600">fnSku</span>
                                   <span className="tabular-nums text-zinc-700 font-mono text-[9px]">{item.fnSku}</span>
                                 </div>
