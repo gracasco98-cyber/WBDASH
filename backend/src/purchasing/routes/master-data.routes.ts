@@ -26,13 +26,19 @@ masterDataRouter.put("/warehouses/:id", async (req: Request, res: Response) => {
   try {
     const { name, address } = req.body ?? {};
     res.json(await updateWarehouse(prisma, req.params.id, { name, address }));
-  } catch (err) { res.status(500).json({ error: String(err) }); }
+  } catch (err) {
+    if ((err as any).code === "P2025") return res.status(404).json({ error: "Warehouse not found" });
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 masterDataRouter.delete("/warehouses/:id", async (req: Request, res: Response) => {
   try {
     res.json(await deactivateWarehouse(prisma, req.params.id));
-  } catch (err) { res.status(500).json({ error: String(err) }); }
+  } catch (err) {
+    if ((err as any).code === "P2025") return res.status(404).json({ error: "Warehouse not found" });
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 // ─── Payment terms ───────────────────────────────────────────────────────────
@@ -51,15 +57,21 @@ masterDataRouter.post("/payment-terms", async (req: Request, res: Response) => {
     const term = await createPaymentTerm(prisma, { name, type, endOfMonth: !!endOfMonth, fixedDay: fixedDay ?? null, paymentMethod, installments });
     res.json(term);
   } catch (err) {
-    // Installment-sum validation error from the repo layer surfaces as a 400, not a 500.
-    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+    // Only the installment-sum validation error from the repo layer maps to 400;
+    // anything else (e.g. a DB outage) is a genuine 500.
+    const message = err instanceof Error ? err.message : String(err);
+    if (/sum to 100/.test(message)) return res.status(400).json({ error: message });
+    res.status(500).json({ error: message });
   }
 });
 
 masterDataRouter.delete("/payment-terms/:id", async (req: Request, res: Response) => {
   try {
     res.json(await deactivatePaymentTerm(prisma, req.params.id));
-  } catch (err) { res.status(500).json({ error: String(err) }); }
+  } catch (err) {
+    if ((err as any).code === "P2025") return res.status(404).json({ error: "PaymentTerm not found" });
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 // ─── Bank accounts ───────────────────────────────────────────────────────────
@@ -88,11 +100,17 @@ masterDataRouter.put("/bank-accounts/:id", async (req: Request, res: Response) =
   try {
     const { bankName, alias, accountHolder, bic, accountingCode, notes } = req.body ?? {};
     res.json(await updateBankAccount(prisma, req.params.id, { bankName, alias, accountHolder, bic, accountingCode, notes }));
-  } catch (err) { res.status(500).json({ error: String(err) }); }
+  } catch (err) {
+    if ((err as any).code === "P2025") return res.status(404).json({ error: "BankAccount not found" });
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 masterDataRouter.delete("/bank-accounts/:id", async (req: Request, res: Response) => {
   try {
     res.json(await deactivateBankAccount(prisma, req.params.id));
-  } catch (err) { res.status(500).json({ error: String(err) }); }
+  } catch (err) {
+    if ((err as any).code === "P2025") return res.status(404).json({ error: "BankAccount not found" });
+    res.status(500).json({ error: String(err) });
+  }
 });
