@@ -115,7 +115,7 @@ function PeriodCol({ label, sub, rows, pctChange, loading, accent, isForecast, o
     : accent === "purple" ? "border-[#ECCB08]/25"
     : accent === "amber"  ? "border-[#D4AF00]/25"
     : accent === "green"  ? "border-[#F4B400]/25"
-    : "border-zinc-800/60";
+    : "border-bg-border";
 
   const headerBg =
     isActive            ? "bg-accent-primary/10"
@@ -157,7 +157,7 @@ function PeriodCol({ label, sub, rows, pctChange, loading, accent, isForecast, o
 
       {/* â”€â”€ Hero number (total gross) â€” only when in "Totale" view â”€â”€ */}
       {showHero && (
-        <div className="px-3.5 py-3 border-b border-zinc-800/50 bg-emerald-500/[0.04]">
+        <div className="px-3.5 py-3 border-b border-bg-border bg-emerald-500/[0.04]">
           <div className="text-[9px] text-zinc-500 uppercase tracking-widest mb-1">
             {heroLabel ?? "Fatturato Lordo Totale"}
           </div>
@@ -177,7 +177,7 @@ function PeriodCol({ label, sub, rows, pctChange, loading, accent, isForecast, o
           <div
             key={row.key}
             className={`flex items-center justify-between px-3 sm:px-3.5 py-1.5 sm:py-2 gap-2 ${
-              row.separator ? "border-t border-zinc-800/60 mt-0.5 pt-2" : ""
+              row.separator ? "border-t border-bg-border mt-0.5 pt-2" : ""
             }`}
           >
             <span className={`text-[10px] shrink-0 ${row.small ? "text-zinc-600" : "text-zinc-500"}`}>
@@ -497,7 +497,7 @@ export default function ShopifyBIOverview({ activeMarketplaces, onPeriodSelect, 
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap border transition-all shrink-0 ${
                   isActive
                     ? "text-white"
-                    : "border-bg-border text-zinc-500 hover:text-zinc-200 hover:border-zinc-600"
+                    : "border-bg-border text-zinc-500 hover:text-zinc-200 hover:border-accent-primary/40"
                 }`}
                 style={isActive ? { background: tabColor + "20", borderColor: tabColor + "55", color: tabColor } : {}}
               >
@@ -521,7 +521,7 @@ export default function ShopifyBIOverview({ activeMarketplaces, onPeriodSelect, 
                         className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap border transition-all shrink-0 ${
                           isActive
                             ? "text-white"
-                            : "border-bg-border text-zinc-500 hover:text-zinc-200 hover:border-zinc-600"
+                            : "border-bg-border text-zinc-500 hover:text-zinc-200 hover:border-accent-primary/40"
                         }`}
                         style={isActive ? { background: meta.color + "22", borderColor: meta.color + "55", color: meta.color } : {}}
                       >
@@ -541,7 +541,7 @@ export default function ShopifyBIOverview({ activeMarketplaces, onPeriodSelect, 
                         className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap border transition-all shrink-0 ${
                           isActive
                             ? "bg-amber-500/15 border-amber-500/30 text-amber-400"
-                            : "border-bg-border text-zinc-500 hover:text-zinc-200 hover:border-zinc-600"
+                            : "border-bg-border text-zinc-500 hover:text-zinc-200 hover:border-accent-primary/40"
                         }`}
                       >
                         {label}
@@ -568,7 +568,7 @@ export default function ShopifyBIOverview({ activeMarketplaces, onPeriodSelect, 
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap border transition-all shrink-0 ${
                   isActive
                     ? "border-transparent text-white"
-                    : "border-bg-border text-zinc-500 hover:text-zinc-200 hover:border-zinc-600"
+                    : "border-bg-border text-zinc-500 hover:text-zinc-200 hover:border-accent-primary/40"
                 }`}
                 style={isActive ? { background: meta.color + "22", borderColor: meta.color + "55", color: meta.color } : {}}
               >
