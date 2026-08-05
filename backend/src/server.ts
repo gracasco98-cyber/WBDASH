@@ -26,6 +26,7 @@ import authRouter from "./auth/auth.routes";
 import adminRouter from "./auth/admin.routes";
 import { requireAuth } from "./middleware/auth.middleware";
 import { amazonAccountMiddleware } from "./middleware/amazon-account.middleware";
+import { masterDataRouter } from "./purchasing/routes/master-data.routes";
 import { addSSEClient, sseClientCount } from "./sse/sse";
 
 const app = express();
@@ -147,6 +148,7 @@ app.use("/api/amazon",     requireAuth, amazonAccountMiddleware, amazonRouter);
 app.use("/api/chat",       requireAuth, amazonAccountMiddleware, chatRouter);
 app.use("/api/analytics",  requireAuth, amazonAccountMiddleware, analyticsRouter);
 app.use("/api/auth/admin", requireAuth, adminRouter);
+app.use("/api/purchasing", requireAuth, masterDataRouter);
 
 // ─── 404 / error handler ─────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: "Endpoint non trovato." }));
