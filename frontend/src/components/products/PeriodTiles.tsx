@@ -7,7 +7,7 @@ import type { PeriodPreset } from "@/context/PeriodContext";
 import { api } from "@/lib/api";
 import type { ProductPerformanceRow } from "@/lib/api";
 import { formatDateToIso } from "@/lib/periodUtils";
-import { fmtEur } from "./MetricRow";
+import { fmtEur, dash } from "./MetricRow";
 
 const TILES: { preset: PeriodPreset; label: string; headerBg: string }[] = [
   { preset: "today", label: "Oggi", headerBg: "#3b82f6" },
@@ -110,16 +110,46 @@ export default function PeriodTiles() {
             key={preset}
             aria-label={label}
             onClick={() => setPreset(preset)}
-            className={`text-left rounded-lg overflow-hidden p-0 cursor-pointer border transition-shadow bg-bg-card hover:shadow-md ${
+            className={`text-left rounded-lg overflow-hidden p-0 cursor-pointer border transition-shadow bg-bg-card hover:shadow-md flex flex-col ${
               active ? "border-accent-primary shadow-sm" : "border-bg-border"
             }`}
           >
             <div className="px-3.5 py-2.5" style={{ backgroundColor: headerBg }}>
               <div className="font-semibold text-[13px] text-white">{label}</div>
             </div>
-            <div className="px-3.5 py-3 text-[11px] text-zinc-400">
-              <div className="text-zinc-500 text-[10px]">Ricavi</div>
-              <div className="text-[19px] font-bold text-white tabular-nums">{totalRow ? fmtEur(totalRow.sales) : "—"}</div>
+            <div className="px-3.5 py-3 flex-1 flex flex-col gap-2.5">
+              <div>
+                <div className="text-zinc-500 text-[10px]">Ricavi</div>
+                <div className="text-[19px] font-bold text-white tabular-nums">{totalRow ? fmtEur(totalRow.sales) : "—"}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-2 text-[11px]">
+                <div>
+                  <div className="text-zinc-500 text-[10px]">Unità</div>
+                  <div className="text-zinc-300 tabular-nums">{totalRow ? totalRow.units : "—"}</div>
+                </div>
+                <div>
+                  <div className="text-zinc-500 text-[10px]">Resi</div>
+                  <div className="text-zinc-300 tabular-nums">{totalRow ? totalRow.refundsCount : "—"}</div>
+                </div>
+                <div className="pt-2 border-t border-bg-border">
+                  <div className="text-zinc-500 text-[10px]">Ads</div>
+                  <div className="text-zinc-300 tabular-nums">{totalRow ? dash(totalRow.adsSpend, fmtEur) : "—"}</div>
+                </div>
+                <div className="pt-2 border-t border-bg-border">
+                  <div className="text-zinc-500 text-[10px]">Payout stimato</div>
+                  <div className="text-zinc-300 tabular-nums">{totalRow ? fmtEur(totalRow.estimatedPayout) : "—"}</div>
+                </div>
+                <div>
+                  <div className="text-zinc-500 text-[10px]">Profitto netto</div>
+                  <div className={`font-semibold tabular-nums ${totalRow && totalRow.netProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}>
+                    {totalRow ? fmtEur(totalRow.netProfit) : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-zinc-500 text-[10px]">Fee Amazon</div>
+                  <div className="text-zinc-300 tabular-nums">{totalRow ? fmtEur(totalRow.amazonFees) : "—"}</div>
+                </div>
+              </div>
             </div>
           </button>
         );
