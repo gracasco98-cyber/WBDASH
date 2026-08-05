@@ -36,7 +36,7 @@ function Cell({ v, type = "neutral", bold }: { v: number | null; type?: CellType
 
 function TotalsRow({ data }: { data: any }) {
   return (
-    <tr className="border-t-2 border-bg-border bg-bg-hover font-semibold">
+    <tr className="border-t-2 border-zinc-600 bg-bg-hover font-semibold">
       <td className="px-3 py-3 text-zinc-200 font-bold text-sm sticky left-0 bg-bg-hover">TOTALE</td>
       <Cell v={data.grossRevenue}  type="revenue" bold />
       <Cell v={-data.refunds}      type="cost"    bold />
