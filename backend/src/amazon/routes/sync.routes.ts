@@ -7,19 +7,21 @@ import {
   countAllAmazonOrders,
   countAllAmazonOrderItems,
   groupAmazonOrdersByMarketplace,
+  findAmazonOrderDateRange,
 } from "../../repositories/amazon/orders.repo";
 import {
   countAllAmazonProductSnapshots,
+  findAmazonProductSnapshotDateRange,
 } from "../../repositories/amazon/product-snapshots.repo";
 import {
   countAllAdSnapshots,
+  findAmazonAdSnapshotDateRange,
 } from "../../repositories/amazon/ads.repo";
 import {
   findRecentSyncJobs,
   countSyncJobsByStatus,
 } from "../../repositories/amazon/sync-jobs.repo";
 import { countSettlementTransactions } from "../../repositories/amazon/settlement.repo";
-import { getCurrentAccountId } from "../../context/account-context";
 import { runAmazonBackfill, runAmazonIncrementalSync, syncAdsBackfill, runFullAmazonDatabaseSync, getFullSyncProgress } from "../sync.job";
 import { runAmazonSnapshotJob, computeAllAmazonHistoricalSnapshots, computeSnapshotRange } from "../snapshot.service";
 import { syncSettlementReports } from "../settlement.service";
@@ -102,7 +104,6 @@ syncRouter.post("/sync/snapshot", async (_req: Request, res: Response) => {
 // Returns row counts and date ranges for all Amazon tables (Phase 3 verification)
 syncRouter.get("/sync/db-stats", async (_req: Request, res: Response) => {
   try {
-    const amazonAccountId = getCurrentAccountId();
     const [
       orderCount,
       itemCount,
@@ -120,12 +121,9 @@ syncRouter.get("/sync/db-stats", async (_req: Request, res: Response) => {
       countAllAdSnapshots(prisma),
       countSyncJobsByStatus(prisma, "done"),
       countSyncJobsByStatus(prisma, "failed"),
-      prisma.$queryRaw<[{ min: Date | null; max: Date | null }]>`
-        SELECT MIN("purchaseDate") AS min, MAX("purchaseDate") AS max FROM "AmazonOrder" WHERE "amazonAccountId" = ${amazonAccountId}`,
-      prisma.$queryRaw<[{ min: Date | null; max: Date | null }]>`
-        SELECT MIN("snapshotDate") AS min, MAX("snapshotDate") AS max FROM "AmazonProductSnapshot" WHERE "amazonAccountId" = ${amazonAccountId}`,
-      prisma.$queryRaw<[{ min: Date | null; max: Date | null }]>`
-        SELECT MIN("snapshotDate") AS min, MAX("snapshotDate") AS max FROM "AmazonAdSnapshot" WHERE "amazonAccountId" = ${amazonAccountId}`,
+      findAmazonOrderDateRange(prisma),
+      findAmazonProductSnapshotDateRange(prisma),
+      findAmazonAdSnapshotDateRange(prisma),
     ]);
 
     // Settlement table
@@ -139,10 +137,10 @@ syncRouter.get("/sync/db-stats", async (_req: Request, res: Response) => {
 
     res.json({
       tables: {
-        amazonOrder:           { rows: orderCount,      dateMin: orderDateRange[0]?.min, dateMax: orderDateRange[0]?.max },
+        amazonOrder:           { rows: orderCount,      dateMin: orderDateRange?.min, dateMax: orderDateRange?.max },
         amazonOrderItem:       { rows: itemCount },
-        amazonProductSnapshot: { rows: snapshotCount,   dateMin: snapshotDateRange[0]?.min, dateMax: snapshotDateRange[0]?.max },
-        amazonAdSnapshot:      { rows: adSnapshotCount, dateMin: adDateRange[0]?.min, dateMax: adDateRange[0]?.max },
+        amazonProductSnapshot: { rows: snapshotCount,   dateMin: snapshotDateRange?.min, dateMax: snapshotDateRange?.max },
+        amazonAdSnapshot:      { rows: adSnapshotCount, dateMin: adDateRange?.min, dateMax: adDateRange?.max },
         amazonSettlement:      { rows: settlementCount },
       },
       syncJobs: { done: syncJobDone, failed: syncJobFailed },

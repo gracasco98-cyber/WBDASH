@@ -89,6 +89,19 @@ export async function groupAmazonOrdersByMarketplace(
   return groups.map(g => ({ marketplace: g.marketplace, _count: g._count }));
 }
 
+/**
+ * Earliest/latest purchaseDate across all AmazonOrder rows for the current
+ * account. Used for DB stats / verification.
+ */
+export async function findAmazonOrderDateRange(
+  prisma: PrismaClient
+): Promise<{ min: Date | null; max: Date | null }> {
+  const accountId = getCurrentAccountId();
+  const [row] = await prisma.$queryRaw<[{ min: Date | null; max: Date | null }]>`
+    SELECT MIN("purchaseDate") AS min, MAX("purchaseDate") AS max FROM "AmazonOrder" WHERE "amazonAccountId" = ${accountId}`;
+  return row;
+}
+
 // ─── Read operations — AmazonOrderItem ────────────────────────────────────────
 
 /**
@@ -151,6 +164,31 @@ export async function findRepresentativeItem(
     select: { productTitle: true, sku: true },
     orderBy: { purchaseDate: "desc" },
   });
+}
+
+/**
+ * Count distinct orders (by amazonOrderId) for one ASIN+marketplace pair in a
+ * date window, excluding cancelled orders. Used by the daily snapshot job as a
+ * cross-check against the item-level _count (an order can contain the same
+ * ASIN more than once as separate line items).
+ */
+export async function countDistinctOrdersForSnapshot(
+  prisma: PrismaClient,
+  params: { asin: string; marketplace: string; from: Date; to: Date }
+): Promise<number> {
+  const accountId = getCurrentAccountId();
+  const [row] = await prisma.$queryRaw<[{ distinctOrders: number }]>`
+    SELECT COUNT(DISTINCT i."amazonOrderId")::INTEGER AS "distinctOrders"
+    FROM "AmazonOrderItem" i
+    JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
+    WHERE i.asin = ${params.asin}
+      AND i.marketplace = ${params.marketplace}
+      AND i."purchaseDate" >= ${params.from}::timestamp
+      AND i."purchaseDate" <= ${params.to}::timestamp
+      AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+      AND i."amazonAccountId" = ${accountId}
+  `;
+  return row.distinctOrders;
 }
 
 /**

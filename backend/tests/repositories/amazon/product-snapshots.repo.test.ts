@@ -8,6 +8,7 @@ import {
   upsertAmazonProductSnapshot,
   findProductSnapshotHistory,
   countAllAmazonProductSnapshots,
+  findAmazonProductSnapshotDateRange,
 } from "../../../src/repositories/amazon/product-snapshots.repo";
 
 let db: TestDb;
@@ -165,6 +166,28 @@ describe("countAllAmazonProductSnapshots", () => {
       await upsertAmazonProductSnapshot(db.prisma, { ...BASE_SNAPSHOT, asin: "B0A1TEST002" });
       const count = await countAllAmazonProductSnapshots(db.prisma);
       expect(count).toBe(2);
+    });
+  });
+});
+
+// ─── findAmazonProductSnapshotDateRange ───────────────────────────────────────
+
+describe("findAmazonProductSnapshotDateRange", () => {
+  it("returns null min/max when no snapshots exist", async () => {
+    await runWithAccount(accountId, async () => {
+      const range = await findAmazonProductSnapshotDateRange(db.prisma);
+      expect(range.min).toBeNull();
+      expect(range.max).toBeNull();
+    });
+  });
+
+  it("returns the earliest and latest snapshotDate across all rows", async () => {
+    await runWithAccount(accountId, async () => {
+      await upsertAmazonProductSnapshot(db.prisma, { ...BASE_SNAPSHOT, snapshotDate: new Date("2026-04-10T00:00:00.000Z") });
+      await upsertAmazonProductSnapshot(db.prisma, { ...BASE_SNAPSHOT, asin: "B0A1TEST002", snapshotDate: new Date("2026-04-12T00:00:00.000Z") });
+      const range = await findAmazonProductSnapshotDateRange(db.prisma);
+      expect(range.min?.toISOString()).toBe("2026-04-10T00:00:00.000Z");
+      expect(range.max?.toISOString()).toBe("2026-04-12T00:00:00.000Z");
     });
   });
 });

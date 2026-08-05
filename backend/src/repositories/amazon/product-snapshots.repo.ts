@@ -63,6 +63,19 @@ export async function countAllAmazonProductSnapshots(prisma: PrismaClient): Prom
   return prisma.amazonProductSnapshot.count({ where: { amazonAccountId: getCurrentAccountId() } });
 }
 
+/**
+ * Earliest/latest snapshotDate across all AmazonProductSnapshot rows for the
+ * current account. Used for DB stats / verification.
+ */
+export async function findAmazonProductSnapshotDateRange(
+  prisma: PrismaClient
+): Promise<{ min: Date | null; max: Date | null }> {
+  const accountId = getCurrentAccountId();
+  const [row] = await prisma.$queryRaw<[{ min: Date | null; max: Date | null }]>`
+    SELECT MIN("snapshotDate") AS min, MAX("snapshotDate") AS max FROM "AmazonProductSnapshot" WHERE "amazonAccountId" = ${accountId}`;
+  return row;
+}
+
 // ─── Write operations ─────────────────────────────────────────────────────────
 
 /**

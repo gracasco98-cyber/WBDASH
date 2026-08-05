@@ -13,6 +13,8 @@ import {
   countAllAmazonOrderItems,
   groupAmazonOrdersByMarketplace,
   groupAmazonItemsByAsin,
+  findAmazonOrderDateRange,
+  countDistinctOrdersForSnapshot,
 } from "../../../src/repositories/amazon/orders.repo";
 
 let db: TestDb;
@@ -215,6 +217,68 @@ describe("groupAmazonItemsByAsin", () => {
       });
       const asins = groups.map(g => g.asin);
       expect(asins).not.toContain("B0ANONAMZN1"); // Non-Amazon item
+    });
+  });
+});
+
+// ─── findAmazonOrderDateRange ─────────────────────────────────────────────────
+
+describe("findAmazonOrderDateRange", () => {
+  it("returns the earliest and latest purchaseDate across all orders for the current account", async () => {
+    await runWithAccount(accountId, async () => {
+      const range = await findAmazonOrderDateRange(db.prisma);
+      // AZ-IT-OLD is the earliest (2025-01-01), AZ-IT-004 is the latest (2026-04-14T22:30Z)
+      expect(range.min?.toISOString()).toBe("2025-01-01T00:00:00.000Z");
+      expect(range.max?.toISOString()).toBe("2026-04-14T22:30:00.000Z");
+    });
+  });
+
+  it("returns null min/max when the current account has no orders", async () => {
+    const otherAccountId = await createTestAmazonAccount(db.prisma, { name: "Empty Account" });
+    await runWithAccount(otherAccountId, async () => {
+      const range = await findAmazonOrderDateRange(db.prisma);
+      expect(range.min).toBeNull();
+      expect(range.max).toBeNull();
+    });
+  });
+});
+
+// ─── countDistinctOrdersForSnapshot ───────────────────────────────────────────
+
+describe("countDistinctOrdersForSnapshot", () => {
+  it("counts one distinct order for an ASIN sold once on that day", async () => {
+    await runWithAccount(accountId, async () => {
+      const count = await countDistinctOrdersForSnapshot(db.prisma, {
+        asin: "B0A1IT001A",
+        marketplace: "IT",
+        from: new Date("2026-04-10T00:00:00Z"),
+        to: new Date("2026-04-10T23:59:59Z"),
+      });
+      expect(count).toBe(1);
+    });
+  });
+
+  it("excludes cancelled orders from the distinct count", async () => {
+    await runWithAccount(accountId, async () => {
+      const count = await countDistinctOrdersForSnapshot(db.prisma, {
+        asin: "B0ACANCEL1A",
+        marketplace: "IT",
+        from: new Date("2026-04-10T00:00:00Z"),
+        to: new Date("2026-04-10T23:59:59Z"),
+      });
+      expect(count).toBe(0);
+    });
+  });
+
+  it("returns 0 when no order matches the asin/marketplace/date window", async () => {
+    await runWithAccount(accountId, async () => {
+      const count = await countDistinctOrdersForSnapshot(db.prisma, {
+        asin: "NON-EXISTENT-ASIN",
+        marketplace: "IT",
+        from: new Date("2026-04-10T00:00:00Z"),
+        to: new Date("2026-04-10T23:59:59Z"),
+      });
+      expect(count).toBe(0);
     });
   });
 });

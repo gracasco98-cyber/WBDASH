@@ -17,6 +17,19 @@ export async function countAllAdSnapshots(prisma: PrismaClient): Promise<number>
 }
 
 /**
+ * Earliest/latest snapshotDate across all AmazonAdSnapshot rows for the
+ * current account. Used for DB stats / verification.
+ */
+export async function findAmazonAdSnapshotDateRange(
+  prisma: PrismaClient
+): Promise<{ min: Date | null; max: Date | null }> {
+  const accountId = getCurrentAccountId();
+  const [row] = await prisma.$queryRaw<[{ min: Date | null; max: Date | null }]>`
+    SELECT MIN("snapshotDate") AS min, MAX("snapshotDate") AS max FROM "AmazonAdSnapshot" WHERE "amazonAccountId" = ${accountId}`;
+  return row;
+}
+
+/**
  * Count ad snapshots matching the given date range and optional marketplace filter.
  * Used to detect whether data exists for a requested period (fallback logic).
  */
