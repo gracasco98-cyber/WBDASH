@@ -57,6 +57,40 @@ describe("resolveProductPerformance", () => {
     });
   });
 
+  it("computes units from quantityOrdered, not quantityShipped (report ingestion never populates quantityShipped)", async () => {
+    await runWithAccount(accountId, async () => {
+      // Real Amazon Orders report ingestion (ingest.service.ts) has no
+      // "quantity-shipped" column in the report format actually used, so
+      // quantityShipped is always persisted as 0 — quantityOrdered is the only
+      // field that reflects real units sold. seedOneProductWithSales() sets
+      // both fields equal, which would hide this exact regression.
+      const product = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-01" });
+      await db.prisma.amazonOrder.create({
+        data: {
+          amazonAccountId: accountId, amazonOrderId: "O1",
+          purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"),
+          orderStatus: "Shipped", marketplace: "IT",
+        },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: {
+          amazonAccountId: accountId, amazonOrderId: "O1", orderItemId: "I1",
+          asin: "B0ABC123", sku: "SKU-RSV-01", productTitle: "Resveratrolo 500mg", marketplace: "IT",
+          quantityOrdered: 10, quantityShipped: 0, itemPrice: 200, itemTax: 0, promotionDiscount: 5,
+          purchaseDate: new Date("2026-08-01"),
+        } as any,
+      });
+
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const group = groups.find((g) => g.product.id === product.id)!;
+      expect(group.rows[0].units).toBe(10);
+      expect(group.aggregate.units).toBe(10);
+    });
+  });
+
   it("uses real settlement fees/refunds when present (hasRealFees=true)", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
