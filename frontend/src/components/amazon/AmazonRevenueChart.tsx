@@ -44,7 +44,7 @@ function CustomTooltip({ active, payload, label, visibleMps, hourlyMode }: any) 
   if (hourlyMode) {
     // Hourly mode: show all days at this hour
     return (
-      <div className="bg-[#0f0f1a] border border-zinc-800 rounded-xl px-4 py-3 shadow-2xl text-xs min-w-[200px]">
+      <div className="bg-bg-card border border-bg-border rounded-xl px-4 py-3 shadow-2xl text-xs min-w-[200px]">
         <p className="text-zinc-400 font-semibold mb-2">{label}</p>
         {payload.map((entry: any, idx: number) => (
           <div key={entry.dataKey} className="flex items-center justify-between gap-4 py-0.5">
@@ -62,7 +62,7 @@ function CustomTooltip({ active, payload, label, visibleMps, hourlyMode }: any) 
     const total = payload.find((p: any) => p.dataKey === "revenue");
     const mps   = payload.filter((p: any) => p.dataKey.startsWith("mp_"));
     return (
-      <div className="bg-[#0f0f1a] border border-zinc-800 rounded-xl px-4 py-3 shadow-2xl text-xs min-w-[160px]">
+      <div className="bg-bg-card border border-bg-border rounded-xl px-4 py-3 shadow-2xl text-xs min-w-[160px]">
         <p className="text-zinc-400 font-semibold mb-2">{label}</p>
         {visibleMps.length > 0 ? (
           <>
@@ -204,23 +204,23 @@ export default function AmazonRevenueChart({ data, loading, hourlyMode = false, 
         <>
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={transformedData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1a1a2e" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
               <XAxis
                 dataKey="time"
-                tick={{ fill: "#52525b", fontSize: 10 }}
+                tick={{ fill: "#3f3f46", fontSize: 10 }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
                 tickFormatter={fmtEurCompact}
-                tick={{ fill: "#52525b", fontSize: 10 }}
+                tick={{ fill: "#3f3f46", fontSize: 10 }}
                 axisLine={false}
                 tickLine={false}
                 width={52}
               />
               <Tooltip
                 content={<CustomTooltip hourlyMode={true} visibleMps={[]} />}
-                cursor={{ stroke: "#3f3f5a", strokeWidth: 1 }}
+                cursor={{ stroke: "#d4d4d8", strokeWidth: 1 }}
               />
               {dateLabels.map((date, idx) => (
                 <Line
