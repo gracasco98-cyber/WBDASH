@@ -64,7 +64,7 @@ function PctBadge({ pct }: { pct: number | null }) {
 }
 
 function SkeletonCell() {
-  return <div className="h-4 w-16 bg-zinc-800 rounded animate-pulse" />;
+  return <div className="h-4 w-16 bg-bg-border rounded animate-pulse" />;
 }
 
 // Weighted-average pct change for merged view
@@ -123,7 +123,7 @@ function PeriodCol({ label, sub, rows, pctChange, loading, accent, isForecast, o
     : accent === "purple" ? "bg-[#ECCB08]/8"
     : accent === "amber"  ? "bg-[#D4AF00]/8"
     : accent === "green"  ? "bg-[#F4B400]/8"
-    : "bg-zinc-900/40";
+    : "bg-bg-hover";
 
   return (
     <div
@@ -142,7 +142,7 @@ function PeriodCol({ label, sub, rows, pctChange, loading, accent, isForecast, o
             <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
               isActive
                 ? "bg-accent-primary/20 text-accent-primary"
-                : "bg-zinc-800/80 text-zinc-600"
+                : "bg-bg-hover text-zinc-600"
             }`}>
               {isActive ? "Attivo" : "Filtra"}
             </span>
@@ -162,7 +162,7 @@ function PeriodCol({ label, sub, rows, pctChange, loading, accent, isForecast, o
             {heroLabel ?? "Fatturato Lordo Totale"}
           </div>
           {loading ? (
-            <div className="h-8 w-32 bg-zinc-800 rounded animate-pulse" />
+            <div className="h-8 w-32 bg-bg-border rounded animate-pulse" />
           ) : (
             <div className="text-3xl font-bold text-emerald-400 tabular-nums leading-none">
               {heroValue}
@@ -649,7 +649,7 @@ export default function ShopifyBIOverview({ activeMarketplaces, onPeriodSelect, 
           {/* Scroll hint dots */}
           <div className="flex justify-center gap-1 mt-2">
             {columns.map(({ key }) => (
-              <div key={key} className="w-1 h-1 rounded-full bg-zinc-700" />
+              <div key={key} className="w-1 h-1 rounded-full bg-bg-border" />
             ))}
           </div>
         </div>
