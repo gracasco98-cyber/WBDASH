@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { setupTestDb, truncateAll, createTestAmazonAccount, type TestDb } from "../../helpers/db";
 import { runWithAccount } from "../../../src/context/account-context";
-import { upsertCogs, findCogsForAsins } from "../../../src/repositories/amazon/cogs.repo";
+import { upsertCogs, findCogsForAsins, findAllCogsProducts } from "../../../src/repositories/amazon/cogs.repo";
 
 let db: TestDb;
 let accountId: string;
@@ -33,6 +33,29 @@ describe("findCogsForAsins with marketplace=all", () => {
       const rows = await findCogsForAsins(db.prisma, { asins: ["B0ABC123"], marketplace: "DE" });
       const marketplaces = rows.map((r: any) => r.marketplace).sort();
       expect(marketplaces).toEqual(["DE"]);
+    });
+  });
+});
+
+describe("findAllCogsProducts", () => {
+  it("returns all COGS rows for the current account when no marketplace is given", async () => {
+    await runWithAccount(accountId, async () => {
+      await upsertCogs(db.prisma, { asin: "B0ONE", marketplace: "IT", cogsPerUnit: 4, shippingCost: 0.5 });
+      await upsertCogs(db.prisma, { asin: "B0TWO", marketplace: "DE", cogsPerUnit: 9, shippingCost: 1 });
+
+      const rows = await findAllCogsProducts(db.prisma, {});
+      expect(rows.map((r: any) => r.asin).sort()).toEqual(["B0ONE", "B0TWO"]);
+    });
+  });
+
+  it("includes ALL-marketplace records when a specific marketplace is requested", async () => {
+    await runWithAccount(accountId, async () => {
+      await upsertCogs(db.prisma, { asin: "B0IT", marketplace: "IT", cogsPerUnit: 4, shippingCost: 0.5 });
+      await upsertCogs(db.prisma, { asin: "B0ALL", marketplace: "ALL", cogsPerUnit: 3, shippingCost: 0.2 });
+      await upsertCogs(db.prisma, { asin: "B0DE", marketplace: "DE", cogsPerUnit: 9, shippingCost: 1 });
+
+      const rows = await findAllCogsProducts(db.prisma, { marketplace: "IT" });
+      expect(rows.map((r: any) => r.asin).sort()).toEqual(["B0ALL", "B0IT"]);
     });
   });
 });

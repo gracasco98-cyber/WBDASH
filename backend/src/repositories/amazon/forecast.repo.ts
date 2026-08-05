@@ -160,3 +160,94 @@ export async function findPendingReconciliationSnapshots(
     },
   });
 }
+
+// ─── Component model parameters (causal breakdown model) ──────────────────────
+// Raw fetches only — the "what if no data" fallback values (0, 1, 30, etc.)
+// are a modeling decision and stay in component-breakdown.service.ts.
+
+/**
+ * Total FBA fulfillment fees and total units ordered for matched
+ * settlement transactions, one marketplace, current account. Used to derive
+ * an average FBA fee per unit.
+ */
+export async function computeFbaTotals(
+  prisma: PrismaClient,
+  marketplace: string
+): Promise<{ totalFba: number | null; totalUnits: number | null }> {
+  const amazonAccountId = getCurrentAccountId();
+  const rows = await prisma.$queryRawUnsafe<{ total_fba: number; total_units: number }[]>(`
+    SELECT
+      SUM(ABS(t.amount))::FLOAT8 AS total_fba,
+      SUM(oi."quantityOrdered")::FLOAT8 AS total_units
+    FROM "AmazonSettlementTransaction" t
+    JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId" AND s."amazonAccountId" = t."amazonAccountId"
+    JOIN "AmazonOrderItem" oi ON oi."amazonOrderId" = t."orderId" AND oi."amazonAccountId" = t."amazonAccountId"
+    WHERE t."amountType" = 'FBAPerUnitFulfillmentFee'
+      AND s.marketplace = '${marketplace}'
+      AND t."amazonAccountId" = '${amazonAccountId}'
+  `);
+  const r = rows[0];
+  return { totalFba: r?.total_fba ?? null, totalUnits: r?.total_units ?? null };
+}
+
+/**
+ * Average units per order, one marketplace, current account.
+ */
+export async function computeAvgUnitsPerOrder(
+  prisma: PrismaClient,
+  marketplace: string
+): Promise<number | null> {
+  const amazonAccountId = getCurrentAccountId();
+  const rows = await prisma.$queryRawUnsafe<{ avg_units: number }[]>(`
+    SELECT AVG(oi."quantityOrdered")::FLOAT8 AS avg_units
+    FROM "AmazonOrderItem" oi
+    JOIN "AmazonOrder" o ON o."amazonOrderId" = oi."amazonOrderId" AND o."amazonAccountId" = oi."amazonAccountId"
+    WHERE o.marketplace = '${marketplace}'
+      AND o."amazonAccountId" = '${amazonAccountId}'
+  `);
+  return rows[0]?.avg_units ?? null;
+}
+
+/**
+ * Average days between order purchase and the settlement end date of its
+ * refund transaction, one marketplace, current account.
+ */
+export async function computeRefundLagDays(
+  prisma: PrismaClient,
+  marketplace: string
+): Promise<number | null> {
+  const amazonAccountId = getCurrentAccountId();
+  const rows = await prisma.$queryRawUnsafe<{ avg_lag: number }[]>(`
+    SELECT AVG(EXTRACT(day FROM s."endDate" - o."purchaseDate"))::FLOAT8 AS avg_lag
+    FROM "AmazonSettlementTransaction" t
+    JOIN "AmazonOrder" o ON o."amazonOrderId" = t."orderId" AND o."amazonAccountId" = t."amazonAccountId"
+    JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId" AND s."amazonAccountId" = t."amazonAccountId"
+    WHERE t."transactionType" = 'Refund'
+      AND s.marketplace = '${marketplace}'
+      AND t."amazonAccountId" = '${amazonAccountId}'
+  `);
+  return rows[0]?.avg_lag ?? null;
+}
+
+/**
+ * PPC daily spend averages over the last 7 and 30 days, one marketplace,
+ * current account.
+ */
+export async function computePpcDailyAverages(
+  prisma: PrismaClient,
+  marketplace: string
+): Promise<{ avg7d: number | null; avg30d: number | null }> {
+  const amazonAccountId = getCurrentAccountId();
+  const rows = await prisma.$queryRawUnsafe<{ avg7d: number; avg30d: number }[]>(`
+    SELECT
+      (SUM(CASE WHEN "snapshotDate" >= CURRENT_DATE - 7  THEN spend ELSE 0 END) /
+       NULLIF(COUNT(DISTINCT CASE WHEN "snapshotDate" >= CURRENT_DATE - 7  THEN "snapshotDate" END), 0))::FLOAT8 AS avg7d,
+      (SUM(CASE WHEN "snapshotDate" >= CURRENT_DATE - 30 THEN spend ELSE 0 END) /
+       NULLIF(COUNT(DISTINCT CASE WHEN "snapshotDate" >= CURRENT_DATE - 30 THEN "snapshotDate" END), 0))::FLOAT8 AS avg30d
+    FROM "AmazonAdSnapshot"
+    WHERE marketplace = '${marketplace}'
+      AND "amazonAccountId" = '${amazonAccountId}'
+  `);
+  const r = rows[0];
+  return { avg7d: r?.avg7d ?? null, avg30d: r?.avg30d ?? null };
+}
