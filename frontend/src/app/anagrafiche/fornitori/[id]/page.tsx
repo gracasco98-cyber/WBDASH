@@ -35,7 +35,18 @@ function ContattiTab({ supplier, onChange }: { supplier: SupplierDetail; onChang
       await api.suppliers.contacts.create(supplier.id, { name, role: role || null, email: email || null });
       setName(""); setRole(""); setEmail("");
       onChange();
+    } catch (err) {
+      window.alert("Impossibile aggiungere il contatto. Riprova.");
     } finally { setAdding(false); }
+  };
+
+  const removeContact = async (contactId: string) => {
+    try {
+      await api.suppliers.contacts.remove(supplier.id, contactId);
+      onChange();
+    } catch (err) {
+      window.alert("Impossibile rimuovere il contatto. Riprova.");
+    }
   };
 
   return (
@@ -50,7 +61,7 @@ function ContattiTab({ supplier, onChange }: { supplier: SupplierDetail; onChang
             </div>
             <div className="text-zinc-500">{c.email}</div>
             <button
-              onClick={() => api.suppliers.contacts.remove(supplier.id, c.id).then(onChange)}
+              onClick={() => removeContact(c.id)}
               className="text-accent-red hover:underline"
             >
               Rimuovi
@@ -81,6 +92,8 @@ function ProdottiTab({ supplier, onChange }: { supplier: SupplierDetail; onChang
       await api.suppliers.products.add(supplier.id, { productId, standardPrice: Number(price) });
       setProductId(""); setPrice("");
       onChange();
+    } catch (err) {
+      window.alert("Impossibile collegare il prodotto. Riprova.");
     } finally { setAdding(false); }
   };
 
@@ -89,8 +102,12 @@ function ProdottiTab({ supplier, onChange }: { supplier: SupplierDetail; onChang
     if (!input) return;
     const newPrice = Number(input);
     if (Number.isNaN(newPrice)) return;
-    await api.suppliers.products.updatePrice(supplier.id, spId, { price: newPrice, source: "modifica manuale" });
-    onChange();
+    try {
+      await api.suppliers.products.updatePrice(supplier.id, spId, { price: newPrice, source: "modifica manuale" });
+      onChange();
+    } catch (err) {
+      window.alert("Impossibile aggiornare il prezzo. Riprova.");
+    }
   };
 
   return (
