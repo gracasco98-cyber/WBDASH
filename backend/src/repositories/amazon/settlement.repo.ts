@@ -2,7 +2,8 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 // Every operation is scoped to the current Amazon account (context/account-context.ts).
-import type { PrismaClient, AmazonSettlementTransaction, Prisma } from "@prisma/client";
+import type { PrismaClient, AmazonSettlementTransaction } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { toNum } from "../../utils/decimal";
 import { getCurrentAccountId } from "../../context/account-context";
 
@@ -160,4 +161,554 @@ export async function countSettlementTransactions(prisma: PrismaClient): Promise
     SELECT COUNT(*) FROM "AmazonSettlementTransaction" WHERE "amazonAccountId" = ${getCurrentAccountId()}
   `;
   return Number(r[0]?.count ?? 0);
+}
+
+// ─── Historical fee ratios (per-marketplace aggregate) ────────────────────────
+
+export interface HistoricalFeeRatios {
+  marketplace: string;
+  grossSales: number;
+  realPayout: number;
+  payoutRatio: number;
+  rCommission: number;
+  rFba: number;
+  rAds: number;
+  rAdsVat: number;
+  rDsf: number;
+  rStorage: number;
+  rInbound: number;
+  rPrep: number;
+  rRefunds: number;
+  rOther: number;
+  rReimb: number;
+  avgStoragePerSett: number;
+  avgInboundPerSett: number;
+  nSett: number;
+}
+
+/**
+ * Per-marketplace historical fee ratios (fee/gross) computed from real settled
+ * data, verified against real bank transfers. One row per marketplace, summed
+ * across every settlement ever recorded for that marketplace.
+ *
+ * Shared by /payments/dashboard and /payments/forecast — previously two
+ * near-identical raw-SQL blocks (docs/tech-debt.md E.1) that differed only in
+ * where the sign negation was applied (inside vs. outside the CTE) and which
+ * subset of columns each caller read; the underlying ratios are identical.
+ *
+ * Not to be confused with the per-settlement time series used for EWMA
+ * calibration (see computeSettlementRatiosForCalibration) — that is a
+ * genuinely different query grain (one row per settlement, not per
+ * marketplace), not a duplicate of this one.
+ */
+export async function computeHistoricalFeeRatiosByMarketplace(
+  prisma: PrismaClient,
+  marketplaces: string[]
+): Promise<HistoricalFeeRatios[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const marketplaceList = marketplaces.map((m) => `'${m}'`).join(",");
+  const rows = await prisma.$queryRawUnsafe<{
+    marketplace: string;
+    gross_sales: number; real_payout: number;
+    payout_ratio: number;
+    r_commission: number; r_fba: number; r_ads: number;
+    r_ads_vat: number; r_dsf: number; r_storage: number;
+    r_inbound: number; r_prep: number; r_refunds: number;
+    r_other: number; r_reimb: number;
+    avg_storage_per_sett: number; avg_inbound_per_sett: number;
+    n_sett: number;
+  }[]>(`
+    WITH sett AS (
+      SELECT marketplace, SUM("totalAmount") AS real_payout, COUNT(*) AS n_sett
+      FROM "AmazonSettlement" WHERE marketplace IN (${marketplaceList}) AND "amazonAccountId" = '${amazonAccountId}'
+      GROUP BY marketplace
+    ),
+    txn AS (
+      SELECT s.marketplace,
+        SUM(CASE WHEN t."amountType"='Principal' AND t."transactionType"='Order' THEN t.amount ELSE 0 END) AS gross,
+        (-SUM(CASE WHEN t."amountType"='Commission' THEN t.amount ELSE 0 END)) AS commission,
+        (-SUM(CASE WHEN t."amountType"='FBAPerUnitFulfillmentFee' THEN t.amount ELSE 0 END)) AS fba,
+        (-SUM(CASE WHEN t."amountType"='Cost of Advertising' THEN t.amount ELSE 0 END)) AS ads,
+        (-SUM(CASE WHEN t."amountType"='TaxAmount' AND t."transactionType"='ServiceFee' THEN t.amount ELSE 0 END)) AS ads_vat,
+        (-SUM(CASE WHEN t."amountType"='DigitalServicesFee' THEN t.amount ELSE 0 END)) AS dsf,
+        (-SUM(CASE WHEN t."transactionType" IN ('Storage Fee','StorageRenewalBilling') THEN t.amount ELSE 0 END)) AS storage,
+        (-SUM(CASE WHEN t."transactionType"='Inbound Transportation Fee' THEN t.amount ELSE 0 END)) AS inbound,
+        (-SUM(CASE WHEN t."transactionType" IN ('WarehousePrep','RemovalComplete','DisposalComplete') THEN t.amount ELSE 0 END)) AS prep,
+        (-SUM(CASE WHEN t."transactionType"='Refund' THEN t.amount ELSE 0 END)) AS refunds,
+        (-SUM(CASE WHEN t."amountType"='OtherAmount'
+            AND t."transactionType" NOT IN ('Storage Fee','StorageRenewalBilling','WarehousePrep','RemovalComplete',
+              'DisposalComplete','Inbound Transportation Fee','Current Reserve Amount',
+              'Previous Reserve Amount Balance','REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST',
+              'WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND') THEN t.amount ELSE 0 END)) AS other,
+        SUM(CASE WHEN t."amountType"='OtherAmount'
+            AND t."transactionType" IN ('REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST','WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND')
+            THEN t.amount ELSE 0 END) AS reimb,
+        COUNT(DISTINCT t."settlementId") AS n_sett
+      FROM "AmazonSettlementTransaction" t
+      JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId" AND s."amazonAccountId" = t."amazonAccountId"
+      WHERE s.marketplace IN (${marketplaceList}) AND s."amazonAccountId" = '${amazonAccountId}'
+      GROUP BY s.marketplace
+    )
+    SELECT
+      txn.marketplace,
+      txn.gross::FLOAT8 AS gross_sales,
+      sett.real_payout::FLOAT8 AS real_payout,
+      (sett.real_payout / NULLIF(txn.gross,0))::FLOAT8 AS payout_ratio,
+      (txn.commission / NULLIF(txn.gross,0))::FLOAT8 AS r_commission,
+      (txn.fba       / NULLIF(txn.gross,0))::FLOAT8 AS r_fba,
+      (txn.ads       / NULLIF(txn.gross,0))::FLOAT8 AS r_ads,
+      (txn.ads_vat   / NULLIF(txn.gross,0))::FLOAT8 AS r_ads_vat,
+      (txn.dsf       / NULLIF(txn.gross,0))::FLOAT8 AS r_dsf,
+      (txn.storage   / NULLIF(txn.gross,0))::FLOAT8 AS r_storage,
+      (txn.inbound   / NULLIF(txn.gross,0))::FLOAT8 AS r_inbound,
+      (txn.prep      / NULLIF(txn.gross,0))::FLOAT8 AS r_prep,
+      (txn.refunds   / NULLIF(txn.gross,0))::FLOAT8 AS r_refunds,
+      (txn.other     / NULLIF(txn.gross,0))::FLOAT8 AS r_other,
+      (txn.reimb     / NULLIF(txn.gross,0))::FLOAT8 AS r_reimb,
+      (txn.storage   / NULLIF(txn.n_sett,0))::FLOAT8 AS avg_storage_per_sett,
+      (txn.inbound   / NULLIF(txn.n_sett,0))::FLOAT8 AS avg_inbound_per_sett,
+      sett.n_sett::INTEGER AS n_sett
+    FROM txn JOIN sett ON sett.marketplace = txn.marketplace
+    ORDER BY txn.gross DESC
+  `);
+
+  return rows.map((r) => ({
+    marketplace: r.marketplace,
+    grossSales: Number(r.gross_sales),
+    realPayout: Number(r.real_payout),
+    payoutRatio: Number(r.payout_ratio),
+    rCommission: Number(r.r_commission),
+    rFba: Number(r.r_fba),
+    rAds: Number(r.r_ads),
+    rAdsVat: Number(r.r_ads_vat),
+    rDsf: Number(r.r_dsf),
+    rStorage: Number(r.r_storage),
+    rInbound: Number(r.r_inbound),
+    rPrep: Number(r.r_prep),
+    rRefunds: Number(r.r_refunds),
+    rOther: Number(r.r_other),
+    rReimb: Number(r.r_reimb),
+    avgStoragePerSett: Number(r.avg_storage_per_sett),
+    avgInboundPerSett: Number(r.avg_inbound_per_sett),
+    nSett: Number(r.n_sett),
+  }));
+}
+
+// ─── Per-settlement fee ratios (time series, for EWMA calibration) ────────────
+
+export interface SettlementFeeRatios {
+  settlementId: string;
+  settlementDate: string;
+  realPayout: number;
+  gross: number;
+  commission: number; fba: number; ads: number; adsVat: number; dsf: number;
+  storage: number; inbound: number; prep: number; refunds: number; other: number; reimb: number;
+}
+
+/**
+ * Per-settlement fee breakdown for one marketplace, most recent `lastN`
+ * settlements. Used for EWMA calibration (a time series of individual
+ * settlements), NOT the same query grain as computeHistoricalFeeRatiosByMarketplace
+ * (a single aggregate row per marketplace summed across all settlements) —
+ * the two share the same fee-categorization CASE WHEN logic but serve
+ * different purposes and must not be merged into one function.
+ */
+export async function computeSettlementRatiosForCalibration(
+  prisma: PrismaClient,
+  marketplace: string,
+  lastN = 30
+): Promise<SettlementFeeRatios[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const rows = await prisma.$queryRawUnsafe<{
+    settlement_id: string;
+    settlement_date: string;
+    real_payout: number; gross: number; commission: number; fba: number;
+    ads: number; ads_vat: number; dsf: number; storage: number;
+    inbound: number; prep: number; refunds: number; other: number; reimb: number;
+  }[]>(`
+    SELECT
+      s."settlementId" AS settlement_id,
+      s."endDate"::date::text AS settlement_date,
+      s."totalAmount"::FLOAT8 AS real_payout,
+      SUM(CASE WHEN t."amountType"='Principal' AND t."transactionType"='Order' THEN t.amount ELSE 0 END)::FLOAT8 AS gross,
+      ABS(SUM(CASE WHEN t."amountType"='Commission'                         THEN t.amount ELSE 0 END))::FLOAT8 AS commission,
+      ABS(SUM(CASE WHEN t."amountType"='FBAPerUnitFulfillmentFee'           THEN t.amount ELSE 0 END))::FLOAT8 AS fba,
+      ABS(SUM(CASE WHEN t."amountType"='Cost of Advertising'                THEN t.amount ELSE 0 END))::FLOAT8 AS ads,
+      ABS(SUM(CASE WHEN t."amountType"='TaxAmount' AND t."transactionType"='ServiceFee' THEN t.amount ELSE 0 END))::FLOAT8 AS ads_vat,
+      ABS(SUM(CASE WHEN t."amountType"='DigitalServicesFee'                 THEN t.amount ELSE 0 END))::FLOAT8 AS dsf,
+      ABS(SUM(CASE WHEN t."transactionType" IN ('Storage Fee','StorageRenewalBilling') THEN t.amount ELSE 0 END))::FLOAT8 AS storage,
+      ABS(SUM(CASE WHEN t."transactionType"='Inbound Transportation Fee'    THEN t.amount ELSE 0 END))::FLOAT8 AS inbound,
+      ABS(SUM(CASE WHEN t."transactionType" IN ('WarehousePrep','RemovalComplete','DisposalComplete') THEN t.amount ELSE 0 END))::FLOAT8 AS prep,
+      ABS(SUM(CASE WHEN t."transactionType"='Refund'                        THEN t.amount ELSE 0 END))::FLOAT8 AS refunds,
+      ABS(SUM(CASE WHEN t."amountType"='OtherAmount'
+          AND t."transactionType" NOT IN ('Storage Fee','StorageRenewalBilling','WarehousePrep','RemovalComplete',
+            'DisposalComplete','Inbound Transportation Fee','Current Reserve Amount',
+            'Previous Reserve Amount Balance','REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST',
+            'WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND') THEN t.amount ELSE 0 END))::FLOAT8 AS other,
+      SUM(CASE WHEN t."amountType"='OtherAmount'
+          AND t."transactionType" IN ('REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST','WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND')
+          THEN t.amount ELSE 0 END)::FLOAT8 AS reimb
+    FROM "AmazonSettlement" s
+    JOIN "AmazonSettlementTransaction" t ON t."settlementId" = s."settlementId" AND t."amazonAccountId" = s."amazonAccountId"
+    WHERE s.marketplace = '${marketplace}' AND s."amazonAccountId" = '${amazonAccountId}'
+    GROUP BY s."settlementId", s."endDate", s."totalAmount"
+    ORDER BY s."endDate" ASC
+    LIMIT ${lastN}
+  `);
+
+  return rows.map((r) => ({
+    settlementId: r.settlement_id,
+    settlementDate: r.settlement_date,
+    realPayout: Number(r.real_payout),
+    gross: Number(r.gross),
+    commission: Number(r.commission),
+    fba: Number(r.fba),
+    ads: Number(r.ads),
+    adsVat: Number(r.ads_vat),
+    dsf: Number(r.dsf),
+    storage: Number(r.storage),
+    inbound: Number(r.inbound),
+    prep: Number(r.prep),
+    refunds: Number(r.refunds),
+    other: Number(r.other),
+    reimb: Number(r.reimb),
+  }));
+}
+
+// ─── Settlement detail / reconciliation (GET /payments/settlement/:id/transactions) ──
+
+export interface SettlementOrderGroup {
+  orderId: string;
+  sku: string | null;
+  marketplace: string;
+  postedDate: Date;
+  principal: number;
+  commission: number;
+  fbaFee: number;
+  shipping: number;
+  vat: number;
+  refundAmount: number;
+  otherAmount: number;
+  netAmount: number;
+  hasRefund: boolean;
+  lineCount: number;
+}
+
+/**
+ * Order-grouped transaction summary for one settlement, paginated, with an
+ * optional case-insensitive orderId/sku search. `search` is passed as a real
+ * bound parameter (Prisma.sql), not string-interpolated.
+ */
+export async function findSettlementOrderGroups(
+  prisma: PrismaClient,
+  params: { settlementId: string; search?: string; limit: number; offset: number }
+): Promise<SettlementOrderGroup[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const searchClause = params.search
+    ? Prisma.sql`AND ("orderId" ILIKE ${"%" + params.search + "%"} OR "sku" ILIKE ${"%" + params.search + "%"})`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<Array<{
+    orderId: string; sku: string | null; marketplace: string;
+    postedDate: Date; principal: number; commission: number; fbaFee: number;
+    shipping: number; vat: number; refundAmount: number; otherAmount: number;
+    netAmount: number; hasRefund: boolean; lineCount: bigint;
+  }>>`
+    SELECT
+      "orderId",
+      MAX("sku")                                                               AS sku,
+      "marketplace",
+      MIN("postedDate")                                                        AS "postedDate",
+      COALESCE(SUM(CASE WHEN "amountType" = 'Principal'                    AND "transactionType" = 'Order'  THEN amount END), 0)::FLOAT8 AS principal,
+      COALESCE(SUM(CASE WHEN "amountType" = 'Commission'                   AND "transactionType" = 'Order'  THEN amount END), 0)::FLOAT8 AS commission,
+      COALESCE(SUM(CASE WHEN "amountType" = 'FBAPerUnitFulfillmentFee'                                      THEN amount END), 0)::FLOAT8 AS "fbaFee",
+      COALESCE(SUM(CASE WHEN "amountType" IN ('Shipping','ShippingChargeback') AND "transactionType" = 'Order' THEN amount END), 0)::FLOAT8 AS shipping,
+      COALESCE(SUM(CASE WHEN "amountType" LIKE 'MarketplaceFacilitatorVAT%' OR "amountType" IN ('Tax','ShippingTax') THEN amount END), 0)::FLOAT8 AS vat,
+      COALESCE(SUM(CASE WHEN "transactionType" = 'Refund'                                                   THEN amount END), 0)::FLOAT8 AS "refundAmount",
+      COALESCE(SUM(CASE WHEN "transactionType" NOT IN ('Order','Refund')                                    THEN amount END), 0)::FLOAT8 AS "otherAmount",
+      COALESCE(SUM(amount), 0)::FLOAT8                                                                                   AS "netAmount",
+      BOOL_OR("transactionType" = 'Refund')                                                                              AS "hasRefund",
+      COUNT(*)::BIGINT                                                                                                    AS "lineCount"
+    FROM "AmazonSettlementTransaction"
+    WHERE "settlementId" = ${params.settlementId} AND "orderId" IS NOT NULL AND "amazonAccountId" = ${amazonAccountId} ${searchClause}
+    GROUP BY "orderId", "marketplace"
+    ORDER BY MIN("postedDate") DESC
+    LIMIT ${params.limit} OFFSET ${params.offset}
+  `;
+
+  return rows.map((r) => ({ ...r, lineCount: Number(r.lineCount) }));
+}
+
+/**
+ * Distinct order count for one settlement (for pagination), same search
+ * filter as findSettlementOrderGroups.
+ */
+export async function countSettlementOrderGroups(
+  prisma: PrismaClient,
+  params: { settlementId: string; search?: string }
+): Promise<number> {
+  const amazonAccountId = getCurrentAccountId();
+  const searchClause = params.search
+    ? Prisma.sql`AND ("orderId" ILIKE ${"%" + params.search + "%"} OR "sku" ILIKE ${"%" + params.search + "%"})`
+    : Prisma.empty;
+
+  const [{ total }] = await prisma.$queryRaw<[{ total: bigint }]>`
+    SELECT COUNT(DISTINCT "orderId") AS total
+    FROM "AmazonSettlementTransaction"
+    WHERE "settlementId" = ${params.settlementId} AND "orderId" IS NOT NULL AND "amazonAccountId" = ${amazonAccountId} ${searchClause}
+  `;
+  return Number(total);
+}
+
+export interface NonOrderMovement {
+  transactionType: string;
+  amountType: string;
+  amount: number;
+  currency: string;
+  postedDate: Date;
+  cnt: number;
+}
+
+/**
+ * Non-order settlement movements (ServiceFee, storage, advertising, etc.) —
+ * transactions with no orderId — for one settlement.
+ */
+export async function findNonOrderMovements(
+  prisma: PrismaClient,
+  settlementId: string
+): Promise<NonOrderMovement[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const rows = await prisma.$queryRaw<Array<{
+    transactionType: string; amountType: string; amount: number; currency: string; postedDate: Date; cnt: bigint;
+  }>>`
+    SELECT
+      "transactionType", "amountType", "currency",
+      SUM(amount)::FLOAT8       AS amount,
+      MIN("postedDate")         AS "postedDate",
+      COUNT(*)::BIGINT          AS cnt
+    FROM "AmazonSettlementTransaction"
+    WHERE "settlementId" = ${settlementId} AND ("orderId" IS NULL OR "orderId" = '') AND "amazonAccountId" = ${amazonAccountId}
+    GROUP BY "transactionType", "amountType", "currency"
+    ORDER BY SUM(amount) ASC
+  `;
+  return rows.map((r) => ({ ...r, cnt: Number(r.cnt) }));
+}
+
+export interface SettlementHeader {
+  totalAmount: number;
+  depositDate: Date | null;
+  startDate: Date;
+  endDate: Date;
+  currency: string;
+  marketplace: string;
+}
+
+/**
+ * Settlement header fields used for the reconciliation summary. Returns null
+ * if no settlement with this id exists for the current account (mirrors the
+ * original inline `.catch(() => null)` behavior).
+ */
+export async function findSettlementHeader(
+  prisma: PrismaClient,
+  settlementId: string
+): Promise<SettlementHeader | null> {
+  const amazonAccountId = getCurrentAccountId();
+  return (prisma as any).amazonSettlement.findUnique({
+    where: { amazonAccountId_settlementId: { amazonAccountId, settlementId } },
+    select: { totalAmount: true, depositDate: true, startDate: true, endDate: true, currency: true, marketplace: true },
+  }).catch(() => null);
+}
+
+export interface SettlementReconciliation {
+  computedNet: number;
+  orderNet: number;
+  nonOrderNet: number;
+}
+
+/**
+ * Computed net total (and its order vs. non-order split) for one settlement,
+ * used to reconcile against the settlement header's totalAmount.
+ */
+export async function computeSettlementReconciliation(
+  prisma: PrismaClient,
+  settlementId: string
+): Promise<SettlementReconciliation> {
+  const amazonAccountId = getCurrentAccountId();
+  const [row] = await prisma.$queryRaw<[{ computed_net: number; order_net: number; non_order_net: number }]>`
+    SELECT
+      COALESCE(SUM(amount),0)::FLOAT8 AS computed_net,
+      COALESCE(SUM(CASE WHEN "orderId" IS NOT NULL THEN amount ELSE 0 END),0)::FLOAT8 AS order_net,
+      COALESCE(SUM(CASE WHEN "orderId" IS NULL THEN amount ELSE 0 END),0)::FLOAT8 AS non_order_net
+    FROM "AmazonSettlementTransaction"
+    WHERE "settlementId" = ${settlementId} AND "amazonAccountId" = ${amazonAccountId}
+  `;
+  return { computedNet: row.computed_net, orderNet: row.order_net, nonOrderNet: row.non_order_net };
+}
+
+/**
+ * For each given orderId, the list of OTHER settlementIds (besides the one
+ * passed) it also has transactions in — used to flag orders whose payout is
+ * split across multiple settlements.
+ */
+export async function findCrossSettlementOrders(
+  prisma: PrismaClient,
+  params: { orderIds: string[]; excludeSettlementId: string }
+): Promise<Map<string, string[]>> {
+  if (params.orderIds.length === 0) return new Map();
+  const amazonAccountId = getCurrentAccountId();
+  const rows = await prisma.$queryRaw<Array<{ orderId: string; otherSettlements: string }>>`
+    SELECT "orderId", STRING_AGG(DISTINCT "settlementId", ',' ORDER BY "settlementId") AS "otherSettlements"
+    FROM "AmazonSettlementTransaction"
+    WHERE "orderId" IN (${Prisma.join(params.orderIds)})
+      AND "settlementId" != ${params.excludeSettlementId}
+      AND "amazonAccountId" = ${amazonAccountId}
+    GROUP BY "orderId"
+  `;
+  return new Map(rows.map((r) => [r.orderId, r.otherSettlements.split(",")]));
+}
+
+// ─── Payments auxiliary endpoints (dd7-reserve, export, fees, reimbursements) ──
+
+/**
+ * Current Amazon reserve amount per marketplace, from settlement
+ * transactions (Current/Previous Reserve Amount Balance types).
+ */
+export async function computeCurrentReserveByMarketplace(
+  prisma: PrismaClient
+): Promise<Map<string, number>> {
+  const amazonAccountId = getCurrentAccountId();
+  const rows = await prisma.$queryRaw<Array<{ marketplace: string; current_reserve: number }>>`
+    SELECT s.marketplace,
+      SUM(CASE WHEN t."transactionType"='Current Reserve Amount' THEN t.amount ELSE 0 END)::FLOAT8 AS current_reserve
+    FROM "AmazonSettlementTransaction" t
+    JOIN "AmazonSettlement" s ON s."amazonAccountId" = t."amazonAccountId" AND s."settlementId" = t."settlementId"
+    WHERE s.marketplace IN ('IT','DE','ES','FR')
+      AND t."transactionType" IN ('Current Reserve Amount','Previous Reserve Amount Balance')
+      AND t."amazonAccountId" = ${amazonAccountId}
+    GROUP BY s.marketplace
+  `;
+  return new Map(rows.map((r) => [r.marketplace, r.current_reserve]));
+}
+
+export interface SettlementExportRow {
+  settlementId: string;
+  marketplace: string;
+  startDate: string;
+  endDate: string;
+  depositDate: string | null;
+  totalAmount: number;
+  currency: string;
+  principal: number;
+  commission: number;
+  fbaFees: number;
+  refundsTotal: number;
+  ppcCost: number;
+  otherSvcFees: number;
+  reserved: number;
+  computedNet: number;
+  orderCount: number;
+}
+
+/**
+ * Full settlement list with fee breakdown, for CSV export. Optionally
+ * scoped to one marketplace.
+ */
+export async function findSettlementsForExport(
+  prisma: PrismaClient,
+  params: { marketplace?: string }
+): Promise<SettlementExportRow[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const mpWhere = params.marketplace ? Prisma.sql`AND s.marketplace = ${params.marketplace}` : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<Array<{
+    settlementId: string; marketplace: string; start_date: string; end_date: string;
+    deposit_date: string | null; total_amount: number; currency: string;
+    principal: number; commission: number; fba_fees: number; refunds_total: number;
+    ppc_cost: number; other_svc_fees: number; reserved: number; computed_net: number; order_count: number;
+  }>>`
+    SELECT
+      s."settlementId", s.marketplace,
+      s."startDate"::date::text AS start_date, s."endDate"::date::text AS end_date,
+      s."depositDate"::date::text AS deposit_date,
+      s."totalAmount"::FLOAT8 AS total_amount, s.currency,
+      COALESCE(SUM(CASE WHEN t."amountType"='Principal' AND t."transactionType"='Order' AND t.marketplace!='EU' THEN t.amount ELSE 0 END),0)::FLOAT8 AS principal,
+      COALESCE(SUM(CASE WHEN t."amountType" IN ('Commission','VariableClosingFee') AND t."transactionType"='Order' AND t.marketplace!='EU' THEN t.amount ELSE 0 END),0)::FLOAT8 AS commission,
+      COALESCE(SUM(CASE WHEN t."amountType" IN ('FBAPerUnitFulfillmentFee','FBAPerOrderFulfillmentFee','FBAWeightBasedFee','FulfillmentFee') AND t.marketplace!='EU' THEN t.amount ELSE 0 END),0)::FLOAT8 AS fba_fees,
+      COALESCE(SUM(CASE WHEN t."transactionType"='Refund' AND t.marketplace!='EU' THEN t.amount ELSE 0 END),0)::FLOAT8 AS refunds_total,
+      COALESCE(SUM(CASE WHEN t."transactionType"='ServiceFee' AND (t."amountType" ILIKE '%advertising%' OR t."amountType" ILIKE '%cost per click%') THEN t.amount ELSE 0 END),0)::FLOAT8 AS ppc_cost,
+      COALESCE(SUM(CASE WHEN t.marketplace='EU' AND NOT (t."transactionType"='ServiceFee' AND t."amountType" ILIKE '%advertising%') AND t."amountType" NOT IN ('Current Reserve Amount','Previous Reserve Amount Balance') THEN t.amount ELSE 0 END),0)::FLOAT8 AS other_svc_fees,
+      COALESCE(SUM(CASE WHEN t."amountType" IN ('Current Reserve Amount','Previous Reserve Amount Balance') THEN t.amount ELSE 0 END),0)::FLOAT8 AS reserved,
+      COALESCE(SUM(t.amount),0)::FLOAT8 AS computed_net,
+      COUNT(DISTINCT CASE WHEN t."transactionType"='Order' AND t."orderId" IS NOT NULL THEN t."orderId" END)::INTEGER AS order_count
+    FROM "AmazonSettlement" s
+    LEFT JOIN "AmazonSettlementTransaction" t ON t."amazonAccountId" = s."amazonAccountId" AND t."settlementId" = s."settlementId"
+    WHERE s."amazonAccountId" = ${amazonAccountId} ${mpWhere}
+    GROUP BY s."settlementId", s.marketplace, s."startDate", s."endDate", s."depositDate", s."totalAmount", s.currency
+    ORDER BY s."endDate" DESC
+  `;
+
+  return rows.map((r) => ({
+    settlementId: r.settlementId, marketplace: r.marketplace, startDate: r.start_date, endDate: r.end_date,
+    depositDate: r.deposit_date, totalAmount: r.total_amount, currency: r.currency,
+    principal: r.principal, commission: r.commission, fbaFees: r.fba_fees, refundsTotal: r.refunds_total,
+    ppcCost: r.ppc_cost, otherSvcFees: r.other_svc_fees, reserved: r.reserved, computedNet: r.computed_net,
+    orderCount: r.order_count,
+  }));
+}
+
+export interface FeeBreakdownRow {
+  amountType: string;
+  total: number;
+  count: number;
+}
+
+/** Fee totals grouped by amountType, within a date range, for the current account. */
+export async function computeFeeBreakdown(
+  prisma: PrismaClient,
+  params: { dateFrom: Date; dateTo: Date; marketplace?: string }
+): Promise<FeeBreakdownRow[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const mpWhere = params.marketplace ? Prisma.sql`AND marketplace = ${params.marketplace}` : Prisma.empty;
+  const rows = await prisma.$queryRaw<Array<{ amountType: string; total: number; count: number }>>`
+    SELECT
+      "amountType",
+      COALESCE(SUM(ABS(amount)), 0)::FLOAT8 AS total,
+      COUNT(*)::INTEGER AS count
+    FROM "AmazonSettlementTransaction"
+    WHERE "postedDate" >= ${params.dateFrom}::timestamp
+      AND "postedDate" <= ${params.dateTo}::timestamp
+      AND "amazonAccountId" = ${amazonAccountId}
+      ${mpWhere}
+    GROUP BY "amountType"
+    ORDER BY total DESC
+  `;
+  return rows;
+}
+
+export interface ReimbursementMonthRow {
+  month: string;
+  amount: number;
+  count: number;
+}
+
+/** Monthly reimbursement/compensation totals, for the current account. */
+export async function computeReimbursementsByMonth(
+  prisma: PrismaClient,
+  params: { marketplace?: string }
+): Promise<ReimbursementMonthRow[]> {
+  const amazonAccountId = getCurrentAccountId();
+  const mpWhere = params.marketplace ? Prisma.sql`AND marketplace = ${params.marketplace}` : Prisma.empty;
+  const rows = await prisma.$queryRaw<Array<{ month: string; amount: number; count: number }>>`
+    SELECT
+      TO_CHAR(DATE_TRUNC('month', "postedDate"), 'YYYY-MM') AS month,
+      COALESCE(SUM(amount), 0)::FLOAT8 AS amount,
+      COUNT(*)::INTEGER AS count
+    FROM "AmazonSettlementTransaction"
+    WHERE ("amountType" ILIKE '%reimburse%' OR "amountType" ILIKE '%compensat%')
+      AND "amazonAccountId" = ${amazonAccountId}
+      ${mpWhere}
+    GROUP BY DATE_TRUNC('month', "postedDate")
+    ORDER BY 1 DESC
+  `;
+  return rows;
 }

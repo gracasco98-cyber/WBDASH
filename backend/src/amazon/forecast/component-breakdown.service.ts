@@ -10,10 +10,13 @@
 
 import type { CalibrationRatios } from "./calibration-update.service";
 import { prisma } from "../../db";
-import { getCurrentAccountId } from "../../context/account-context";
 import {
   updateCalibrationComponents,
   findAllCalibrations,
+  computeFbaTotals,
+  computeAvgUnitsPerOrder,
+  computeRefundLagDays,
+  computePpcDailyAverages,
 } from "../../repositories/amazon/forecast.repo";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -156,59 +159,21 @@ export function computeComponentBreakdown(
 // ─── Compute component model parameters from DB for one marketplace ───────────
 
 export async function computeComponentParameters(marketplace: string): Promise<void> {
-  const amazonAccountId = getCurrentAccountId();
-
   // FBA per unit: total FBA fees / total units ordered for matched transactions
-  const fbaRows = await prisma.$queryRawUnsafe<{ total_fba: number; total_units: number }[]>(`
-    SELECT
-      SUM(ABS(t.amount))::FLOAT8 AS total_fba,
-      SUM(oi."quantityOrdered")::FLOAT8 AS total_units
-    FROM "AmazonSettlementTransaction" t
-    JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId" AND s."amazonAccountId" = t."amazonAccountId"
-    JOIN "AmazonOrderItem" oi ON oi."amazonOrderId" = t."orderId" AND oi."amazonAccountId" = t."amazonAccountId"
-    WHERE t."amountType" = 'FBAPerUnitFulfillmentFee'
-      AND s.marketplace = '${marketplace}'
-      AND t."amazonAccountId" = '${amazonAccountId}'
-  `);
-  const fb = fbaRows[0];
-  const avgFbaPerUnit = fb && Number(fb.total_units) > 0
-    ? Number(fb.total_fba) / Number(fb.total_units) : 0;
+  const { totalFba, totalUnits } = await computeFbaTotals(prisma, marketplace);
+  const avgFbaPerUnit = totalUnits && totalUnits > 0
+    ? (totalFba ?? 0) / totalUnits : 0;
 
   // Avg units per order
-  const unitsRows = await prisma.$queryRawUnsafe<{ avg_units: number }[]>(`
-    SELECT AVG(oi."quantityOrdered")::FLOAT8 AS avg_units
-    FROM "AmazonOrderItem" oi
-    JOIN "AmazonOrder" o ON o."amazonOrderId" = oi."amazonOrderId" AND o."amazonAccountId" = oi."amazonAccountId"
-    WHERE o.marketplace = '${marketplace}'
-      AND o."amazonAccountId" = '${amazonAccountId}'
-  `);
-  const avgUnitsPerOrder = Number(unitsRows[0]?.avg_units ?? 1) || 1;
+  const avgUnitsPerOrder = (await computeAvgUnitsPerOrder(prisma, marketplace)) || 1;
 
   // Refund lag: avg days from order purchase to refund transaction's settlement end
-  const lagRows = await prisma.$queryRawUnsafe<{ avg_lag: number }[]>(`
-    SELECT AVG(EXTRACT(day FROM s."endDate" - o."purchaseDate"))::FLOAT8 AS avg_lag
-    FROM "AmazonSettlementTransaction" t
-    JOIN "AmazonOrder" o ON o."amazonOrderId" = t."orderId" AND o."amazonAccountId" = t."amazonAccountId"
-    JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId" AND s."amazonAccountId" = t."amazonAccountId"
-    WHERE t."transactionType" = 'Refund'
-      AND s.marketplace = '${marketplace}'
-      AND t."amazonAccountId" = '${amazonAccountId}'
-  `);
-  const refundLagDays = Number(lagRows[0]?.avg_lag ?? 30) || 30;
+  const refundLagDays = (await computeRefundLagDays(prisma, marketplace)) || 30;
 
   // PPC daily averages from AmazonAdSnapshot
-  const ppcRows = await prisma.$queryRawUnsafe<{ avg7d: number; avg30d: number }[]>(`
-    SELECT
-      (SUM(CASE WHEN "snapshotDate" >= CURRENT_DATE - 7  THEN spend ELSE 0 END) /
-       NULLIF(COUNT(DISTINCT CASE WHEN "snapshotDate" >= CURRENT_DATE - 7  THEN "snapshotDate" END), 0))::FLOAT8 AS avg7d,
-      (SUM(CASE WHEN "snapshotDate" >= CURRENT_DATE - 30 THEN spend ELSE 0 END) /
-       NULLIF(COUNT(DISTINCT CASE WHEN "snapshotDate" >= CURRENT_DATE - 30 THEN "snapshotDate" END), 0))::FLOAT8 AS avg30d
-    FROM "AmazonAdSnapshot"
-    WHERE marketplace = '${marketplace}'
-      AND "amazonAccountId" = '${amazonAccountId}'
-  `);
-  const ppcDailyAvg7d  = Number(ppcRows[0]?.avg7d  ?? 0) || 0;
-  const ppcDailyAvg30d = Number(ppcRows[0]?.avg30d ?? 0) || 0;
+  const { avg7d, avg30d } = await computePpcDailyAverages(prisma, marketplace);
+  const ppcDailyAvg7d  = avg7d  || 0;
+  const ppcDailyAvg30d = avg30d || 0;
 
   const updated = await updateCalibrationComponents(prisma, marketplace, {
     avgFbaPerUnit, avgUnitsPerOrder, refundLagDays, ppcDailyAvg7d, ppcDailyAvg30d,

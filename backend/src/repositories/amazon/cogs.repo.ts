@@ -74,6 +74,24 @@ export async function findCogsImages(
 }
 
 /**
+ * All COGS records for the current account, optionally scoped to one
+ * marketplace (also including "ALL"-marketplace records, same priority
+ * convention as findCogsForAsins). Used by the inventory page to surface
+ * products that have COGS configured but no inventory row yet.
+ */
+export async function findAllCogsProducts(
+  prisma: PrismaClient,
+  params: { marketplace?: string }
+): Promise<any[]> {
+  const rows = await (prisma as any).amazonProductCogs.findMany({
+    where: params.marketplace
+      ? { amazonAccountId: getCurrentAccountId(), OR: [{ marketplace: params.marketplace }, { marketplace: "ALL" }] }
+      : { amazonAccountId: getCurrentAccountId() },
+  });
+  return rows.map(normalizeCogsRow);
+}
+
+/**
  * Upsert a single COGS record by asin+marketplace, scoped to the current account.
  * Used by POST /cogs, POST /cogs/bulk, and the catalog image cache.
  */

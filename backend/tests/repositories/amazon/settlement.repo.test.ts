@@ -14,6 +14,18 @@ import {
   findTransactionsForOrders,
   findTransactionsForAsins,
   countSettlementTransactions,
+  computeHistoricalFeeRatiosByMarketplace,
+  computeSettlementRatiosForCalibration,
+  findSettlementOrderGroups,
+  countSettlementOrderGroups,
+  findNonOrderMovements,
+  findSettlementHeader,
+  computeSettlementReconciliation,
+  findCrossSettlementOrders,
+  computeCurrentReserveByMarketplace,
+  findSettlementsForExport,
+  computeFeeBreakdown,
+  computeReimbursementsByMonth,
 } from "../../../src/repositories/amazon/settlement.repo";
 
 let db: TestDb;
@@ -228,6 +240,501 @@ describe("findTransactionsForAsins", () => {
       });
       expect(rows).toHaveLength(2);
       expect(rows.every(r => r.asin === "B0ABC123")).toBe(true);
+    });
+  });
+});
+
+// ─── computeHistoricalFeeRatiosByMarketplace ──────────────────────────────────
+// One settlement, one marketplace (IT), hand-computed expected ratios:
+//   gross (Principal/Order) = 1000
+//   commission = 150 (stored as -150) → ratio 0.15
+//   fba        = 80  (stored as -80)  → ratio 0.08
+//   ads        = 50  (stored as -50)  → ratio 0.05
+//   adsVat     = 10  (stored as -10)  → ratio 0.01
+//   dsf        = 5   (stored as -5)   → ratio 0.005
+//   storage    = 20  (stored as -20)  → ratio 0.02
+//   inbound    = 15  (stored as -15)  → ratio 0.015
+//   prep       = 8   (stored as -8)   → ratio 0.008
+//   refunds    = 30  (stored as -30)  → ratio 0.03
+//   other      = 12  (stored as -12, amountType=OtherAmount/Adjustment, not in the reimb exclusion list) → ratio 0.012
+//   reimb      = 25  (stored as +25, amountType=OtherAmount/REVERSAL_REIMBURSEMENT — a credit, not negated) → ratio 0.025
+//   realPayout = 850 (AmazonSettlement.totalAmount) → payoutRatio 0.85
+//   nSett = 1 (one distinct settlementId) → avgStoragePerSett = 20, avgInboundPerSett = 15
+describe("computeHistoricalFeeRatiosByMarketplace", () => {
+  it("computes correct per-marketplace fee ratios from settlement + transaction data", async () => {
+    await runWithAccount(accountId, async () => {
+      await db.prisma.amazonSettlement.create({
+        data: {
+          amazonAccountId: accountId,
+          settlementId: "FR1",
+          marketplace: "IT",
+          startDate: new Date("2026-04-01"),
+          endDate: new Date("2026-04-14"),
+          totalAmount: 850,
+        },
+      });
+      const txn = (amountType: string, transactionType: string, amount: number) => ({
+        amazonAccountId: accountId,
+        settlementId: "FR1",
+        transactionType,
+        marketplace: "IT",
+        amountType,
+        amount,
+        postedDate: new Date("2026-04-10"),
+      });
+      await db.prisma.amazonSettlementTransaction.createMany({
+        data: [
+          txn("Principal", "Order", 1000),
+          txn("Commission", "Order", -150),
+          txn("FBAPerUnitFulfillmentFee", "Order", -80),
+          txn("Cost of Advertising", "Order", -50),
+          txn("TaxAmount", "ServiceFee", -10),
+          txn("DigitalServicesFee", "Order", -5),
+          txn("OtherAmount", "Storage Fee", -20),
+          txn("OtherAmount", "Inbound Transportation Fee", -15),
+          txn("OtherAmount", "WarehousePrep", -8),
+          txn("Principal", "Refund", -30),
+          txn("OtherAmount", "Adjustment", -12),
+          txn("OtherAmount", "REVERSAL_REIMBURSEMENT", 25),
+        ],
+      });
+
+      const [row] = await computeHistoricalFeeRatiosByMarketplace(db.prisma, ["IT", "DE", "ES", "FR"]);
+
+      expect(row.marketplace).toBe("IT");
+      expect(row.grossSales).toBeCloseTo(1000, 4);
+      expect(row.realPayout).toBeCloseTo(850, 4);
+      expect(row.payoutRatio).toBeCloseTo(0.85, 4);
+      expect(row.rCommission).toBeCloseTo(0.15, 4);
+      expect(row.rFba).toBeCloseTo(0.08, 4);
+      expect(row.rAds).toBeCloseTo(0.05, 4);
+      expect(row.rAdsVat).toBeCloseTo(0.01, 4);
+      expect(row.rDsf).toBeCloseTo(0.005, 4);
+      expect(row.rStorage).toBeCloseTo(0.02, 4);
+      expect(row.rInbound).toBeCloseTo(0.015, 4);
+      expect(row.rPrep).toBeCloseTo(0.008, 4);
+      expect(row.rRefunds).toBeCloseTo(0.03, 4);
+      expect(row.rOther).toBeCloseTo(0.012, 4);
+      expect(row.rReimb).toBeCloseTo(0.025, 4);
+      expect(row.nSett).toBe(1);
+      expect(row.avgStoragePerSett).toBeCloseTo(20, 4);
+      expect(row.avgInboundPerSett).toBeCloseTo(15, 4);
+    });
+  });
+
+  it("returns one row per marketplace, scoped to the requested list", async () => {
+    await runWithAccount(accountId, async () => {
+      for (const mp of ["IT", "DE"]) {
+        await db.prisma.amazonSettlement.create({
+          data: {
+            amazonAccountId: accountId,
+            settlementId: `S-${mp}`,
+            marketplace: mp,
+            startDate: new Date("2026-04-01"),
+            endDate: new Date("2026-04-14"),
+            totalAmount: 100,
+          },
+        });
+        await db.prisma.amazonSettlementTransaction.create({
+          data: {
+            amazonAccountId: accountId,
+            settlementId: `S-${mp}`,
+            transactionType: "Order",
+            marketplace: mp,
+            amountType: "Principal",
+            amount: 200,
+            postedDate: new Date("2026-04-10"),
+          },
+        });
+      }
+
+      const rows = await computeHistoricalFeeRatiosByMarketplace(db.prisma, ["IT"]);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].marketplace).toBe("IT");
+    });
+  });
+
+  it("returns an empty array when no settlements exist for the current account", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await computeHistoricalFeeRatiosByMarketplace(db.prisma, ["IT", "DE", "ES", "FR"]);
+      expect(rows).toEqual([]);
+    });
+  });
+});
+
+// ─── computeSettlementRatiosForCalibration ────────────────────────────────────
+
+describe("computeSettlementRatiosForCalibration", () => {
+  it("returns one row per settlement (not aggregated across settlements)", async () => {
+    await runWithAccount(accountId, async () => {
+      for (const [settlementId, endDate, totalAmount, gross] of [
+        ["S1", "2026-04-01", 85, 100],
+        ["S2", "2026-04-15", 170, 200],
+      ] as const) {
+        await db.prisma.amazonSettlement.create({
+          data: {
+            amazonAccountId: accountId,
+            settlementId,
+            marketplace: "IT",
+            startDate: new Date("2026-03-15"),
+            endDate: new Date(endDate),
+            totalAmount,
+          },
+        });
+        await db.prisma.amazonSettlementTransaction.create({
+          data: {
+            amazonAccountId: accountId,
+            settlementId,
+            transactionType: "Order",
+            marketplace: "IT",
+            amountType: "Principal",
+            amount: gross,
+            postedDate: new Date(endDate),
+          },
+        });
+      }
+
+      const rows = await computeSettlementRatiosForCalibration(db.prisma, "IT", 30);
+      expect(rows).toHaveLength(2);
+      // Ordered ASC by endDate
+      expect(rows[0].settlementId).toBe("S1");
+      expect(rows[0].gross).toBeCloseTo(100, 4);
+      expect(rows[0].realPayout).toBeCloseTo(85, 4);
+      expect(rows[1].settlementId).toBe("S2");
+      expect(rows[1].gross).toBeCloseTo(200, 4);
+    });
+  });
+
+  it("respects the lastN limit", async () => {
+    await runWithAccount(accountId, async () => {
+      for (let i = 1; i <= 5; i++) {
+        const settlementId = `S${i}`;
+        await db.prisma.amazonSettlement.create({
+          data: {
+            amazonAccountId: accountId,
+            settlementId,
+            marketplace: "IT",
+            startDate: new Date("2026-03-15"),
+            endDate: new Date(`2026-04-0${i}`),
+            totalAmount: 85,
+          },
+        });
+        await db.prisma.amazonSettlementTransaction.create({
+          data: {
+            amazonAccountId: accountId,
+            settlementId,
+            transactionType: "Order",
+            marketplace: "IT",
+            amountType: "Principal",
+            amount: 100,
+            postedDate: new Date(`2026-04-0${i}`),
+          },
+        });
+      }
+
+      const rows = await computeSettlementRatiosForCalibration(db.prisma, "IT", 3);
+      expect(rows).toHaveLength(3);
+    });
+  });
+
+  it("returns an empty array for a marketplace with no settlements", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await computeSettlementRatiosForCalibration(db.prisma, "DE", 30);
+      expect(rows).toEqual([]);
+    });
+  });
+});
+
+// ─── Settlement detail / reconciliation ────────────────────────────────────────
+// Fixture: settlement "SETT-TXN" (totalAmount=100), two orders:
+//   ORD-1 (SKU-A): Principal/Order=100, Commission/Order=-15, FBAPerUnitFulfillmentFee=-8
+//   ORD-2 (SKU-B): Principal/Order=50, Refund=-10
+//   Non-order: ServiceFee/Storage Fee=-5 (orderId null)
+// computedNet = 100-15-8+50-10-5 = 112; orderNet = 117; nonOrderNet = -5
+
+async function seedSettlementDetailFixture() {
+  await db.prisma.amazonSettlement.create({
+    data: {
+      amazonAccountId: accountId, settlementId: "SETT-TXN", marketplace: "IT",
+      startDate: new Date("2026-04-01"), endDate: new Date("2026-04-14"), totalAmount: 100,
+    },
+  });
+  await db.prisma.amazonSettlementTransaction.createMany({
+    data: [
+      { amazonAccountId: accountId, settlementId: "SETT-TXN", transactionType: "Order", orderId: "ORD-1", sku: "SKU-A", marketplace: "IT", amountType: "Principal", amount: 100, postedDate: new Date("2026-04-10") },
+      { amazonAccountId: accountId, settlementId: "SETT-TXN", transactionType: "Order", orderId: "ORD-1", sku: "SKU-A", marketplace: "IT", amountType: "Commission", amount: -15, postedDate: new Date("2026-04-10") },
+      { amazonAccountId: accountId, settlementId: "SETT-TXN", transactionType: "Order", orderId: "ORD-1", sku: "SKU-A", marketplace: "IT", amountType: "FBAPerUnitFulfillmentFee", amount: -8, postedDate: new Date("2026-04-10") },
+      { amazonAccountId: accountId, settlementId: "SETT-TXN", transactionType: "Order", orderId: "ORD-2", sku: "SKU-B", marketplace: "IT", amountType: "Principal", amount: 50, postedDate: new Date("2026-04-11") },
+      { amazonAccountId: accountId, settlementId: "SETT-TXN", transactionType: "Refund", orderId: "ORD-2", sku: "SKU-B", marketplace: "IT", amountType: "Principal", amount: -10, postedDate: new Date("2026-04-11") },
+      { amazonAccountId: accountId, settlementId: "SETT-TXN", transactionType: "ServiceFee", orderId: null, marketplace: "IT", amountType: "OtherAmount", amount: -5, postedDate: new Date("2026-04-12") },
+    ],
+  });
+}
+
+describe("findSettlementOrderGroups", () => {
+  it("groups transactions by order, computing each fee bucket", async () => {
+    await seedSettlementDetailFixture();
+    await runWithAccount(accountId, async () => {
+      const rows = await findSettlementOrderGroups(db.prisma, { settlementId: "SETT-TXN", limit: 50, offset: 0 });
+      expect(rows).toHaveLength(2);
+      const ord1 = rows.find(r => r.orderId === "ORD-1")!;
+      expect(ord1.principal).toBeCloseTo(100, 4);
+      expect(ord1.commission).toBeCloseTo(-15, 4);
+      expect(ord1.fbaFee).toBeCloseTo(-8, 4);
+      expect(ord1.hasRefund).toBe(false);
+      const ord2 = rows.find(r => r.orderId === "ORD-2")!;
+      expect(ord2.refundAmount).toBeCloseTo(-10, 4);
+      expect(ord2.hasRefund).toBe(true);
+    });
+  });
+
+  it("filters by search term against orderId/sku", async () => {
+    await seedSettlementDetailFixture();
+    await runWithAccount(accountId, async () => {
+      const rows = await findSettlementOrderGroups(db.prisma, { settlementId: "SETT-TXN", search: "sku-a", limit: 50, offset: 0 });
+      expect(rows.map(r => r.orderId)).toEqual(["ORD-1"]);
+    });
+  });
+});
+
+describe("countSettlementOrderGroups", () => {
+  it("counts distinct orders in a settlement", async () => {
+    await seedSettlementDetailFixture();
+    await runWithAccount(accountId, async () => {
+      const total = await countSettlementOrderGroups(db.prisma, { settlementId: "SETT-TXN" });
+      expect(total).toBe(2);
+    });
+  });
+});
+
+describe("findNonOrderMovements", () => {
+  it("returns transactions with no orderId", async () => {
+    await seedSettlementDetailFixture();
+    await runWithAccount(accountId, async () => {
+      const rows = await findNonOrderMovements(db.prisma, "SETT-TXN");
+      expect(rows).toHaveLength(1);
+      expect(rows[0].amount).toBeCloseTo(-5, 4);
+    });
+  });
+});
+
+describe("findSettlementHeader", () => {
+  it("returns the settlement header fields", async () => {
+    await seedSettlementDetailFixture();
+    await runWithAccount(accountId, async () => {
+      const header = await findSettlementHeader(db.prisma, "SETT-TXN");
+      expect(header?.totalAmount).toBeCloseTo(100, 4);
+      expect(header?.marketplace).toBe("IT");
+    });
+  });
+
+  it("returns null when the settlement doesn't exist", async () => {
+    await runWithAccount(accountId, async () => {
+      const header = await findSettlementHeader(db.prisma, "NON-EXISTENT");
+      expect(header).toBeNull();
+    });
+  });
+});
+
+describe("computeSettlementReconciliation", () => {
+  it("computes net totals split by order vs. non-order", async () => {
+    await seedSettlementDetailFixture();
+    await runWithAccount(accountId, async () => {
+      const reconc = await computeSettlementReconciliation(db.prisma, "SETT-TXN");
+      expect(reconc.computedNet).toBeCloseTo(112, 4);
+      expect(reconc.orderNet).toBeCloseTo(117, 4);
+      expect(reconc.nonOrderNet).toBeCloseTo(-5, 4);
+    });
+  });
+});
+
+describe("findCrossSettlementOrders", () => {
+  it("finds other settlements an order also appears in", async () => {
+    await seedSettlementDetailFixture();
+    await db.prisma.amazonSettlement.create({
+      data: {
+        amazonAccountId: accountId, settlementId: "SETT-OTHER", marketplace: "IT",
+        startDate: new Date("2026-05-01"), endDate: new Date("2026-05-14"), totalAmount: 20,
+      },
+    });
+    await db.prisma.amazonSettlementTransaction.create({
+      data: { amazonAccountId: accountId, settlementId: "SETT-OTHER", transactionType: "Order", orderId: "ORD-1", marketplace: "IT", amountType: "Principal", amount: 20, postedDate: new Date("2026-05-10") },
+    });
+
+    await runWithAccount(accountId, async () => {
+      const map = await findCrossSettlementOrders(db.prisma, { orderIds: ["ORD-1", "ORD-2"], excludeSettlementId: "SETT-TXN" });
+      expect(map.get("ORD-1")).toEqual(["SETT-OTHER"]);
+      expect(map.has("ORD-2")).toBe(false);
+    });
+  });
+
+  it("returns an empty map when orderIds is empty", async () => {
+    await runWithAccount(accountId, async () => {
+      const map = await findCrossSettlementOrders(db.prisma, { orderIds: [], excludeSettlementId: "SETT-TXN" });
+      expect(map.size).toBe(0);
+    });
+  });
+});
+
+// ─── computeCurrentReserveByMarketplace ───────────────────────────────────────
+// LOCK-IN: the SUM only adds transactionType='Current Reserve Amount' rows —
+// 'Previous Reserve Amount Balance' is part of the WHERE filter but contributes
+// 0 to the sum (CASE has no branch for it). Same as pre-refactor behavior.
+
+describe("computeCurrentReserveByMarketplace", () => {
+  it("sums Current Reserve Amount transactions per marketplace", async () => {
+    await runWithAccount(accountId, async () => {
+      await db.prisma.amazonSettlement.create({
+        data: {
+          amazonAccountId: accountId, settlementId: "SETT-RESERVE", marketplace: "IT",
+          startDate: new Date("2026-04-01"), endDate: new Date("2026-04-14"), totalAmount: 100,
+        },
+      });
+      await db.prisma.amazonSettlementTransaction.createMany({
+        data: [
+          { amazonAccountId: accountId, settlementId: "SETT-RESERVE", transactionType: "Current Reserve Amount", marketplace: "IT", amountType: "Other", amount: 100, postedDate: new Date("2026-04-10") },
+          { amazonAccountId: accountId, settlementId: "SETT-RESERVE", transactionType: "Current Reserve Amount", marketplace: "IT", amountType: "Other", amount: 20, postedDate: new Date("2026-04-11") },
+          { amazonAccountId: accountId, settlementId: "SETT-RESERVE", transactionType: "Previous Reserve Amount Balance", marketplace: "IT", amountType: "Other", amount: 50, postedDate: new Date("2026-04-09") },
+        ],
+      });
+
+      const map = await computeCurrentReserveByMarketplace(db.prisma);
+      expect(map.get("IT")).toBeCloseTo(120, 4); // 100 + 20, NOT +50
+    });
+  });
+
+  it("returns an empty map when no reserve transactions exist", async () => {
+    await runWithAccount(accountId, async () => {
+      const map = await computeCurrentReserveByMarketplace(db.prisma);
+      expect(map.size).toBe(0);
+    });
+  });
+});
+
+// ─── findSettlementsForExport ─────────────────────────────────────────────────
+// Uses the shared sampleSettlements/sampleSettlementTransactions fixture — hand
+// -computed fee breakdown documented at the top of the fixture file.
+
+describe("findSettlementsForExport", () => {
+  beforeEach(async () => {
+    for (const s of sampleSettlements) {
+      await (db.prisma as any).amazonSettlement.create({ data: { ...s, amazonAccountId: accountId } });
+    }
+    for (const t of sampleSettlementTransactions) {
+      await db.prisma.amazonSettlementTransaction.create({ data: { ...t, amazonAccountId: accountId } as any });
+    }
+  });
+
+  it("computes the full fee breakdown per settlement", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await findSettlementsForExport(db.prisma, {});
+      const it = rows.find(r => r.settlementId === "SETT-IT-001")!;
+      expect(it.totalAmount).toBeCloseTo(450, 4);
+      expect(it.principal).toBeCloseTo(500, 4);       // 300 + 200 (Order only)
+      expect(it.commission).toBeCloseTo(-75, 4);       // -45 + -30 (Order only, refund excluded)
+      expect(it.fbaFees).toBeCloseTo(-24, 4);          // -18 + -12 + 6 (LOCK-IN: unlike principal/commission, fba_fees has no transactionType='Order' filter, so the +6 refund is included too)
+      expect(it.refundsTotal).toBeCloseTo(-45, 4);     // -60 + 9 + 6 (all Refund-type rows)
+      expect(it.computedNet).toBeCloseTo(340, 4);      // sum of every transaction
+      expect(it.orderCount).toBe(2);                  // distinct orderId with transactionType=Order
+    });
+  });
+
+  it("filters by marketplace", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await findSettlementsForExport(db.prisma, { marketplace: "DE" });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].settlementId).toBe("SETT-DE-001");
+    });
+  });
+});
+
+// ─── computeFeeBreakdown ───────────────────────────────────────────────────────
+
+describe("computeFeeBreakdown", () => {
+  beforeEach(async () => {
+    for (const s of sampleSettlements) {
+      await (db.prisma as any).amazonSettlement.create({ data: { ...s, amazonAccountId: accountId } });
+    }
+    for (const t of sampleSettlementTransactions) {
+      await db.prisma.amazonSettlementTransaction.create({ data: { ...t, amazonAccountId: accountId } as any });
+    }
+  });
+
+  it("groups absolute fee totals by amountType within a date range", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await computeFeeBreakdown(db.prisma, {
+        dateFrom: new Date("2026-03-01"), dateTo: new Date("2026-03-31"), marketplace: "IT",
+      });
+      const dsf = rows.find(r => r.amountType === "DigitalServicesFee")!;
+      expect(dsf.total).toBeCloseTo(10, 4);
+      expect(dsf.count).toBe(1);
+
+      // Commission: -45 (Order) + -30 (Order) + 9 (Refund, same amountType) → abs sum 84
+      const commission = rows.find(r => r.amountType === "Commission")!;
+      expect(commission.total).toBeCloseTo(84, 4);
+      expect(commission.count).toBe(3);
+    });
+  });
+
+  it("excludes transactions outside the date range", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await computeFeeBreakdown(db.prisma, {
+        dateFrom: new Date("2026-03-05T00:00:00Z"), dateTo: new Date("2026-03-05T23:59:59Z"), marketplace: "IT",
+      });
+      // Only the 2026-03-05 postings: 2 Commission (-45 Order) + FBA (-18) + Principal(300) rows
+      expect(rows.find(r => r.amountType === "DigitalServicesFee")).toBeUndefined(); // posted 2026-03-14
+    });
+  });
+
+  it("scopes to one marketplace", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await computeFeeBreakdown(db.prisma, {
+        dateFrom: new Date("2026-03-01"), dateTo: new Date("2026-03-31"), marketplace: "DE",
+      });
+      const commission = rows.find(r => r.amountType === "Commission")!;
+      expect(commission.total).toBeCloseTo(60, 4); // DE commission is -60, only one row
+      expect(commission.count).toBe(1);
+    });
+  });
+});
+
+// ─── computeReimbursementsByMonth ──────────────────────────────────────────────
+
+describe("computeReimbursementsByMonth", () => {
+  beforeEach(async () => {
+    await db.prisma.amazonSettlement.create({
+      data: {
+        amazonAccountId: accountId, settlementId: "SETT-REIMB", marketplace: "IT",
+        startDate: new Date("2026-05-01"), endDate: new Date("2026-05-31"), totalAmount: 100,
+      },
+    });
+    await db.prisma.amazonSettlementTransaction.createMany({
+      data: [
+        { amazonAccountId: accountId, settlementId: "SETT-REIMB", transactionType: "WAREHOUSE_LOST", marketplace: "IT", amountType: "Reimbursement", amount: 15, postedDate: new Date("2026-05-10") },
+        { amazonAccountId: accountId, settlementId: "SETT-REIMB", transactionType: "COMPENSATED_CLAIM", marketplace: "IT", amountType: "CompensationAdjustment", amount: 20, postedDate: new Date("2026-05-15") },
+        { amazonAccountId: accountId, settlementId: "SETT-REIMB", transactionType: "WAREHOUSE_LOST", marketplace: "IT", amountType: "ReimbursementOther", amount: 10, postedDate: new Date("2026-06-01") },
+        // Not a reimbursement/compensation amountType — must not be counted.
+        { amazonAccountId: accountId, settlementId: "SETT-REIMB", transactionType: "Order", marketplace: "IT", amountType: "Commission", amount: -5, postedDate: new Date("2026-05-12") },
+      ],
+    });
+  });
+
+  it("groups reimbursement/compensation amounts by month", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await computeReimbursementsByMonth(db.prisma, {});
+      const may = rows.find(r => r.month === "2026-05")!;
+      const june = rows.find(r => r.month === "2026-06")!;
+      expect(may.amount).toBeCloseTo(35, 4); // 15 + 20
+      expect(may.count).toBe(2);
+      expect(june.amount).toBeCloseTo(10, 4);
+      expect(june.count).toBe(1);
+    });
+  });
+
+  it("scopes to one marketplace", async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = await computeReimbursementsByMonth(db.prisma, { marketplace: "DE" });
+      expect(rows).toEqual([]);
     });
   });
 });

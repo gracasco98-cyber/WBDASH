@@ -25,6 +25,93 @@ export async function findInventoryForAsins(
   return rows;
 }
 
+/**
+ * All inventory rows for the current account, optionally scoped to one
+ * marketplace, sorted by days-remaining then quantity (most urgent first).
+ * Used by the /inventory dashboard page.
+ */
+export async function findAllInventory(
+  prisma: PrismaClient,
+  params: { marketplace?: string }
+): Promise<any[]> {
+  return (prisma as any).amazonInventory.findMany({
+    where: {
+      amazonAccountId: getCurrentAccountId(),
+      ...(params.marketplace ? { marketplace: params.marketplace } : {}),
+    },
+    orderBy: [{ daysRemaining: "asc" }, { qtyTotal: "asc" }],
+  });
+}
+
+export interface AsinVelocity {
+  asin: string;
+  dailyVelocity: number;
+}
+
+/**
+ * Daily sales velocity (units/day, 30-day-window average) per ASIN, for the
+ * current account, excluding cancelled orders. `since` is the window start;
+ * the window length (used as the averaging divisor) is passed separately so
+ * callers stay explicit about it rather than the function assuming 30 days.
+ */
+export async function computeSalesVelocityByAsin(
+  prisma: PrismaClient,
+  params: { since: Date; windowDays: number; marketplace?: string }
+): Promise<AsinVelocity[]> {
+  const accountId = getCurrentAccountId();
+  const mpFilter = params.marketplace ? ` AND o.marketplace = '${params.marketplace.replace(/'/g, "")}'` : "";
+  return prisma.$queryRawUnsafe<AsinVelocity[]>(`
+    SELECT
+      i.asin,
+      COALESCE(SUM(i."quantityOrdered"), 0)::FLOAT8 / ${params.windowDays}.0 AS "dailyVelocity"
+    FROM "AmazonOrderItem" i
+    JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
+    WHERE i."purchaseDate" >= '${params.since.toISOString()}'::timestamp
+      AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+      AND i."amazonAccountId" = '${accountId}'
+      ${mpFilter}
+    GROUP BY i.asin
+  `);
+}
+
+export interface AsinMarketVelocity {
+  asin: string;
+  market: string;
+  dailyVelocity: number;
+}
+
+/**
+ * Daily sales velocity per ASIN, broken down by (approximated) marketplace
+ * from the Shopify-style salesChannel string — used for the PAN-EU FBA
+ * inventory view, which needs a combined-EU total plus a per-market split.
+ * Excludes cancelled orders and the Non-Amazon channel.
+ */
+export async function computeCombinedEuVelocity(
+  prisma: PrismaClient,
+  params: { since: Date; windowDays: number }
+): Promise<AsinMarketVelocity[]> {
+  const accountId = getCurrentAccountId();
+  return prisma.$queryRawUnsafe<AsinMarketVelocity[]>(`
+    SELECT
+      i.asin,
+      CASE
+        WHEN o."salesChannel" ILIKE '%amazon.it%' THEN 'IT'
+        WHEN o."salesChannel" ILIKE '%amazon.de%' THEN 'DE'
+        WHEN o."salesChannel" ILIKE '%amazon.fr%' THEN 'FR'
+        WHEN o."salesChannel" ILIKE '%amazon.es%' THEN 'ES'
+        ELSE 'OTHER'
+      END AS market,
+      COALESCE(SUM(i."quantityOrdered"), 0)::FLOAT8 / ${params.windowDays}.0 AS "dailyVelocity"
+    FROM "AmazonOrderItem" i
+    JOIN "AmazonOrder" o ON o."amazonAccountId" = i."amazonAccountId" AND o."amazonOrderId" = i."amazonOrderId"
+    WHERE i."purchaseDate" >= '${params.since.toISOString()}'::timestamp
+      AND o."orderStatus" NOT IN ('Canceled','Cancelled')
+      AND o."salesChannel" != 'Non-Amazon'
+      AND i."amazonAccountId" = '${accountId}'
+    GROUP BY i.asin, market
+  `);
+}
+
 // ─── Write operations ─────────────────────────────────────────────────────────
 
 /**

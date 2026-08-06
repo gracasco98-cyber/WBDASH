@@ -2,7 +2,13 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
 import { getCurrentAccountId } from "../../context/account-context";
+import {
+  computeHistoricalFeeRatiosByMarketplace,
+  type HistoricalFeeRatios,
+} from "../../repositories/amazon/settlement.repo";
 export const settlementRouter = Router();
+
+const DASHBOARD_MARKETPLACES = ["IT", "DE", "FR", "ES"];
 
 // ─── GET /dashboard ─────────────────────────────────────────────────────────────
 // Returns THREE distinct settlement statuses:
@@ -15,84 +21,16 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
     const amazonAccountId = getCurrentAccountId();
 
     // ── 1. Per-marketplace fee ratios from historical settlement data ───────────
-    const feeRatioRows = await prisma.$queryRawUnsafe<{
-      marketplace: string;
-      gross_sales: number;
-      real_payout: number;
-      payout_ratio: number;
-      r_commission: number;
-      r_fba: number;
-      r_ads: number;
-      r_ads_vat: number;
-      r_dsf: number;
-      r_storage: number;
-      r_inbound: number;
-      r_prep: number;
-      r_refunds: number;
-      r_other_charges: number;
-      r_reimbursements: number;
-    }[]>(`
-      WITH sett_totals AS (
-        SELECT marketplace, SUM("totalAmount") AS real_payout, COUNT(*) AS n_sett
-        FROM "AmazonSettlement"
-        WHERE marketplace IN ('IT','DE','FR','ES') AND "amazonAccountId" = '${amazonAccountId}'
-        GROUP BY marketplace
-      ),
-      txn_totals AS (
-        SELECT s.marketplace,
-          SUM(CASE WHEN t."amountType"='Principal' AND t."transactionType"='Order' THEN t.amount ELSE 0 END)  AS gross_sales,
-          SUM(CASE WHEN t."amountType"='Commission' THEN t.amount ELSE 0 END)                                  AS commission,
-          SUM(CASE WHEN t."amountType"='FBAPerUnitFulfillmentFee' THEN t.amount ELSE 0 END)                    AS fba_fee,
-          SUM(CASE WHEN t."amountType"='Cost of Advertising' THEN t.amount ELSE 0 END)                        AS ads_cost,
-          SUM(CASE WHEN t."amountType"='TaxAmount' AND t."transactionType"='ServiceFee' THEN t.amount ELSE 0 END) AS ads_vat,
-          SUM(CASE WHEN t."amountType"='DigitalServicesFee' THEN t.amount ELSE 0 END)                         AS dsf,
-          SUM(CASE WHEN t."transactionType" IN ('Storage Fee','StorageRenewalBilling') THEN t.amount ELSE 0 END) AS storage,
-          SUM(CASE WHEN t."transactionType"='Inbound Transportation Fee' THEN t.amount ELSE 0 END)             AS inbound,
-          SUM(CASE WHEN t."transactionType" IN ('WarehousePrep','RemovalComplete','DisposalComplete') THEN t.amount ELSE 0 END) AS prep,
-          SUM(CASE WHEN t."transactionType"='Refund' THEN t.amount ELSE 0 END)                                 AS refunds,
-          SUM(CASE WHEN t."amountType"='OtherAmount'
-            AND t."transactionType" NOT IN ('Storage Fee','StorageRenewalBilling','WarehousePrep','RemovalComplete',
-              'DisposalComplete','Inbound Transportation Fee','Current Reserve Amount','Previous Reserve Amount Balance',
-              'REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST','WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND')
-            THEN t.amount ELSE 0 END) AS other_charges,
-          SUM(CASE WHEN t."amountType"='OtherAmount'
-            AND t."transactionType" IN ('REVERSAL_REIMBURSEMENT','WAREHOUSE_LOST','WAREHOUSE_DAMAGE','MISSING_FROM_INBOUND')
-            THEN t.amount ELSE 0 END) AS reimbursements
-        FROM "AmazonSettlementTransaction" t
-        JOIN "AmazonSettlement" s ON s."settlementId" = t."settlementId" AND s."amazonAccountId" = t."amazonAccountId"
-        WHERE s.marketplace IN ('IT','DE','FR','ES') AND s."amazonAccountId" = '${amazonAccountId}'
-        GROUP BY s.marketplace
-      )
-      SELECT
-        tx.marketplace,
-        tx.gross_sales::FLOAT8 AS gross_sales,
-        st.real_payout::FLOAT8 AS real_payout,
-        (st.real_payout / NULLIF(tx.gross_sales,0))::FLOAT8 AS payout_ratio,
-        (-tx.commission    / NULLIF(tx.gross_sales,0))::FLOAT8 AS r_commission,
-        (-tx.fba_fee       / NULLIF(tx.gross_sales,0))::FLOAT8 AS r_fba,
-        (-tx.ads_cost      / NULLIF(tx.gross_sales,0))::FLOAT8 AS r_ads,
-        (-tx.ads_vat       / NULLIF(tx.gross_sales,0))::FLOAT8 AS r_ads_vat,
-        (-tx.dsf           / NULLIF(tx.gross_sales,0))::FLOAT8 AS r_dsf,
-        (-tx.storage       / NULLIF(tx.gross_sales,0))::FLOAT8 AS r_storage,
-        (-tx.inbound       / NULLIF(tx.gross_sales,0))::FLOAT8 AS r_inbound,
-        (-tx.prep          / NULLIF(tx.gross_sales,0))::FLOAT8 AS r_prep,
-        (-tx.refunds       / NULLIF(tx.gross_sales,0))::FLOAT8 AS r_refunds,
-        (-tx.other_charges / NULLIF(tx.gross_sales,0))::FLOAT8 AS r_other_charges,
-        (tx.reimbursements / NULLIF(tx.gross_sales,0))::FLOAT8 AS r_reimbursements
-      FROM txn_totals tx
-      JOIN sett_totals st ON st.marketplace = tx.marketplace
-      ORDER BY tx.gross_sales DESC
-    `);
+    const feeRatioRows = await computeHistoricalFeeRatiosByMarketplace(prisma, DASHBOARD_MARKETPLACES);
 
     // Map of per-marketplace fee data
-    type FeeRatios = typeof feeRatioRows[0];
-    const feeMap = new Map<string, FeeRatios>(feeRatioRows.map(r => [r.marketplace, r]));
+    const feeMap = new Map<string, HistoricalFeeRatios>(feeRatioRows.map(r => [r.marketplace, r]));
 
     // ── 2. Historical account totals (full settlement period) ──────────────────
     const acctTotals = feeRatioRows.reduce((acc, r) => {
-      acc.grossSales   += Number(r.gross_sales);
-      acc.realPayout   += Number(r.real_payout);
-      acc.amazonTake   += Number(r.gross_sales) - Number(r.real_payout);
+      acc.grossSales   += r.grossSales;
+      acc.realPayout   += r.realPayout;
+      acc.amazonTake   += r.grossSales - r.realPayout;
       return acc;
     }, { grossSales: 0, realPayout: 0, amazonTake: 0 });
 
@@ -184,18 +122,18 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
     const inFlight = inFlightRows.map(r => {
       const fr   = feeMap.get(r.marketplace);
       const gr   = Number(r.gross);
-      const payoutRatio  = fr ? Number(fr.payout_ratio) : 0.42;
+      const payoutRatio  = fr ? fr.payoutRatio : 0.42;
       const estNet       = round2(gr * payoutRatio);
-      const estCommission  = fr ? round2(gr * Number(fr.r_commission)) : 0;
-      const estFba         = fr ? round2(gr * Number(fr.r_fba))        : 0;
-      const estAds         = fr ? round2(gr * Number(fr.r_ads))        : 0;
-      const estAdsVat      = fr ? round2(gr * Number(fr.r_ads_vat))    : 0;
-      const estDsf         = fr ? round2(gr * Number(fr.r_dsf))        : 0;
-      const estStorage     = fr ? round2(gr * Number(fr.r_storage))    : 0;
-      const estInbound     = fr ? round2(gr * Number(fr.r_inbound))    : 0;
-      const estPrep        = fr ? round2(gr * Number(fr.r_prep))       : 0;
-      const estRefunds     = fr ? round2(gr * Number(fr.r_refunds))    : 0;
-      const estOther       = fr ? round2(gr * Number(fr.r_other_charges)) : 0;
+      const estCommission  = fr ? round2(gr * fr.rCommission) : 0;
+      const estFba         = fr ? round2(gr * fr.rFba)        : 0;
+      const estAds         = fr ? round2(gr * fr.rAds)        : 0;
+      const estAdsVat      = fr ? round2(gr * fr.rAdsVat)     : 0;
+      const estDsf         = fr ? round2(gr * fr.rDsf)        : 0;
+      const estStorage     = fr ? round2(gr * fr.rStorage)    : 0;
+      const estInbound     = fr ? round2(gr * fr.rInbound)    : 0;
+      const estPrep        = fr ? round2(gr * fr.rPrep)       : 0;
+      const estRefunds     = fr ? round2(gr * fr.rRefunds)    : 0;
+      const estOther       = fr ? round2(gr * fr.rOther)      : 0;
 
       return {
         marketplace:           r.marketplace,
@@ -216,9 +154,9 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
           prep:       estPrep,
           refunds:    estRefunds,
           otherCharges: estOther,
-          commissionPct: fr ? round1(Number(fr.r_commission) * 100) : 0,
-          fbaPct:        fr ? round1(Number(fr.r_fba) * 100)        : 0,
-          adsPct:        fr ? round1(Number(fr.r_ads) * 100)        : 0,
+          commissionPct: fr ? round1(fr.rCommission * 100) : 0,
+          fbaPct:        fr ? round1(fr.rFba * 100)        : 0,
+          adsPct:        fr ? round1(fr.rAds * 100)        : 0,
         },
       };
     });
@@ -254,14 +192,14 @@ settlementRouter.get("/dashboard", async (_req: Request, res: Response) => {
           totalAmount:     round2(Number(s.total_amount)),
           endDate:         s.end_date,
           nextExpected:    s.next_expected,
-          payoutRatioPct:  fr ? round1(Number(fr.payout_ratio) * 100) : 42,
+          payoutRatioPct:  fr ? round1(fr.payoutRatio * 100) : 42,
           historicalFees: {
-            commissionPct: fr ? round1(Number(fr.r_commission) * 100) : 0,
-            fbaPct:        fr ? round1(Number(fr.r_fba) * 100)        : 0,
-            adsPct:        fr ? round1(Number(fr.r_ads) * 100)        : 0,
-            storagePct:    fr ? round1((Number(fr.r_storage) + Number(fr.r_inbound) + Number(fr.r_prep)) * 100) : 0,
-            grossSales:    fr ? round2(Number(fr.gross_sales))         : 0,
-            realPayout:    fr ? round2(Number(fr.real_payout))         : 0,
+            commissionPct: fr ? round1(fr.rCommission * 100) : 0,
+            fbaPct:        fr ? round1(fr.rFba * 100)        : 0,
+            adsPct:        fr ? round1(fr.rAds * 100)        : 0,
+            storagePct:    fr ? round1((fr.rStorage + fr.rInbound + fr.rPrep) * 100) : 0,
+            grossSales:    fr ? round2(fr.grossSales)         : 0,
+            realPayout:    fr ? round2(fr.realPayout)         : 0,
           },
         };
       }),
