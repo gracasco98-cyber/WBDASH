@@ -13,7 +13,7 @@ beforeAll(async () => {
   app = express();
   app.use(express.json());
   app.use("/api/purchasing", masterDataRouter);
-}, 60_000);
+});
 
 afterAll(async () => { await db.cleanup(); });
 beforeEach(async () => { await truncateAll(db.prisma); });

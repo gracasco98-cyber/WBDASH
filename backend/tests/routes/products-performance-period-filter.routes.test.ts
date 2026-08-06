@@ -24,7 +24,7 @@ beforeAll(async () => {
   db = await setupTestDb();
   process.env.DATABASE_URL = db.databaseUrl;
   ({ productsPerformanceRouter } = await import("../../src/amazon/routes/products-performance.routes"));
-}, 60_000);
+});
 afterAll(async () => { await db.cleanup(); });
 beforeEach(async () => {
   await truncateAll(db.prisma);
