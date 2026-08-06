@@ -4,9 +4,10 @@ import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import { api } from "@/lib/api";
 import type { Warehouse, PaymentTerm, BankAccount } from "@/lib/api/purchasing";
+import FornitoriTab from "@/components/purchasing/FornitoriTab";
 
-type Tab = "banche" | "magazzini" | "condizioni-pagamento";
-const COMING_SOON = ["Fornitori", "Clienti", "Categorie contabili", "Trasportatori"];
+type Tab = "banche" | "magazzini" | "condizioni-pagamento" | "fornitori";
+const COMING_SOON = ["Clienti", "Categorie contabili", "Trasportatori"];
 
 function BancheTab() {
   const [rows, setRows] = useState<BankAccount[]>([]);
@@ -101,6 +102,7 @@ export default function AnagraficheePage() {
     { id: "banche", label: "Banche" },
     { id: "magazzini", label: "Magazzini" },
     { id: "condizioni-pagamento", label: "Condizioni di pagamento" },
+    { id: "fornitori", label: "Fornitori" },
   ];
 
   return (
@@ -138,6 +140,7 @@ export default function AnagraficheePage() {
             {tab === "banche" && <BancheTab />}
             {tab === "magazzini" && <MagazziniTab />}
             {tab === "condizioni-pagamento" && <CondizioniPagamentoTab />}
+            {tab === "fornitori" && <FornitoriTab />}
           </main>
         </div>
       </div>
