@@ -31,7 +31,7 @@ function getOpenAI(): OpenAI {
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Sei un assistente analitico esperto integrato nella dashboard e-commerce "My Dashboard".
+const SYSTEM_PROMPT = `Sei un assistente analitico esperto integrato nella dashboard e-commerce "WBDASH".
 Hai accesso in tempo reale ai dati reali della piattaforma tramite strumenti dedicati.
 
 ## Canali di vendita

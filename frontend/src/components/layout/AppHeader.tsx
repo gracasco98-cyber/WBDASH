@@ -39,11 +39,11 @@ export default function AppHeader({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo.ico"
-            alt="My Dashboard"
+            alt="WBDASH"
             className="h-8 w-8 rounded-lg object-contain shrink-0"
           />
           <span className="font-bold text-white tracking-wide text-sm hidden sm:block uppercase">
-            My Dashboard
+            WBDASH
           </span>
         </div>
 
