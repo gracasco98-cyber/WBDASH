@@ -644,6 +644,7 @@ model User {
   email               String    @unique
   passwordHash        String
   role                String    @default("user")   // "master" | "admin" | "user"
+  purchasingRole      String?                       // "ADMIN" | "MANAGEMENT" | "PURCHASING" | "WAREHOUSE" | "ACCOUNTING" | "READ_ONLY" | null = no purchasing access
   isActive            Boolean   @default(true)
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
@@ -770,4 +771,77 @@ model ProductIdentifier {
   @@unique([channelType, marketplace, asin])
   @@index([productId])
   @@index([sku])
+}
+
+// ─── Purchasing module — FASE B: base master data ──────────────────────────
+// See docs/superpowers/specs/2026-08-05-purchasing-erp-architecture.md.
+// Company-wide (no amazonAccountId) — this is not an Amazon-domain concept.
+enum PurchasePaymentMethod {
+  BONIFICO
+  RIBA
+  ASSEGNO
+  CONTANTI
+  PAYPAL
+  CARTA
+  ALTRO
+}
+
+model Warehouse {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+model PaymentTerm {
+  id            String                       @id @default(cuid())
+  name          String
+  type          String
+  endOfMonth    Boolean                      @default(false)
+  fixedDay      Int?
+  paymentMethod PurchasePaymentMethod
+  isActive      Boolean                      @default(true)
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+  installments  PaymentTermInstallmentRule[]
+
+  @@index([isActive])
+}
+
+// percentage is Decimal, not Float — deliberate exception to the "ratios stay
+// Float" convention: this splits real money and must sum to exactly 100.00.
+model PaymentTermInstallmentRule {
+  id                String      @id @default(cuid())
+  paymentTermId     String
+  paymentTerm       PaymentTerm @relation(fields: [paymentTermId], references: [id], onDelete: Cascade)
+  installmentNumber Int
+  offsetDays        Int
+  percentage        Decimal     @db.Decimal(5, 2)
+
+  @@unique([paymentTermId, installmentNumber])
+  @@index([paymentTermId])
+}
+
+model BankAccount {
+  id                 String   @id @default(cuid())
+  bankName           String
+  alias              String
+  accountHolder      String
+  iban               String   @unique
+  bic                String?
+  currency           String   @default("EUR")
+  openingBalance     Decimal  @default(0) @db.Decimal(14, 4)
+  openingBalanceDate DateTime
+  isActive           Boolean  @default(true)
+  accountingCode     String?
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([isActive])
 }
