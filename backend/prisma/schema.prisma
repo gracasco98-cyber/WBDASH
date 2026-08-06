@@ -754,6 +754,7 @@ model Product {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   identifiers ProductIdentifier[]
+  supplierProducts SupplierProduct[]
 
   @@index([status])
 }
@@ -809,6 +810,7 @@ model PaymentTerm {
   createdAt     DateTime                     @default(now())
   updatedAt     DateTime                     @updatedAt
   installments  PaymentTermInstallmentRule[]
+  suppliers     Supplier[]
 
   @@index([isActive])
 }
@@ -844,4 +846,115 @@ model BankAccount {
   updatedAt          DateTime @updatedAt
 
   @@index([isActive])
+}
+
+// ─── Purchasing module — FASE C: supplier master data ──────────────────────────
+// See docs/superpowers/specs/2026-08-05-purchasing-erp-architecture.md §2.
+model Supplier {
+  id              String    @id @default(cuid())
+  // Identificazione
+  legalName       String
+  tradeName       String?
+  internalCode    String    @unique
+  isActive        Boolean   @default(true)
+  supplierType    String
+  country         String    // registration/nationality country, distinct from the physical address country below
+  language        String?
+  defaultCurrency String    @default("EUR")
+  // Dati fiscali
+  vatNumber       String?
+  taxCode         String?
+  foreignVatNumber String?
+  sdiCode         String?
+  pec             String?
+  taxRegime       String?
+  fiscalNotes     String?
+  // Indirizzo
+  addressLine     String?
+  streetNumber    String?
+  postalCode      String?
+  city            String?
+  province        String?
+  addressCountry  String?
+  // Pagamenti
+  defaultPaymentMethod PurchasePaymentMethod?
+  defaultPaymentTermId String?
+  defaultPaymentTerm   PaymentTerm?           @relation(fields: [defaultPaymentTermId], references: [id])
+  paymentDays     Int?
+  bankName        String?
+  iban            String?
+  bic             String?
+  ribaEnabled     Boolean   @default(false)
+  fixedPaymentDays Int[]    @default([])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  contacts        SupplierContact[]
+  products        SupplierProduct[]
+
+  @@index([isActive])
+  @@index([vatNumber])
+}
+
+model SupplierContact {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  name       String
+  role       String?
+  email      String?
+  phone      String?
+  whatsapp   String?
+  isPrimary  Boolean  @default(false)
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@index([supplierId])
+}
+
+model SupplierProduct {
+  id                 String   @id @default(cuid())
+  supplierId         String
+  supplier           Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  productId          String
+  product            Product  @relation(fields: [productId], references: [id])
+  supplierSku        String?
+  supplierProductName String?
+  standardPrice      Decimal  @db.Decimal(14, 4)
+  currency           String   @default("EUR")
+  moq                Int?
+  orderMultiple      Int?
+  leadTimeDays       Int?
+  unitsPerCarton     Int?
+  unitsPerPallet     Int?
+  weightKg           Decimal? @db.Decimal(10, 3)
+  conditions         String?
+  lastPriceDate      DateTime
+  isPreferredSupplier Boolean @default(false)
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  priceHistory       SupplierProductPriceHistory[]
+
+  @@unique([supplierId, productId])
+  @@index([supplierId])
+  @@index([productId])
+}
+
+// Append-only — never updated or deleted. Restrict (not cascade) on the
+// parent FK: deleting a SupplierProduct with price history must be a
+// conscious, blocked action, not a silent cascade that erases financial
+// history (see Global Constraints).
+model SupplierProductPriceHistory {
+  id                String          @id @default(cuid())
+  supplierProductId String
+  supplierProduct   SupplierProduct @relation(fields: [supplierProductId], references: [id], onDelete: Restrict)
+  price             Decimal         @db.Decimal(14, 4)
+  currency          String          @default("EUR")
+  validFrom         DateTime        @default(now())
+  source            String
+  note              String?
+
+  @@index([supplierProductId, validFrom])
 }
