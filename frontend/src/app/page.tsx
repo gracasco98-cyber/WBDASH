@@ -114,7 +114,10 @@ export default function DashboardPage() {
   const [amazonTimeseries, setAmazonTimeseries] = useState<TimePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
-  const [clockTime,   setClockTime]   = useState(new Date());
+  // null until mount — seeding with new Date() here would embed the server's
+  // render time into the SSR HTML, which then mismatches the client's
+  // hydration time and trips a hydration error.
+  const [clockTime,   setClockTime]   = useState<Date | null>(null);
   const [selectedHour, setSelectedHour] = useState<string | null>(null);
 
   // Ref to detectNewOrders — allows load() to call it without creating a dependency cycle
@@ -209,8 +212,10 @@ export default function DashboardPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  // Live clock — ticks every second, independent of data refresh
+  // Live clock — ticks every second, independent of data refresh.
+  // Seeds the first real value client-side only (see clockTime's useState).
   useEffect(() => {
+    setClockTime(new Date());
     const t = setInterval(() => setClockTime(new Date()), 1_000);
     return () => clearInterval(t);
   }, []);
@@ -344,7 +349,7 @@ export default function DashboardPage() {
             {/* Live clock */}
             <div className="hidden xl:flex items-center gap-2 text-xs text-zinc-500">
               <div className="live-dot w-1.5 h-1.5 rounded-full bg-accent-primary" />
-              <span>{clockTime.toLocaleTimeString("it-IT")}</span>
+              <span>{clockTime ? clockTime.toLocaleTimeString("it-IT") : "--:--:--"}</span>
             </div>
             {/* Refresh */}
             <button

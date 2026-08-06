@@ -50,7 +50,8 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<ProductPerformance | null>(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
-  const [clockTime,   setClockTime]   = useState(new Date());
+  // null until mount — see src/app/page.tsx's clockTime for why.
+  const [clockTime,   setClockTime]   = useState<Date | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,6 +80,7 @@ export default function ProductsPage() {
 
   // Live clock — ticks every second
   useEffect(() => {
+    setClockTime(new Date());
     const t = setInterval(() => setClockTime(new Date()), 1_000);
     return () => clearInterval(t);
   }, []);
@@ -96,7 +98,7 @@ export default function ProductsPage() {
             <div className="hidden xl:block"><SyncStatus /></div>
             <div className="hidden xl:flex items-center gap-2 text-xs text-zinc-500">
               <div className="w-1.5 h-1.5 rounded-full bg-accent-primary" />
-              <span>Agg. {clockTime.toLocaleTimeString("it-IT")}</span>
+              <span>Agg. {clockTime ? clockTime.toLocaleTimeString("it-IT") : "--:--:--"}</span>
             </div>
             <button
               onClick={load}
