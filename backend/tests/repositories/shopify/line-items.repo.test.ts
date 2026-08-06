@@ -17,7 +17,7 @@ const ORDER_ID_PLACEHOLDER = ""; // filled after insert
 
 beforeAll(async () => {
   db = await setupTestDb();
-}, 60_000);
+});
 
 afterAll(async () => {
   await db.cleanup();
