@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export interface SupplierFormState {
   legalName: string; tradeName: string; internalCode: string; supplierType: string;
@@ -49,6 +49,10 @@ export default function SupplierForm({ initial, disableInternalCode, submitLabel
   const [form, setForm] = useState<SupplierFormState>({ ...EMPTY_SUPPLIER_FORM, ...initial });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setForm({ ...EMPTY_SUPPLIER_FORM, ...initial });
+  }, [initial]);
 
   const set = <K extends keyof SupplierFormState>(key: K, value: SupplierFormState[K]) =>
     setForm(prev => ({ ...prev, [key]: value }));
