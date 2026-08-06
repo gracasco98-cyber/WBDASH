@@ -60,7 +60,10 @@ suppliersRouter.post("/suppliers/:id/contacts", async (req: Request, res: Respon
     const { name } = req.body ?? {};
     if (!name) return res.status(400).json({ error: "name required" });
     res.json(await createContact(prisma, req.params.id, req.body));
-  } catch (err) { res.status(500).json({ error: String(err) }); }
+  } catch (err) {
+    if ((err as any)?.code === "P2003") return res.status(404).json({ error: "Supplier not found" });
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 suppliersRouter.put("/suppliers/:supplierId/contacts/:contactId", async (req: Request, res: Response) => {
@@ -90,7 +93,10 @@ suppliersRouter.post("/suppliers/:id/products", async (req: Request, res: Respon
       return res.status(400).json({ error: "productId, standardPrice required" });
     }
     res.json(await addSupplierProduct(prisma, req.params.id, { ...req.body, standardPrice: Number(standardPrice) }));
-  } catch (err) { res.status(500).json({ error: String(err) }); }
+  } catch (err) {
+    if ((err as any)?.code === "P2003") return res.status(404).json({ error: "Supplier or Product not found" });
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 suppliersRouter.put("/suppliers/:supplierId/products/:supplierProductId/price", async (req: Request, res: Response) => {

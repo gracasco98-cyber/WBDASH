@@ -47,6 +47,21 @@ describe("suppliers routes", () => {
     expect(detail.body.contacts[0].name).toBe("Mario Rossi");
   });
 
+  it("POST /:id/contacts returns 404 when the supplier does not exist", async () => {
+    const res = await request(app)
+      .post("/api/purchasing/suppliers/does-not-exist/contacts")
+      .send({ name: "Mario Rossi" });
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /:id/products returns 404 when the supplier does not exist", async () => {
+    const product = await db.prisma.product.create({ data: { name: "Test Product" } });
+    const res = await request(app)
+      .post("/api/purchasing/suppliers/does-not-exist/products")
+      .send({ productId: product.id, standardPrice: 4.5 });
+    expect(res.status).toBe(404);
+  });
+
   it("POST /:id/products then PUT .../price appends history and updates the cached price", async () => {
     const supplierRes = await request(app).post("/api/purchasing/suppliers").send({
       legalName: "Acme", internalCode: "F2", supplierType: "Produttore", country: "IT",
