@@ -60,19 +60,36 @@ export async function addSupplierProduct(
   });
 }
 
+// Currency is resolved to a single value BEFORE the transaction runs, and that
+// same resolved value is written to both the new history row and the parent
+// SupplierProduct. Previously this used two independent defaults
+// (`?? "EUR"` for history vs. `?? undefined` / "leave unchanged" for the
+// parent), which could diverge for a non-EUR supplier product: an
+// omitted `currency` would silently stamp the append-only history row with
+// "EUR" while the parent kept its real currency (e.g. "USD") — a permanent,
+// uncorrectable wrong-currency entry in financial history. Resolving once
+// and reusing the same value everywhere makes that divergence impossible.
 export async function updateSupplierProductPrice(
   prisma: PrismaClient,
   supplierProductId: string,
   data: { price: number; currency?: string; source: string; note?: string }
 ): Promise<SupplierProduct> {
   const now = new Date();
+  let currency = data.currency;
+  if (!currency) {
+    const existing = await prisma.supplierProduct.findUniqueOrThrow({
+      where: { id: supplierProductId },
+      select: { currency: true },
+    });
+    currency = existing.currency;
+  }
   const [, updated] = await prisma.$transaction([
     prisma.supplierProductPriceHistory.create({
-      data: { supplierProductId, price: data.price, currency: data.currency ?? "EUR", validFrom: now, source: data.source, note: data.note ?? null },
+      data: { supplierProductId, price: data.price, currency, validFrom: now, source: data.source, note: data.note ?? null },
     }),
     prisma.supplierProduct.update({
       where: { id: supplierProductId },
-      data: { standardPrice: data.price, currency: data.currency ?? undefined, lastPriceDate: now },
+      data: { standardPrice: data.price, currency, lastPriceDate: now },
     }),
   ]);
   return updated;

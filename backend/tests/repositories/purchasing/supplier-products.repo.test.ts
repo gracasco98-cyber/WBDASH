@@ -52,4 +52,14 @@ describe("supplier-products.repo", () => {
     const sp = await addSupplierProduct(db.prisma, supplierId, { productId, standardPrice: 4.5, currency: "EUR" });
     await expect(removeSupplierProduct(db.prisma, sp.id)).rejects.toThrow();
   });
+
+  it("updateSupplierProductPrice without an explicit currency keeps the SupplierProduct's existing non-EUR currency, not a hardcoded EUR default", async () => {
+    const sp = await addSupplierProduct(db.prisma, supplierId, { productId, standardPrice: 10, currency: "USD" });
+    const updated = await updateSupplierProductPrice(db.prisma, sp.id, { price: 12, source: "listino 2026-09" });
+    expect(updated.currency).toBe("USD");
+    const history = await db.prisma.supplierProductPriceHistory.findMany({ where: { supplierProductId: sp.id }, orderBy: { validFrom: "asc" } });
+    expect(history).toHaveLength(2);
+    expect(history[0].currency).toBe("USD");
+    expect(history[1].currency).toBe("USD");
+  });
 });
