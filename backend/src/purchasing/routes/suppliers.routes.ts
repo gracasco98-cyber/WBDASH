@@ -33,12 +33,32 @@ suppliersRouter.post("/suppliers", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "legalName, internalCode, supplierType, country required" });
     }
     res.json(await createSupplier(prisma, req.body));
-  } catch (err) { res.status(500).json({ error: String(err) }); }
+  } catch (err) {
+    if ((err as any)?.code === "P2002") return res.status(409).json({ error: "Codice fornitore già esistente" });
+    res.status(500).json({ error: String(err) });
+  }
 });
 
+// internalCode is deliberately excluded — immutable after creation (see
+// CreateSupplierInput / updateSupplier in suppliers.repo.ts). Only the fields
+// below are forwarded so a caller can never smuggle it (or any other
+// unlisted field) through an unfiltered req.body passthrough.
 suppliersRouter.put("/suppliers/:id", async (req: Request, res: Response) => {
   try {
-    res.json(await updateSupplier(prisma, req.params.id, req.body ?? {}));
+    const {
+      legalName, tradeName, supplierType, country, language, defaultCurrency,
+      vatNumber, taxCode, foreignVatNumber, sdiCode, pec, taxRegime, fiscalNotes,
+      addressLine, streetNumber, postalCode, city, province, addressCountry,
+      defaultPaymentMethod, defaultPaymentTermId, paymentDays,
+      bankName, iban, bic, ribaEnabled, fixedPaymentDays,
+    } = req.body ?? {};
+    res.json(await updateSupplier(prisma, req.params.id, {
+      legalName, tradeName, supplierType, country, language, defaultCurrency,
+      vatNumber, taxCode, foreignVatNumber, sdiCode, pec, taxRegime, fiscalNotes,
+      addressLine, streetNumber, postalCode, city, province, addressCountry,
+      defaultPaymentMethod, defaultPaymentTermId, paymentDays,
+      bankName, iban, bic, ribaEnabled, fixedPaymentDays,
+    }));
   } catch (err) {
     if (notFound(err)) return res.status(404).json({ error: "Supplier not found" });
     res.status(500).json({ error: String(err) });
@@ -110,9 +130,20 @@ suppliersRouter.put("/suppliers/:supplierId/products/:supplierProductId/price", 
   }
 });
 
+// standardPrice/currency/productId are deliberately excluded — price changes
+// MUST go through updateSupplierProductPrice (below) so a SupplierProductPriceHistory
+// row is always appended. Forwarding req.body unfiltered here would let a caller
+// silently overwrite standardPrice with no history entry, violating that invariant.
 suppliersRouter.put("/suppliers/:supplierId/products/:supplierProductId", async (req: Request, res: Response) => {
   try {
-    res.json(await updateSupplierProductDetails(prisma, req.params.supplierProductId, req.body ?? {}));
+    const {
+      supplierSku, supplierProductName, moq, orderMultiple, leadTimeDays,
+      unitsPerCarton, unitsPerPallet, weightKg, conditions, isPreferredSupplier, notes,
+    } = req.body ?? {};
+    res.json(await updateSupplierProductDetails(prisma, req.params.supplierProductId, {
+      supplierSku, supplierProductName, moq, orderMultiple, leadTimeDays,
+      unitsPerCarton, unitsPerPallet, weightKg, conditions, isPreferredSupplier, notes,
+    }));
   } catch (err) {
     if (notFound(err)) return res.status(404).json({ error: "SupplierProduct not found" });
     res.status(500).json({ error: String(err) });

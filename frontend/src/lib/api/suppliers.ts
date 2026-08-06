@@ -30,6 +30,7 @@ export interface SupplierProduct {
   unitsPerCarton: number | null; unitsPerPallet: number | null; weightKg: number | null;
   conditions: string | null; lastPriceDate: string; isPreferredSupplier: boolean;
   notes: string | null; priceHistory: SupplierProductPriceHistory[];
+  product?: { id: string; name: string };
 }
 
 export type SupplierDetail = Supplier & { contacts: SupplierContact[]; products: SupplierProduct[] };

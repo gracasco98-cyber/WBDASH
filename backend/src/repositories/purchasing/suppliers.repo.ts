@@ -1,9 +1,9 @@
 // repositories/purchasing/suppliers.repo.ts — Company-wide, no amazonAccountId.
-import type { PrismaClient, Supplier, SupplierContact, SupplierProduct, SupplierProductPriceHistory, PurchasePaymentMethod } from "@prisma/client";
+import type { PrismaClient, Supplier, SupplierContact, SupplierProduct, SupplierProductPriceHistory, PurchasePaymentMethod, Product } from "@prisma/client";
 
 export type SupplierWithRelations = Supplier & {
   contacts: SupplierContact[];
-  products: (SupplierProduct & { priceHistory: SupplierProductPriceHistory[] })[];
+  products: (SupplierProduct & { priceHistory: SupplierProductPriceHistory[]; product: Product })[];
 };
 
 export async function findAllSuppliers(prisma: PrismaClient): Promise<Supplier[]> {
@@ -15,7 +15,7 @@ export async function findSupplierById(prisma: PrismaClient, id: string): Promis
     where: { id },
     include: {
       contacts: { orderBy: { isPrimary: "desc" } },
-      products: { include: { priceHistory: { orderBy: { validFrom: "desc" } } } },
+      products: { include: { priceHistory: { orderBy: { validFrom: "desc" } }, product: true } },
     },
   });
 }

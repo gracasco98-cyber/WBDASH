@@ -123,7 +123,7 @@ function ProdottiTab({ supplier, onChange }: { supplier: SupplierDetail; onChang
           <tbody>
             {supplier.products.map(p => (
               <tr key={p.id} className="border-b border-bg-border/40 text-zinc-300">
-                <td className="px-3 py-2.5 font-mono">{p.supplierSku ?? p.productId}</td>
+                <td className="px-3 py-2.5 font-mono">{p.product?.name ?? p.supplierSku ?? p.productId}</td>
                 <td className="px-3 py-2.5 tabular-nums">€ {p.standardPrice.toLocaleString("it-IT", { minimumFractionDigits: 2 })}</td>
                 <td className="px-3 py-2.5">{p.moq ?? "—"}</td>
                 <td className="px-3 py-2.5">{p.leadTimeDays ? `${p.leadTimeDays}gg` : "—"}</td>
