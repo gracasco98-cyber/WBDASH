@@ -99,12 +99,12 @@ export async function resolveProductPerformance(
         asin: { in: asins },
         purchaseDate: { gte: params.dateFrom, lte: params.dateTo },
       },
-      _sum: { itemPrice: true, promotionDiscount: true, quantityShipped: true },
+      _sum: { itemPrice: true, promotionDiscount: true, quantityOrdered: true },
     }) as Promise<
       Array<{
         asin: string;
         marketplace: string;
-        _sum: { itemPrice: unknown; promotionDiscount: unknown; quantityShipped: number | null };
+        _sum: { itemPrice: unknown; promotionDiscount: unknown; quantityOrdered: number | null };
       }>
     >,
     findTransactionsForAsins(prisma, { asins, dateFrom: params.dateFrom, dateTo: params.dateTo }),
@@ -116,7 +116,7 @@ export async function resolveProductPerformance(
   for (const r of orderItemRows) {
     const key = `${r.marketplace}::${r.asin}`;
     salesByKey.set(key, {
-      units: Number(r._sum.quantityShipped ?? 0),
+      units: Number(r._sum.quantityOrdered ?? 0),
       sales: Number(r._sum.itemPrice ?? 0),
       promo: Number(r._sum.promotionDiscount ?? 0),
     });

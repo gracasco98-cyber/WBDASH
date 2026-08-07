@@ -141,6 +141,9 @@ function gzipSync(data: string): Buffer {
   return zlib.gzipSync(Buffer.from(data, 'utf-8'));
 }
 
+/** Mirrors GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL's real column
+ *  set — no `quantity-shipped` column, only `quantity` (see ingest.service.ts
+ *  col() doc comment). */
 export interface AmazonOrderTsvRow {
   'amazon-order-id': string;
   'purchase-date': string;
@@ -154,7 +157,6 @@ export interface AmazonOrderTsvRow {
   sku: string;
   'product-name': string;
   quantity: string;
-  'quantity-shipped': string;
   'item-price': string;
   'item-tax': string;
   'item-promotion-discount': string;

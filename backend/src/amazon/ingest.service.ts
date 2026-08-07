@@ -281,7 +281,10 @@ export async function ingestOrderRows(
           sku,
           productTitle,
           quantityOrdered:   parseInt(col(item, "quantity", "quantity-purchased") || "1", 10),
-          quantityShipped:   parseInt(col(item, "quantity-shipped") || "0", 10),
+          // GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL has no distinct
+          // "shipped" column — it reports one `quantity` per line. Fall back to it
+          // so quantityShipped isn't silently 0 for every real-world report row.
+          quantityShipped:   parseInt(col(item, "quantity-shipped", "quantity") || "0", 10),
           itemPrice:         parseFloat(col(item, "item-price")  || "0") || 0,
           itemTax:           parseFloat(col(item, "item-tax")    || "0") || 0,
           promotionDiscount: parseFloat(col(item, "item-promotion-discount", "promotion-discount", "ship-promotion-discount") || "0") || 0,
