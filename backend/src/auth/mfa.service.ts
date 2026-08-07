@@ -6,7 +6,7 @@ import QRCode from "qrcode";
 // Allow ±1 step (±30s) for clock skew
 authenticator.options = { window: 1 };
 
-const APP_NAME = "My Dashboard";
+const APP_NAME = "WBDASH";
 
 // ─── Secret management ────────────────────────────────────────────────────────
 

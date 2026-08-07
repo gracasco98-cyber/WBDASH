@@ -7,10 +7,13 @@ import { AmazonAccountProvider } from "@/context/AmazonAccountContext";
 import { MarketplaceFilterProvider } from "@/context/MarketplaceFilterContext";
 import ChatWidget from "@/components/ChatWidget";
 
+// The trailing ?v= busts the browser's favicon cache whenever the icon file
+// changes — bump it if the icon is ever replaced again (Next.js does not
+// hash static app/favicon.ico the way it hashes generated icon routes).
 export const metadata: Metadata = {
-  title: "My Dashboard — Sales Dashboard",
+  title: "WBDASH — Sales Dashboard",
   description: "Shopify multi-marketplace dashboard",
-  icons: { icon: "/favicon.ico" },
+  icons: { icon: "/favicon.ico?v=2" },
 };
 
 export const viewport: Viewport = {

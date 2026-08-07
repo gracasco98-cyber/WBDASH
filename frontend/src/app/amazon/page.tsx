@@ -714,7 +714,8 @@ export default function AmazonOverviewPage() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
-  const [clockTime, setClockTime] = useState(new Date());
+  // null until mount — see src/app/page.tsx's clockTime for why.
+  const [clockTime, setClockTime] = useState<Date | null>(null);
 
   const handlePeriodSelect = useCallback((p: Period) => {
     setPeriod(p);
@@ -818,6 +819,7 @@ export default function AmazonOverviewPage() {
 
   // Live clock — ticks every second
   useEffect(() => {
+    setClockTime(new Date());
     const t = setInterval(() => setClockTime(new Date()), 1_000);
     return () => clearInterval(t);
   }, []);
@@ -838,7 +840,7 @@ export default function AmazonOverviewPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-lg sm:text-xl font-bold text-white">Amazon Dashboards</h1>
-          <p className="text-xs sm:text-sm text-zinc-500 mt-1">Aggiornato {clockTime.toLocaleTimeString("it-IT")}</p>
+          <p className="text-xs sm:text-sm text-zinc-500 mt-1">Aggiornato {clockTime ? clockTime.toLocaleTimeString("it-IT") : "--:--:--"}</p>
         </div>
         <button
           onClick={() => { loadOverview(); loadPeriod(); }}

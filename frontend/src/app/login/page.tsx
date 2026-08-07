@@ -13,7 +13,7 @@ function LogoMark() {
         </svg>
       </div>
       <div>
-        <div className="text-sm font-semibold text-white leading-none">My Dashboard</div>
+        <div className="text-sm font-semibold text-white leading-none">WBDASH</div>
         <div className="text-[10px] text-zinc-500 mt-0.5 uppercase tracking-widest">Sales Dashboard</div>
       </div>
     </div>
