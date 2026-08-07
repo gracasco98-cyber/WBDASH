@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { setupTestDb, truncateAll, createTestAmazonAccount, type TestDb } from "../../helpers/db";
-import { runWithAccount } from "../../../src/context/account-context";
+import { runWithAccount, runWithAccounts } from "../../../src/context/account-context";
 import { createProduct, createIdentifier } from "../../../src/repositories/amazon/product.repo";
 import { upsertAmazonInventory } from "../../../src/repositories/amazon/inventory.repo";
 import { createSettlementTransactions } from "../../../src/repositories/amazon/settlement.repo";
@@ -348,6 +348,64 @@ describe("resolveProductPerformance", () => {
       expect(itRow.hasRealFees).toBe(true);
       expect(deRow.hasRealFees).toBe(false);
       expect(group.aggregate.hasRealFees).toBe(false);
+    });
+  });
+
+  describe("multi-account aggregation (main dashboard default)", () => {
+    it("sums units/sales across every account in scope when runWithAccounts() has more than one id", async () => {
+      const accountA = accountId;
+      const accountB = await createTestAmazonAccount(db.prisma, { sellerId: "SELLER-B" });
+
+      // Same product (shared SKU), same ASIN+marketplace, sold under two
+      // different Amazon accounts — this is exactly the "second seller
+      // account for the same catalog" scenario the aggregation exists for.
+      const product = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-01" });
+
+      await db.prisma.amazonOrder.create({
+        data: { amazonAccountId: accountA, amazonOrderId: "O-A", purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"), orderStatus: "Shipped", marketplace: "IT" },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: { amazonAccountId: accountA, amazonOrderId: "O-A", orderItemId: "I-A", asin: "B0ABC123", sku: "SKU-RSV-01", productTitle: "Resveratrolo 500mg", marketplace: "IT", quantityOrdered: 10, quantityShipped: 10, itemPrice: 200, itemTax: 0, promotionDiscount: 0, purchaseDate: new Date("2026-08-01") } as any,
+      });
+
+      await db.prisma.amazonOrder.create({
+        data: { amazonAccountId: accountB, amazonOrderId: "O-B", purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"), orderStatus: "Shipped", marketplace: "IT" },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: { amazonAccountId: accountB, amazonOrderId: "O-B", orderItemId: "I-B", asin: "B0ABC123", sku: "SKU-RSV-01", productTitle: "Resveratrolo 500mg", marketplace: "IT", quantityOrdered: 4, quantityShipped: 4, itemPrice: 80, itemTax: 0, promotionDiscount: 0, purchaseDate: new Date("2026-08-01") } as any,
+      });
+
+      const groups = await runWithAccounts([accountA, accountB], () =>
+        resolveProductPerformance(db.prisma, {
+          marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+        })
+      );
+
+      const group = groups.find((g) => g.product.id === product.id)!;
+      expect(group.aggregate.units).toBe(14);
+      expect(group.aggregate.sales).toBe(280);
+    });
+
+    it("still returns only one account's data when a single id is in scope (no regression)", async () => {
+      const accountB = await createTestAmazonAccount(db.prisma, { sellerId: "SELLER-B" });
+      const { product } = await seedOneProductWithSales(); // seeded under `accountId`
+
+      await db.prisma.amazonOrder.create({
+        data: { amazonAccountId: accountB, amazonOrderId: "O-B", purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"), orderStatus: "Shipped", marketplace: "IT" },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: { amazonAccountId: accountB, amazonOrderId: "O-B", orderItemId: "I-B", asin: "B0ABC123", sku: "SKU-RSV-01", productTitle: "Resveratrolo 500mg", marketplace: "IT", quantityOrdered: 999, quantityShipped: 999, itemPrice: 9990, itemTax: 0, promotionDiscount: 0, purchaseDate: new Date("2026-08-01") } as any,
+      });
+
+      const groups = await runWithAccount(accountId, () =>
+        resolveProductPerformance(db.prisma, {
+          marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+        })
+      );
+
+      const group = groups.find((g) => g.product.id === product.id)!;
+      expect(group.aggregate.units).toBe(10); // only accountId's 10, not accountB's 999
     });
   });
 });

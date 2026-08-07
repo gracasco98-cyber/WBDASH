@@ -2,7 +2,7 @@
 // Each function takes `prisma: PrismaClient` as the first parameter (dependency injection).
 // No business logic here — only typed data access.
 import type { PrismaClient } from "@prisma/client";
-import { getCurrentAccountId } from "../../context/account-context";
+import { getCurrentAccountId, getCurrentAccountIds } from "../../context/account-context";
 
 // ─── Read operations ──────────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@ export async function findInventoryForAsins(
   if (params.asins.length === 0) return [];
   const rows = await prisma.amazonInventory.findMany({
     where: {
-      amazonAccountId: getCurrentAccountId(),
+      amazonAccountId: { in: getCurrentAccountIds() },
       asin: { in: params.asins },
       ...(params.marketplace && params.marketplace !== "all" ? { marketplace: params.marketplace } : {}),
     },

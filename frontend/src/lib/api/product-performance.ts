@@ -3,7 +3,7 @@ import { apiUrl, get } from "./client";
 import type { ProductPerformanceResponse } from "./types";
 
 export const productPerformance = {
-  get: (params: { marketplace: string; from: string; to: string; productIds?: string }) =>
+  get: (params: { marketplace: string; from: string; to: string; productIds?: string; amazonAccountId?: string }) =>
     get<ProductPerformanceResponse>("/api/amazon/products/performance", params),
 
   rename: async (productId: string, name: string): Promise<void> => {
