@@ -52,7 +52,12 @@ const server = setupServer();
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
 
-/** Build a minimal TSV row for an Amazon order item. */
+/** Build a minimal TSV row for an Amazon order item.
+ *  Deliberately has NO `quantity-shipped` key: the real
+ *  GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL report only sends
+ *  `quantity` (see ingest.service.ts col() doc comment) — adding a synthetic
+ *  `quantity-shipped` column here would mask ingest.service.ts falling back
+ *  to it incorrectly. */
 function makeOrderRow(overrides: Partial<{
   'amazon-order-id': string;
   'purchase-date': string;
@@ -66,7 +71,6 @@ function makeOrderRow(overrides: Partial<{
   sku: string;
   'product-name': string;
   quantity: string;
-  'quantity-shipped': string;
   'item-price': string;
   'item-tax': string;
   'item-promotion-discount': string;
@@ -85,7 +89,6 @@ function makeOrderRow(overrides: Partial<{
     sku:                       overrides.sku                       ?? 'SKU-TEST-001',
     'product-name':            overrides['product-name']           ?? 'Test Product',
     quantity:                  overrides.quantity                  ?? '1',
-    'quantity-shipped':        overrides['quantity-shipped']       ?? '1',
     'item-price':              overrides['item-price']             ?? '29.99',
     'item-tax':                overrides['item-tax']               ?? '0',
     'item-promotion-discount': overrides['item-promotion-discount'] ?? '0',
@@ -393,6 +396,23 @@ describe('Amazon Sync — integration (PR 9)', () => {
       const orderItemIds = items.map(i => i.orderItemId);
       expect(orderItemIds).toContain('111-ITEM001-0001::ASIN0001::SKU-A');
       expect(orderItemIds).toContain('111-ITEM001-0001::ASIN0002::SKU-B');
+    });
+  });
+
+  // ── 6b. quantityShipped derives from the real report's `quantity` column ──
+  it('quantityShipped: derived from `quantity` — GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL has no separate quantity-shipped column', async () => {
+    await runWithAccount(accountId, async () => {
+      // LOCK-IN: the real Amazon order report never sends a `quantity-shipped`
+      // column (see ingest.service.ts col() doc comment) — only `quantity`.
+      const row = makeOrderRow({ 'amazon-order-id': '111-QTY0001-0001', quantity: '4' });
+
+      await ingestOrderRows([row]);
+
+      const item = await db.prisma.amazonOrderItem.findFirstOrThrow({
+        where: { amazonOrderId: '111-QTY0001-0001' },
+      });
+      expect(item.quantityOrdered).toBe(4);
+      expect(item.quantityShipped).toBe(4);
     });
   });
 
