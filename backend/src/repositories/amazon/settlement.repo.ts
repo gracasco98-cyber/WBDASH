@@ -5,7 +5,7 @@
 import type { PrismaClient, AmazonSettlementTransaction } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { toNum } from "../../utils/decimal";
-import { getCurrentAccountId } from "../../context/account-context";
+import { getCurrentAccountId, getCurrentAccountIds } from "../../context/account-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -142,7 +142,7 @@ export async function findTransactionsForAsins(
   if (params.asins.length === 0) return [];
   const rows = await prisma.amazonSettlementTransaction.findMany({
     where: {
-      amazonAccountId: getCurrentAccountId(),
+      amazonAccountId: { in: getCurrentAccountIds() },
       asin: { in: params.asins },
       postedDate: { gte: params.dateFrom, lte: params.dateTo },
       ...(params.marketplace && params.marketplace !== "all" ? { marketplace: params.marketplace } : {}),

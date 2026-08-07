@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { runWithAccount, getCurrentAccountId } from "./account-context";
+import { runWithAccount, runWithAccounts, getCurrentAccountId, getCurrentAccountIds } from "./account-context";
 
 describe("account-context", () => {
   it("returns the accountId set by runWithAccount inside its callback", async () => {
@@ -33,5 +33,24 @@ describe("account-context", () => {
     }
     const result = await runWithAccount("acc-nested", async () => inner());
     expect(result).toBe("acc-nested");
+  });
+
+  it("runWithAccounts exposes every id via getCurrentAccountIds", async () => {
+    const result = await runWithAccounts(["acc-A", "acc-B"], async () => getCurrentAccountIds());
+    expect(result).toEqual(["acc-A", "acc-B"]);
+  });
+
+  it("getCurrentAccountId returns the first id when multiple are in scope", async () => {
+    const result = await runWithAccounts(["acc-A", "acc-B"], async () => getCurrentAccountId());
+    expect(result).toBe("acc-A");
+  });
+
+  it("runWithAccount (single) is still readable via getCurrentAccountIds as a one-element array", async () => {
+    const result = await runWithAccount("acc-solo", async () => getCurrentAccountIds());
+    expect(result).toEqual(["acc-solo"]);
+  });
+
+  it("getCurrentAccountIds throws when read outside of any scope", () => {
+    expect(() => getCurrentAccountIds()).toThrow(/no Amazon account/i);
   });
 });

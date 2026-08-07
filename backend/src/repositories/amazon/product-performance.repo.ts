@@ -3,7 +3,7 @@
 // AmazonProductCogs, and AmazonInventory via ProductIdentifier. No
 // materialized aggregation table in this phase (see spec §Rischi).
 import type { PrismaClient } from "@prisma/client";
-import { getCurrentAccountId } from "../../context/account-context";
+import { getCurrentAccountIds } from "../../context/account-context";
 import { findAllProducts } from "./product.repo";
 import { findInventoryForAsins } from "./inventory.repo";
 import { findTransactionsForAsins } from "./settlement.repo";
@@ -95,7 +95,7 @@ export async function resolveProductPerformance(
     (prisma.amazonOrderItem.groupBy as any)({
       by: ["asin", "marketplace"],
       where: {
-        amazonAccountId: getCurrentAccountId(),
+        amazonAccountId: { in: getCurrentAccountIds() },
         asin: { in: asins },
         purchaseDate: { gte: params.dateFrom, lte: params.dateTo },
       },

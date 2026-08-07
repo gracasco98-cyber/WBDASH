@@ -41,7 +41,7 @@ export default function AmazonAccountSelector() {
       >
         <Store size={12} className="text-accent-amber" />
         <span className="hidden sm:inline text-xs text-zinc-300 max-w-[140px] truncate">
-          {selectedAccount?.name ?? "Seleziona account"}
+          {selectedAccount?.name ?? "Tutti gli account"}
         </span>
         <ChevronDown size={11} className={`text-zinc-600 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -52,6 +52,13 @@ export default function AmazonAccountSelector() {
             <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Account Amazon</p>
           </div>
           <div className="py-1 max-h-64 overflow-y-auto">
+            <button
+              onClick={() => { selectAccount(null); setOpen(false); }}
+              className="w-full flex items-center justify-between gap-2 px-3.5 py-2 text-xs text-zinc-300 hover:text-white hover:bg-bg-base/60 transition-colors text-left border-b border-bg-border"
+            >
+              <span className="truncate">Tutti gli account</span>
+              {selectedAccount === null && <Check size={13} className="text-accent-amber shrink-0" />}
+            </button>
             {accounts.map((a) => (
               <button
                 key={a.id}

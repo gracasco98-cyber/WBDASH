@@ -4,7 +4,7 @@
 // Every operation is scoped to the current Amazon account (context/account-context.ts).
 import type { PrismaClient } from "@prisma/client";
 import { toNum } from "../../utils/decimal";
-import { getCurrentAccountId } from "../../context/account-context";
+import { getCurrentAccountId, getCurrentAccountIds } from "../../context/account-context";
 
 /** Converts the Decimal-typed monetary fields on a raw COGS row to plain numbers. */
 function normalizeCogsRow(row: any): any {
@@ -51,7 +51,7 @@ export async function findCogsForAsins(
   const { asins, marketplace } = params;
   const rows = await (prisma as any).amazonProductCogs.findMany({
     where: {
-      amazonAccountId: getCurrentAccountId(),
+      amazonAccountId: { in: getCurrentAccountIds() },
       asin: { in: asins },
       ...(marketplace && marketplace !== "all"
         ? { OR: [{ marketplace }, { marketplace: "ALL" }] }

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { usePeriodFilter } from "@/hooks/usePeriodFilter";
 import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
+import { useAmazonAccount } from "@/hooks/useAmazonAccount";
 import { isAmazonChannel, amazonChannelCode } from "@/components/dashboard/FilterBar";
 import type { PeriodPreset } from "@/context/PeriodContext";
 import { api } from "@/lib/api";
@@ -80,6 +81,13 @@ export default function PeriodTiles() {
   // endpoint: only Amazon channels narrow the scope, everything else is "all".
   const productMarketplace = isAmazonChannel(globalMarketplace) ? (amazonChannelCode(globalMarketplace) ?? "all") : "all";
   const [totals, setTotals] = useState<Partial<Record<PeriodPreset, ProductPerformanceRow | null>>>({});
+  const { selectedAccountId } = useAmazonAccount();
+  // Main dashboard default: when the user hasn't drilled into one specific
+  // Amazon account, sum every active account instead of leaving the tiles
+  // empty (the backend otherwise refuses to guess which account to show —
+  // see amazon-account.middleware.ts). Picking one account from the
+  // selector still narrows these tiles to just that account.
+  const amazonAccountId = selectedAccountId ?? "ALL";
 
   useEffect(() => {
     let cancelled = false;
@@ -88,7 +96,7 @@ export default function PeriodTiles() {
         const results = await Promise.all(
           TILES.map(async ({ preset }) => {
             const { from, to } = presetDateRange(preset);
-            const { groups } = await api.productPerformance.get({ marketplace: productMarketplace, from, to });
+            const { groups } = await api.productPerformance.get({ marketplace: productMarketplace, from, to, amazonAccountId });
             return [preset, sumAggregate(groups.map((g) => g.aggregate))] as const;
           })
         );
@@ -98,7 +106,7 @@ export default function PeriodTiles() {
       }
     })();
     return () => { cancelled = true; };
-  }, [productMarketplace]);
+  }, [productMarketplace, amazonAccountId]);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">

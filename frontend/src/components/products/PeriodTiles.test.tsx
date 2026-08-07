@@ -15,6 +15,11 @@ vi.mock("@/hooks/useMarketplaceFilter", () => ({
   useMarketplaceFilter: () => ({ marketplace: mockMarketplace, setMarketplace: vi.fn() }),
 }));
 
+let mockSelectedAccountId: string | null = null;
+vi.mock("@/hooks/useAmazonAccount", () => ({
+  useAmazonAccount: () => ({ selectedAccountId: mockSelectedAccountId }),
+}));
+
 const mockGet = vi.fn(async (_params: unknown) => ({
   groups: [{
     product: { id: "p1", name: "X", brand: null },
@@ -25,7 +30,7 @@ const mockGet = vi.fn(async (_params: unknown) => ({
 vi.mock("@/lib/api", () => ({ api: { productPerformance: { get: (params: unknown) => mockGet(params) } } }));
 
 describe("PeriodTiles", () => {
-  beforeEach(() => { mockGet.mockClear(); setPreset.mockClear(); mockMarketplace = "all"; });
+  beforeEach(() => { mockGet.mockClear(); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; });
 
   it("fetches 5 fixed presets independently of the active period", async () => {
     render(<PeriodTiles />);
@@ -57,6 +62,23 @@ describe("PeriodTiles", () => {
     expect(mockGet).toHaveBeenCalledTimes(5);
     for (const [params] of mockGet.mock.calls as [any][]) {
       expect(params.marketplace).toBe("DE");
+    }
+  });
+
+  it("requests amazonAccountId=ALL when no account is explicitly selected (dashboard default)", async () => {
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+    for (const [params] of mockGet.mock.calls as [any][]) {
+      expect(params.amazonAccountId).toBe("ALL");
+    }
+  });
+
+  it("requests only the selected account's id once one is chosen from the switcher", async () => {
+    mockSelectedAccountId = "acc-123";
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+    for (const [params] of mockGet.mock.calls as [any][]) {
+      expect(params.amazonAccountId).toBe("acc-123");
     }
   });
 

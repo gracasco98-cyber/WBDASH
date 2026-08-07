@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
 import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
+import { useAmazonAccount } from "@/hooks/useAmazonAccount";
 
 // ─── Section visibility ────────────────────────────────────────────────────────
 type SectionId = "bi_overview" | "charts" | "products";
@@ -134,10 +135,17 @@ export default function DashboardPage() {
   const [productsGroupBy, setProductsGroupBy] = useState<GroupBy>("marketplace");
   const [productGroups, setProductGroups] = useState<ProductPerformanceGroup[]>([]);
 
+  const { selectedAccountId } = useAmazonAccount();
+  // Main dashboard default: aggregate every active Amazon account when the
+  // user hasn't drilled into one specific account (see PeriodTiles.tsx for
+  // the matching change on the tiles above this table, and
+  // amazon-account.middleware.ts for why the backend needs this explicitly).
+  const productsAmazonAccountId = selectedAccountId ?? "ALL";
+
   const fetchProductGroups = useCallback(() => {
     const productMarketplace = isAmazonMp ? (amazonMpCode ?? "all") : "all";
-    return api.productPerformance.get({ marketplace: productMarketplace, from: apiFrom, to: apiTo });
-  }, [isAmazonMp, amazonMpCode, apiFrom, apiTo]);
+    return api.productPerformance.get({ marketplace: productMarketplace, from: apiFrom, to: apiTo, amazonAccountId: productsAmazonAccountId });
+  }, [isAmazonMp, amazonMpCode, apiFrom, apiTo, productsAmazonAccountId]);
 
   // Uncancellable on-demand reload — wired directly to ProductsPerformanceTable's
   // onRenamed/onMoved callbacks (fired outside the effect below, after a mutation
