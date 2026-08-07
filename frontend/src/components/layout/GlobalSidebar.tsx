@@ -42,7 +42,6 @@ const GROUPS: Group[] = [
       { href: "/amazon/cogs", label: "COGS" },
       { href: "/amazon/inventory", label: "Magazzino" },
       { href: "/anagrafiche", label: "Anagrafiche" },
-      { label: "Fornitori", comingSoon: true },
       { label: "Purchase Orders", comingSoon: true },
     ],
   },
