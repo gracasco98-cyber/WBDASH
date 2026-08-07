@@ -1,7 +1,10 @@
 "use client";
 
-import { LayoutGrid, TrendingUp, BarChart2, Activity } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 
+// "chart" | "pl" | "trends" removed from the tab bar for now (unused/unfinished
+// views) — kept in the union so page.tsx's existing render branches for them
+// don't need to change; they're just unreachable until a tab is added back.
 export type DashboardView = "tiles" | "chart" | "pl" | "trends";
 
 interface Props {
@@ -17,9 +20,6 @@ interface TabDef {
 
 const TABS: TabDef[] = [
   { value: "tiles",  label: "Tiles",  Icon: LayoutGrid },
-  { value: "chart",  label: "Chart",  Icon: TrendingUp  },
-  { value: "pl",     label: "P&L",    Icon: BarChart2   },
-  { value: "trends", label: "Trends", Icon: Activity    },
 ];
 
 export default function OverviewViewTabs({ activeView, onChange }: Props) {
