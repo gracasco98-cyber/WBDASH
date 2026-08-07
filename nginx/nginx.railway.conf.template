@@ -30,22 +30,22 @@ http {
              application/javascript application/xml+rss
              application/atom+xml image/svg+xml;
 
-  # ── Upstream services — Railway private network ───────────────────────────
-  upstream backend {
-    server wbdash.railway.internal:3001;
-    keepalive 32;
-  }
-
-  upstream frontend {
-    server frontend.railway.internal:3000;
-    keepalive 32;
-  }
-
   # ── HTTP server ─────────────────────────────────────────────────────────
   # TLS is terminated at Railway's edge proxy; this container only ever
   # receives plain HTTP on the port Railway routes the custom domain to.
   server {
     listen 8080;
+
+    # Railway's private-network hostnames aren't always resolvable the
+    # instant this container boots (the backend/frontend service may still
+    # be deploying). A static `upstream {}` block resolves once at config
+    # load and makes nginx refuse to start if that lookup fails at that
+    # moment. Resolving through a variable instead defers DNS lookup to
+    # request time (cached per `valid=`), so nginx always starts cleanly
+    # and picks up the backend/frontend once they're actually up.
+    resolver ${RESOLVER_IP} valid=5s;
+    set $backend_upstream  http://wbdash.railway.internal:3001;
+    set $frontend_upstream http://frontend.railway.internal:3000;
 
     # ── Security headers ─────────────────────────────────────────────────────
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
@@ -63,7 +63,7 @@ http {
 
     # ── SSE — real-time stream (no buffer, very long timeout) ────────────────
     location /api/sse {
-      proxy_pass         http://backend;
+      proxy_pass         $backend_upstream;
       proxy_http_version 1.1;
       proxy_set_header   Host              $host;
       proxy_set_header   X-Real-IP         $remote_addr;
@@ -78,7 +78,7 @@ http {
 
     # ── Backend: API + webhooks ───────────────────────────────────────────────
     location /api/ {
-      proxy_pass         http://backend;
+      proxy_pass         $backend_upstream;
       proxy_http_version 1.1;
       proxy_set_header   Host              $host;
       proxy_set_header   X-Real-IP         $remote_addr;
@@ -92,7 +92,7 @@ http {
     }
 
     location /webhooks/ {
-      proxy_pass         http://backend;
+      proxy_pass         $backend_upstream;
       proxy_http_version 1.1;
       proxy_set_header   Host              $host;
       proxy_set_header   X-Real-IP         $remote_addr;
@@ -103,14 +103,14 @@ http {
     }
 
     location /health {
-      proxy_pass         http://backend/health;
+      proxy_pass         $backend_upstream/health;
       proxy_set_header   Host $host;
       access_log         off;
     }
 
     # ── Next.js static assets — aggressive cache (content-hashed names) ───────
     location /_next/static/ {
-      proxy_pass         http://frontend;
+      proxy_pass         $frontend_upstream;
       proxy_http_version 1.1;
       proxy_set_header   Host              $host;
       proxy_set_header   X-Real-IP         $remote_addr;
@@ -122,7 +122,7 @@ http {
 
     # ── Frontend: Next.js HTML — never cache (always fresh after deploy) ───────
     location / {
-      proxy_pass         http://frontend;
+      proxy_pass         $frontend_upstream;
       proxy_http_version 1.1;
       proxy_set_header   Host              $host;
       proxy_set_header   X-Real-IP         $remote_addr;
