@@ -973,10 +973,12 @@ model SupplierProductPriceHistory {
 // supplier invoices) with a different documentType. Incremented via a single
 // INSERT...ON CONFLICT...RETURNING statement — see document-sequence.repo.ts.
 model DocumentSequence {
-  id           String @id @default(cuid())
+  id           String   @id @default(cuid())
   documentType String
   year         Int
-  lastValue    Int    @default(0)
+  lastValue    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([documentType, year])
 }
@@ -1034,6 +1036,9 @@ model PurchaseOrder {
   @@index([supplierId])
   @@index([logisticStatus])
   @@index([orderDate])
+  @@index([buyerId])
+  @@index([warehouseId])
+  @@index([paymentTermId])
 }
 
 model PurchaseOrderLine {
@@ -1072,4 +1077,5 @@ model PurchaseOrderStatusHistory {
   note            String?
 
   @@index([purchaseOrderId])
+  @@index([changedById])
 }
