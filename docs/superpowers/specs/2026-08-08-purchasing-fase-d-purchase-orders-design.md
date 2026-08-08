@@ -175,6 +175,7 @@ Rappresentata come `Map<PurchaseOrderLogisticStatus, Set<PurchaseOrderLogisticSt
 - `backend/prisma/schema.prisma` (+ migrazione `prisma migrate dev`, mai `db push`, conferma esplicita utente prima di applicarla)
 - `backend/src/repositories/purchasing/document-sequence.repo.ts`
 - `backend/src/repositories/purchasing/purchase-orders.repo.ts`
+- `backend/src/repositories/purchasing/products.repo.ts` (minimal read-only projection of `Product` for the picker — not the same as `repositories/amazon/product.repo.ts`, which carries full `ProductIdentifier` relations this picker doesn't need)
 - `backend/src/purchasing/purchase-order-state-machine.ts`
 - `backend/src/purchasing/routes/purchase-orders.routes.ts`
 - `backend/src/server.ts` (mount route)
