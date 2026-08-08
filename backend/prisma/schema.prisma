@@ -663,6 +663,8 @@ model User {
   auditLogsInitiated  AuditLog[] @relation("AuditInitiator")
   auditLogsReceived   AuditLog[] @relation("AuditTarget")
   mfaDevices          MfaDevice[]
+  purchaseOrdersAsBuyer      PurchaseOrder[]
+  purchaseOrderStatusChanges PurchaseOrderStatusHistory[]
 
   @@index([email])
   @@index([role])
@@ -755,6 +757,7 @@ model Product {
   updatedAt   DateTime @updatedAt
   identifiers ProductIdentifier[]
   supplierProducts SupplierProduct[]
+  purchaseOrderLines PurchaseOrderLine[]
 
   @@index([status])
 }
@@ -795,6 +798,7 @@ model Warehouse {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  purchaseOrders PurchaseOrder[]
 
   @@index([isActive])
 }
@@ -811,6 +815,7 @@ model PaymentTerm {
   updatedAt     DateTime                     @updatedAt
   installments  PaymentTermInstallmentRule[]
   suppliers     Supplier[]
+  purchaseOrders PurchaseOrder[]
 
   @@index([isActive])
 }
@@ -891,6 +896,7 @@ model Supplier {
 
   contacts        SupplierContact[]
   products        SupplierProduct[]
+  purchaseOrders  PurchaseOrder[]
 
   @@index([isActive])
   @@index([vatNumber])
@@ -957,4 +963,113 @@ model SupplierProductPriceHistory {
   note              String?
 
   @@index([supplierProductId, validFrom])
+}
+
+// ─── Purchasing module — FASE D: purchase orders ───────────────────────────
+// See docs/superpowers/specs/2026-08-08-purchasing-fase-d-purchase-orders-design.md.
+// Company-wide (no amazonAccountId) — same as FASE B/C.
+
+// Generic atomic document numbering, reused by later phases (goods receipts,
+// supplier invoices) with a different documentType. Incremented via a single
+// INSERT...ON CONFLICT...RETURNING statement — see document-sequence.repo.ts.
+model DocumentSequence {
+  id           String @id @default(cuid())
+  documentType String
+  year         Int
+  lastValue    Int    @default(0)
+
+  @@unique([documentType, year])
+}
+
+enum PurchaseOrderLogisticStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  IN_PRODUCTION
+  READY
+  PARTIALLY_SHIPPED
+  SHIPPED
+  PARTIALLY_RECEIVED // not reachable yet — FASE E (goods receipts) adds the transitions into this state
+  RECEIVED           // not reachable yet — FASE E
+  COMPLETED          // not reachable yet — FASE E/G/M
+  CANCELLED
+}
+
+enum PurchaseOrderFinancialStatus {
+  OPEN
+  PARTIALLY_INVOICED // not reachable yet — FASE G (supplier invoices)
+  INVOICED           // not reachable yet — FASE G
+  PARTIALLY_PAID     // not reachable yet — FASE M (payment reconciliation)
+  PAID               // not reachable yet — FASE M
+}
+
+model PurchaseOrder {
+  id                   String                       @id @default(cuid())
+  poNumber             String                       @unique
+  supplierId           String
+  supplier             Supplier                     @relation(fields: [supplierId], references: [id])
+  orderDate            DateTime
+  currency             String
+  logisticStatus       PurchaseOrderLogisticStatus  @default(DRAFT)
+  financialStatus      PurchaseOrderFinancialStatus @default(OPEN)
+  buyerId              String
+  buyer                User                         @relation(fields: [buyerId], references: [id])
+  warehouseId          String
+  warehouse            Warehouse                    @relation(fields: [warehouseId], references: [id])
+  expectedDeliveryDate DateTime?
+  deliveryAddress      String?
+  shippingMethod       String?
+  incoterm             String?
+  paymentTermId        String
+  paymentTerm          PaymentTerm                  @relation(fields: [paymentTermId], references: [id])
+  internalNotes        String?
+  supplierNotes        String?
+  quoteReference       String?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+
+  lines         PurchaseOrderLine[]
+  statusHistory PurchaseOrderStatusHistory[]
+
+  @@index([supplierId])
+  @@index([logisticStatus])
+  @@index([orderDate])
+}
+
+model PurchaseOrderLine {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id])
+  supplierSku     String?
+  description     String
+  orderedQty      Decimal       @db.Decimal(14, 4)
+  receivedQty     Decimal       @default(0) @db.Decimal(14, 4) // written only from FASE E onward; stays 0 here
+  unitOfMeasure   String
+  unitPrice       Decimal       @db.Decimal(14, 4)
+  discountPct     Decimal?      @db.Decimal(5, 2)
+  taxableAmount   Decimal       @db.Decimal(14, 4)
+  vatAmount       Decimal       @db.Decimal(14, 4)
+  totalAmount     Decimal       @db.Decimal(14, 4)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+}
+
+// Append-only — never updated or deleted, one row per status transition.
+model PurchaseOrderStatusHistory {
+  id              String                      @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder               @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  fromStatus      PurchaseOrderLogisticStatus
+  toStatus        PurchaseOrderLogisticStatus
+  changedById     String
+  changedBy       User                        @relation(fields: [changedById], references: [id])
+  changedAt       DateTime                    @default(now())
+  note            String?
+
+  @@index([purchaseOrderId])
 }
