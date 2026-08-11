@@ -75,7 +75,7 @@ const GROUPS: Group[] = [
   {
     key: "admin", label: "ADMIN", icon: Shield,
     items: [
-      { href: "/admin", label: "Gestione utenti" },
+      { href: "/admin/users", label: "Gestione utenti" },
       { href: "/amazon/sync", label: "Sync Center" },
       { href: "/account/security", label: "Sicurezza" },
     ],

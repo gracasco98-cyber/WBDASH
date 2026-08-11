@@ -16,7 +16,10 @@ describe("GlobalSidebar", () => {
   it("renders the Dashboard and Ordini top-level links", () => {
     render(<GlobalSidebar />);
     expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", "/");
-    expect(screen.getByRole("link", { name: /ordini/i })).toHaveAttribute("href", "/ordini");
+    // Exact match (not /ordini/i) — the INVENTORY group's "Ordini Fornitore"
+    // link also contains "Ordini" as a substring, so a case-insensitive
+    // substring regex matches both this top-level link and that one.
+    expect(screen.getByRole("link", { name: "Ordini" })).toHaveAttribute("href", "/ordini");
   });
 
   it("renders the FINANCE, INVENTORY, MARKETING, SUPPORTO, ADMIN group headers", () => {
@@ -39,7 +42,7 @@ describe("GlobalSidebar", () => {
     expect(screen.getByRole("link", { name: "Intelligence" })).toHaveAttribute("href", "/amazon/analytics");
     expect(screen.getByRole("link", { name: "Sync Center" })).toHaveAttribute("href", "/amazon/sync");
     expect(screen.getByRole("link", { name: "Sicurezza" })).toHaveAttribute("href", "/account/security");
-    expect(screen.getByRole("link", { name: /gestione utenti/i })).toHaveAttribute("href", "/admin");
+    expect(screen.getByRole("link", { name: /gestione utenti/i })).toHaveAttribute("href", "/admin/users");
   });
 
   it("renders 'Prossimamente' items as disabled, non-navigating", () => {
