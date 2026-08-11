@@ -64,6 +64,7 @@ import { amazon } from "./amazon";
 import { productPerformance } from "./product-performance";
 import { purchasing } from "./purchasing";
 import { suppliers } from "./suppliers";
+import { purchaseOrders } from "./purchase-orders";
 
 // Compose the `api` object that all callers use via `import { api } from "@/lib/api"`
 export const api = {
@@ -93,4 +94,5 @@ export const api = {
   // ── Purchasing / master data ─────────────────────────────────────────────
   purchasing,
   suppliers,
+  purchaseOrders,
 };
