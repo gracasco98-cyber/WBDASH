@@ -47,7 +47,7 @@ describe("dashboard.repo", () => {
   });
 
   it("counts orders in progress and excludes CANCELLED, sums their value", async () => {
-    const po1 = await createPurchaseOrder(db.prisma, baseOrder(supplierAId));
+    await createPurchaseOrder(db.prisma, baseOrder(supplierAId));
     const po2 = await createPurchaseOrder(db.prisma, baseOrder(supplierAId));
     await transitionPurchaseOrderStatus(db.prisma, po2.id, "CANCELLED", userId);
     const summary = await getDashboardSummary(db.prisma);
@@ -85,11 +85,15 @@ describe("dashboard.repo", () => {
   });
 
   it("lists recent orders newest first with a computed total value", async () => {
-    await createPurchaseOrder(db.prisma, baseOrder(supplierAId));
+    const older = { ...baseOrder(supplierAId), orderDate: new Date("2026-01-01") };
+    const newer = { ...baseOrder(supplierBId), orderDate: new Date("2026-06-01") };
+    await createPurchaseOrder(db.prisma, older);
+    await createPurchaseOrder(db.prisma, newer);
     const summary = await getDashboardSummary(db.prisma);
-    expect(summary.recentOrders).toHaveLength(1);
+    expect(summary.recentOrders).toHaveLength(2);
+    expect(summary.recentOrders[0].supplierName).toBe("Fornitore B");
+    expect(summary.recentOrders[1].supplierName).toBe("Fornitore A");
     expect(summary.recentOrders[0].totalValue).toBe(61);
-    expect(summary.recentOrders[0].supplierName).toBe("Fornitore A");
   });
 
   it("returns a fully-populated, empty-but-valid summary on an empty database", async () => {
