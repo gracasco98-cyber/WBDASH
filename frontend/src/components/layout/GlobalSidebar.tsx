@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, ShoppingCart, Wallet, Boxes, Megaphone, LifeBuoy, Shield,
+  LayoutDashboard, ShoppingCart, ShoppingBag, Wallet, Boxes, Megaphone, LifeBuoy, Shield,
   ChevronDown,
 } from "lucide-react";
 
@@ -41,8 +41,20 @@ const GROUPS: Group[] = [
     items: [
       { href: "/amazon/cogs", label: "COGS" },
       { href: "/amazon/inventory", label: "Magazzino" },
-      { href: "/anagrafiche", label: "Anagrafiche" },
+    ],
+  },
+  {
+    key: "acquisti", label: "ACQUISTI", icon: ShoppingBag,
+    items: [
+      { href: "/acquisti/fornitori", label: "Fornitori" },
       { href: "/acquisti/ordini", label: "Ordini Fornitore" },
+      { label: "Ricezioni / DDT", comingSoon: true },
+      { label: "Fatture Fornitore", comingSoon: true },
+      { href: "/acquisti/magazzini", label: "Magazzini" },
+      { href: "/acquisti/banche", label: "Banche" },
+      { href: "/acquisti/condizioni-pagamento", label: "Condizioni pagamento" },
+      { label: "Scadenzario", comingSoon: true },
+      { label: "Prima Nota", comingSoon: true },
     ],
   },
   {
@@ -89,7 +101,7 @@ function isHrefActive(pathname: string, href: string): boolean {
 export default function GlobalSidebar() {
   const pathname = usePathname();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    finance: true, inventory: true, marketing: true, supporto: true, admin: true,
+    finance: true, inventory: true, acquisti: true, marketing: true, supporto: true, admin: true,
   });
 
   const toggle = (key: string) => setOpenGroups(g => ({ ...g, [key]: !g[key] }));

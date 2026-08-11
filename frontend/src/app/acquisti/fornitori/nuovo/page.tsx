@@ -14,7 +14,7 @@ export default function NuovoFornitorePage() {
       paymentDays: form.paymentDays ? Number(form.paymentDays) : null,
       defaultPaymentMethod: form.defaultPaymentMethod || null,
     });
-    router.push(`/anagrafiche/fornitori/${supplier.id}`);
+    router.push(`/acquisti/fornitori/${supplier.id}`);
   };
 
   return (

@@ -15,7 +15,7 @@ export default function FornitoriTab() {
       <div className="flex justify-between items-center px-4 py-3 border-b border-bg-border">
         <span className="text-xs text-zinc-500">{rows.length} fornitori</span>
         <Link
-          href="/anagrafiche/fornitori/nuovo"
+          href="/acquisti/fornitori/nuovo"
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/20 text-accent-primary text-xs font-medium hover:bg-accent-primary/20 transition-colors"
         >
           <Plus size={13} /> Nuovo Fornitore
@@ -32,7 +32,7 @@ export default function FornitoriTab() {
           {rows.map(r => (
             <tr key={r.id} className="border-b border-bg-border/40 text-zinc-300 hover:bg-bg-hover/50">
               <td className="px-3 py-2.5">
-                <Link href={`/anagrafiche/fornitori/${r.id}`} className="font-mono text-accent-primary hover:underline">{r.internalCode}</Link>
+                <Link href={`/acquisti/fornitori/${r.id}`} className="font-mono text-accent-primary hover:underline">{r.internalCode}</Link>
               </td>
               <td className="px-3 py-2.5">{r.legalName}</td>
               <td className="px-3 py-2.5">{r.supplierType}</td>
