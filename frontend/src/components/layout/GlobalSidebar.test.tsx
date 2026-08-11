@@ -39,7 +39,7 @@ describe("GlobalSidebar", () => {
     expect(screen.getByRole("link", { name: "Intelligence" })).toHaveAttribute("href", "/amazon/analytics");
     expect(screen.getByRole("link", { name: "Sync Center" })).toHaveAttribute("href", "/amazon/sync");
     expect(screen.getByRole("link", { name: "Sicurezza" })).toHaveAttribute("href", "/account/security");
-    expect(screen.getByRole("link", { name: /gestione utenti/i })).toHaveAttribute("href", "/admin");
+    expect(screen.getByRole("link", { name: /gestione utenti/i })).toHaveAttribute("href", "/admin/users");
   });
 
   it("renders 'Prossimamente' items as disabled, non-navigating", () => {
