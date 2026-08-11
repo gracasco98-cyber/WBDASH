@@ -2,6 +2,7 @@
 // Acquisti/Amministrazione dashboard. Company-wide, no amazonAccountId.
 // Read-only: no writes, safe to call as often as the frontend needs.
 import type { PrismaClient, PurchaseOrderLogisticStatus } from "@prisma/client";
+import { italyDayStart } from "../../amazon/utils/datetime";
 
 const REACHABLE_STATUSES: PurchaseOrderLogisticStatus[] = [
   "DRAFT", "SENT", "CONFIRMED", "IN_PRODUCTION", "READY", "PARTIALLY_SHIPPED", "SHIPPED", "CANCELLED",
@@ -43,10 +44,16 @@ export interface DashboardSummary {
   recentOrders: RecentOrderEntry[];
 }
 
+const ORDERS_OVER_TIME_DAYS = 30;
+
 export async function getDashboardSummary(prisma: PrismaClient): Promise<DashboardSummary> {
+  const now = new Date();
+  const todayStart = italyDayStart(now);
+  const rangeStart = new Date(todayStart.getTime() - (ORDERS_OVER_TIME_DAYS - 1) * 86400000);
+
   const [
     ordersInProgress, valueAgg, activeSuppliers, statusGroups,
-    timeSeriesRaw, topSuppliersRaw, recentOrdersRaw,
+    ordersInRange, topSuppliersRaw, recentOrdersRaw,
   ] = await Promise.all([
     prisma.purchaseOrder.count({ where: { logisticStatus: { not: "CANCELLED" } } }),
     prisma.purchaseOrderLine.aggregate({
@@ -55,13 +62,14 @@ export async function getDashboardSummary(prisma: PrismaClient): Promise<Dashboa
     }),
     prisma.supplier.count({ where: { isActive: true } }),
     prisma.purchaseOrder.groupBy({ by: ["logisticStatus"], _count: { id: true } }),
-    prisma.$queryRaw<{ date: string; count: number }[]>`
-      SELECT TO_CHAR("orderDate", 'YYYY-MM-DD') AS date, COUNT(*)::int AS count
-      FROM "PurchaseOrder"
-      WHERE "orderDate" >= NOW() - INTERVAL '30 days'
-      GROUP BY TO_CHAR("orderDate", 'YYYY-MM-DD')
-      ORDER BY date ASC
-    `,
+    // Bucketed in JS (below), not SQL — see bucketByItalyDay for why: SQL
+    // TO_CHAR resolves in the Postgres session timezone, which can silently
+    // diverge from Italy time (CLAUDE.md requires italyDayStart() for any
+    // date-bucketing, precisely to avoid this class of drift).
+    prisma.purchaseOrder.findMany({
+      where: { orderDate: { gte: rangeStart } },
+      select: { orderDate: true },
+    }),
     prisma.$queryRaw<{ supplierId: string; legalName: string; orderCount: number; totalValue: number }[]>`
       SELECT s.id AS "supplierId", s."legalName" AS "legalName",
              COUNT(DISTINCT po.id)::int AS "orderCount",
@@ -100,22 +108,31 @@ export async function getDashboardSummary(prisma: PrismaClient): Promise<Dashboa
     valueInProgress: Number(valueAgg._sum.totalAmount ?? 0),
     activeSuppliers,
     statusBreakdown,
-    ordersOverTime: padDailySeries(timeSeriesRaw, 30),
+    ordersOverTime: bucketByItalyDay(ordersInRange.map((o) => o.orderDate), todayStart, ORDERS_OVER_TIME_DAYS),
     topSuppliers: topSuppliersRaw,
     recentOrders,
   };
 }
 
-/** Fills every missing day in the last `days` days with count=0, so the chart is a continuous series, never sparse. */
-function padDailySeries(raw: { date: string; count: number }[], days: number): OrdersOverTimePoint[] {
-  const map = new Map(raw.map((r) => [r.date, r.count]));
+/**
+ * Buckets `dates` into Italy-local calendar days and zero-pads every missing
+ * day in the last `days` days, so the chart is a continuous series, never
+ * sparse. Both the bucket key for each order and the target day boundaries
+ * are computed with the same italyDayStart() call (per CLAUDE.md's shared-
+ * helper rule for date-related code), so a key always matches a boundary —
+ * no timezone drift between "which day did this order land on" and "which
+ * days does the chart expect."
+ */
+function bucketByItalyDay(dates: Date[], todayStart: Date, days: number): OrdersOverTimePoint[] {
+  const counts = new Map<number, number>();
+  for (const date of dates) {
+    const key = italyDayStart(date).getTime();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
   const result: OrdersOverTimePoint[] = [];
-  const today = new Date();
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
-    result.push({ date: key, count: map.get(key) ?? 0 });
+    const dayStart = new Date(todayStart.getTime() - i * 86400000);
+    result.push({ date: dayStart.toISOString().slice(0, 10), count: counts.get(dayStart.getTime()) ?? 0 });
   }
   return result;
 }
