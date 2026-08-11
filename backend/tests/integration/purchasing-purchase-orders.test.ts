@@ -66,6 +66,13 @@ describe("purchase-orders routes", () => {
     expect(res.status).toBe(400);
   });
 
+  it("POST rejects a line missing totalAmount with 400, not a 500 from NaN", async () => {
+    const body = baseBody();
+    delete (body.lines[0] as any).totalAmount;
+    const res = await request(app).post("/api/purchasing/purchase-orders").send(body);
+    expect(res.status).toBe(400);
+  });
+
   it("GET :id returns 404 for an unknown id", async () => {
     const res = await request(app).get("/api/purchasing/purchase-orders/does-not-exist");
     expect(res.status).toBe(404);

@@ -60,8 +60,13 @@ purchaseOrdersRouter.post("/purchase-orders", async (req: Request, res: Response
       return res.status(400).json({ error: "At least one line is required" });
     }
     for (const l of lines as LineInput[]) {
-      if (!l.productId || !l.description || !l.orderedQty || !l.unitOfMeasure || l.unitPrice === undefined) {
-        return res.status(400).json({ error: "Each line requires productId, description, orderedQty, unitOfMeasure, unitPrice" });
+      if (
+        !l.productId || !l.description || !l.orderedQty || !l.unitOfMeasure || l.unitPrice === undefined ||
+        l.taxableAmount === undefined || l.vatAmount === undefined || l.totalAmount === undefined
+      ) {
+        return res.status(400).json({
+          error: "Each line requires productId, description, orderedQty, unitOfMeasure, unitPrice, taxableAmount, vatAmount, totalAmount",
+        });
       }
     }
     const po = await createPurchaseOrder(prisma, {
