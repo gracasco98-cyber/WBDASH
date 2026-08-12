@@ -31,11 +31,11 @@ export default function StatusBreakdownChart({ data }: Props) {
       ) : (
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
-            <CartesianGrid stroke="#1e1e2e" strokeDasharray="4 4" horizontal={false} />
-            <XAxis type="number" tick={{ fill: "#52525b", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} allowDecimals={false} />
-            <YAxis type="category" dataKey="status" tick={{ fill: "#a1a1aa", fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
-            <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(110,231,183,0.06)" }} />
-            <Bar dataKey="count" fill="#6ee7b7" radius={[0, 4, 4, 0]} maxBarSize={20} />
+            <CartesianGrid stroke="var(--bg-border)" strokeDasharray="4 4" horizontal={false} />
+            <XAxis type="number" tick={{ fill: "var(--text-secondary)", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} allowDecimals={false} />
+            <YAxis type="category" dataKey="status" tick={{ fill: "var(--text-secondary)", fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
+            <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(5,150,105,0.06)" }} />
+            <Bar dataKey="count" fill="#059669" radius={[0, 4, 4, 0]} maxBarSize={20} />
           </BarChart>
         </ResponsiveContainer>
       )}

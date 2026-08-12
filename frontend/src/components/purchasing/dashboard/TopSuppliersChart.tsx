@@ -1,6 +1,7 @@
 "use client";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { formatEUR } from "@/lib/marketplaces";
+import { useTheme } from "@/components/ThemeProvider";
 import type { TopSupplierEntry } from "@/lib/api/acquisti-dashboard";
 
 interface Props { data: TopSupplierEntry[] }
@@ -16,6 +17,8 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function TopSuppliersChart({ data }: Props) {
+  const { theme } = useTheme();
+  const blueHex = theme === "dark" ? "#3987e5" : "#2a78d6";
   return (
     <div className="rounded-xl border border-bg-border bg-bg-card p-3 sm:p-5">
       <h2 className="text-sm font-semibold text-white mb-4">Top fornitori per valore ordini</h2>
@@ -24,12 +27,12 @@ export default function TopSuppliersChart({ data }: Props) {
       ) : (
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
-            <CartesianGrid stroke="#1e1e2e" strokeDasharray="4 4" horizontal={false} />
-            <XAxis type="number" tick={{ fill: "#52525b", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false}
+            <CartesianGrid stroke="var(--bg-border)" strokeDasharray="4 4" horizontal={false} />
+            <XAxis type="number" tick={{ fill: "var(--text-secondary)", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false}
               tickFormatter={(v) => `€${(v / 1000).toFixed(1)}k`} />
-            <YAxis type="category" dataKey="legalName" tick={{ fill: "#a1a1aa", fontSize: 11 }} axisLine={false} tickLine={false} width={110} />
-            <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(96,165,250,0.06)" }} />
-            <Bar dataKey="totalValue" fill="#60a5fa" radius={[0, 4, 4, 0]} maxBarSize={20} />
+            <YAxis type="category" dataKey="legalName" tick={{ fill: "var(--text-secondary)", fontSize: 11 }} axisLine={false} tickLine={false} width={110} />
+            <Tooltip content={<ChartTooltip />} cursor={{ fill: `${blueHex}0f` }} />
+            <Bar dataKey="totalValue" fill={blueHex} radius={[0, 4, 4, 0]} maxBarSize={20} />
           </BarChart>
         </ResponsiveContainer>
       )}
