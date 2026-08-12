@@ -19,6 +19,17 @@
   --scrollbar-track:  #0a0a0f;
   --scrollbar-thumb:  #2a2a3e;
   --scrollbar-thumb-hover: #3a3a5e;
+
+  /* Accent colors — RGB triplets (not hex) so Tailwind's <alpha-value>
+     mechanism can drive text/bg/border opacity variants from one source.
+     See docs/superpowers/specs/2026-08-12-color-redesign-foundation-design.md
+     §2bis — validated with the dataviz skill's palette validator, not
+     chosen by eye. Primary is mode-invariant (same triplet in both themes). */
+  --accent-primary-rgb: 5, 150, 105;    /* #059669 */
+  --accent-blue-rgb:    57, 135, 229;   /* #3987e5 */
+  --accent-amber-rgb:   181, 165, 0;    /* #b5a500 */
+  --accent-red-rgb:     230, 103, 103;  /* #e66767 */
+  --accent-purple-rgb:  144, 133, 233;  /* #9085e9 */
 }
 
 [data-theme="light"] {
@@ -31,6 +42,14 @@
   --scrollbar-track:  #f5f6fa;
   --scrollbar-thumb:  #c7c9d9;
   --scrollbar-thumb-hover: #9395a8;
+
+  /* Accent colors — light-mode RGB triplets. Primary matches :root exactly
+     (mode-invariant); blue/amber/red/purple differ — see design doc §2. */
+  --accent-primary-rgb: 5, 150, 105;    /* #059669 */
+  --accent-blue-rgb:    42, 120, 214;   /* #2a78d6 */
+  --accent-amber-rgb:   237, 161, 0;    /* #eda100 */
+  --accent-red-rgb:     227, 73, 72;    /* #e34948 */
+  --accent-purple-rgb:  124, 58, 237;   /* #7c3aed */
 }
 
 * { box-sizing: border-box; }
@@ -247,13 +266,6 @@ body {
 /* Purple */
 [data-theme="light"] .bg-purple-500\/15 { background-color: #ede9fe !important; }
 [data-theme="light"] .text-purple-400   { color: #7c3aed !important; }
-
-/* ── Accent colors vividi (non pastello) ─────────────────────────────────────── */
-[data-theme="light"] .text-accent-primary   { color: #059669 !important; }   /* verde saturato */
-[data-theme="light"] .text-accent-secondary { color: #7c3aed !important; }
-[data-theme="light"] .text-accent-amber     { color: #d97706 !important; }
-[data-theme="light"] .text-accent-red       { color: #dc2626 !important; }
-[data-theme="light"] .text-accent-blue      { color: #1d4ed8 !important; }   /* blu vivido */
 
 /* ── Info / warning / success banners ────────────────────────────────────────── */
 [data-theme="light"] .bg-blue-500\/5  { background-color: #eff6ff !important; }

@@ -15,11 +15,11 @@ module.exports = {
           border: "var(--bg-border)",
         },
         accent: {
-          primary: "#6ee7b7",
-          blue:    "#60a5fa",
-          amber:   "#fbbf24",
-          red:     "#f87171",
-          purple:  "#a78bfa",
+          primary: "rgb(var(--accent-primary-rgb) / <alpha-value>)",
+          blue:    "rgb(var(--accent-blue-rgb) / <alpha-value>)",
+          amber:   "rgb(var(--accent-amber-rgb) / <alpha-value>)",
+          red:     "rgb(var(--accent-red-rgb) / <alpha-value>)",
+          purple:  "rgb(var(--accent-purple-rgb) / <alpha-value>)",
         },
       },
       animation: {
