@@ -32,17 +32,17 @@ export default function OrdersOverTimeChart({ data }: Props) {
           <AreaChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="gradOrdersOverTime" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#6ee7b7" stopOpacity={0.3} />
-                <stop offset="100%" stopColor="#6ee7b7" stopOpacity={0} />
+                <stop offset="0%" stopColor="#059669" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#059669" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="#1e1e2e" strokeDasharray="4 4" vertical={false} />
-            <XAxis dataKey="date" tick={{ fill: "#52525b", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false}
+            <CartesianGrid stroke="var(--bg-border)" strokeDasharray="4 4" vertical={false} />
+            <XAxis dataKey="date" tick={{ fill: "var(--text-secondary)", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false}
               interval="preserveStartEnd" tickFormatter={formatDay} />
-            <YAxis tick={{ fill: "#52525b", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
-            <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#2a2a3e", strokeWidth: 1 }} />
-            <Area type="monotone" dataKey="count" stroke="#6ee7b7" strokeWidth={2} fill="url(#gradOrdersOverTime)"
-              dot={false} activeDot={{ r: 4, fill: "#6ee7b7", stroke: "#0a0a0f", strokeWidth: 2 }} />
+            <YAxis tick={{ fill: "var(--text-secondary)", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
+            <Tooltip content={<ChartTooltip />} cursor={{ stroke: "var(--bg-border)", strokeWidth: 1 }} />
+            <Area type="monotone" dataKey="count" stroke="#059669" strokeWidth={2} fill="url(#gradOrdersOverTime)"
+              dot={false} activeDot={{ r: 4, fill: "#059669", stroke: "var(--bg-base)", strokeWidth: 2 }} />
           </AreaChart>
         </ResponsiveContainer>
       )}
