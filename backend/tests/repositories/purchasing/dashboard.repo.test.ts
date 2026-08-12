@@ -74,6 +74,15 @@ describe("dashboard.repo", () => {
     expect(summary.ordersOverTime[29].count).toBe(1);
   });
 
+  it("labels the last time-series bucket with today's actual Italy calendar date, not yesterday's", async () => {
+    const summary = await getDashboardSummary(db.prisma);
+    // Independent check via Intl, not the repo's own italyDayStart/italyOffsetMs
+    // helpers — a regression that mis-labels by one day should fail this even
+    // if it happens to agree with a bug in those helpers.
+    const expectedLabel = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+    expect(summary.ordersOverTime[29].date).toBe(expectedLabel);
+  });
+
   it("ranks top suppliers by order value, descending", async () => {
     await createPurchaseOrder(db.prisma, baseOrder(supplierAId, 100));
     await createPurchaseOrder(db.prisma, baseOrder(supplierBId, 1));

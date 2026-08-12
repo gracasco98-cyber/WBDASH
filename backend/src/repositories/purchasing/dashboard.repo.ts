@@ -2,7 +2,7 @@
 // Acquisti/Amministrazione dashboard. Company-wide, no amazonAccountId.
 // Read-only: no writes, safe to call as often as the frontend needs.
 import type { PrismaClient, PurchaseOrderLogisticStatus } from "@prisma/client";
-import { italyDayStart } from "../../amazon/utils/datetime";
+import { italyDayStart, italyOffsetMs } from "../../amazon/utils/datetime";
 
 const REACHABLE_STATUSES: PurchaseOrderLogisticStatus[] = [
   "DRAFT", "SENT", "CONFIRMED", "IN_PRODUCTION", "READY", "PARTIALLY_SHIPPED", "SHIPPED", "CANCELLED",
@@ -132,7 +132,20 @@ function bucketByItalyDay(dates: Date[], todayStart: Date, days: number): Orders
   const result: OrdersOverTimePoint[] = [];
   for (let i = days - 1; i >= 0; i--) {
     const dayStart = new Date(todayStart.getTime() - i * 86400000);
-    result.push({ date: dayStart.toISOString().slice(0, 10), count: counts.get(dayStart.getTime()) ?? 0 });
+    result.push({ date: italyDayLabel(dayStart), count: counts.get(dayStart.getTime()) ?? 0 });
   }
   return result;
+}
+
+/**
+ * Formats the Italy calendar date (YYYY-MM-DD) for a `dayStart` instant
+ * produced by italyDayStart(). italyDayStart(now) for "today" resolves to
+ * 22:00 or 23:00 UTC on the *previous* UTC calendar day (Italy midnight is
+ * always late evening UTC) — so naively formatting that instant with
+ * toISOString() labels the bucket with yesterday's date instead of today's.
+ * Adding the Italy offset back shifts the instant to the wall-clock date it
+ * actually represents in Italy before formatting.
+ */
+function italyDayLabel(dayStart: Date): string {
+  return new Date(dayStart.getTime() + italyOffsetMs()).toISOString().slice(0, 10);
 }
