@@ -26,6 +26,21 @@ interface Group {
 
 const GROUPS: Group[] = [
   {
+    key: "amministrazione", label: "AMMINISTRAZIONE", icon: ShoppingBag,
+    items: [
+      { href: "/acquisti", label: "Panoramica" },
+      { href: "/acquisti/fornitori", label: "Fornitori" },
+      { href: "/acquisti/ordini", label: "Ordini Fornitore" },
+      { label: "Ricezioni / DDT", comingSoon: true },
+      { label: "Fatture Fornitore", comingSoon: true },
+      { href: "/acquisti/magazzini", label: "Magazzini" },
+      { href: "/acquisti/banche", label: "Banche" },
+      { href: "/acquisti/condizioni-pagamento", label: "Condizioni pagamento" },
+      { label: "Scadenzario", comingSoon: true },
+      { label: "Prima Nota", comingSoon: true },
+    ],
+  },
+  {
     key: "finance", label: "FINANCE", icon: Wallet,
     items: [
       { href: "/amazon", label: "Overview" },
@@ -41,20 +56,6 @@ const GROUPS: Group[] = [
     items: [
       { href: "/amazon/cogs", label: "COGS" },
       { href: "/amazon/inventory", label: "Magazzino" },
-    ],
-  },
-  {
-    key: "acquisti", label: "ACQUISTI", icon: ShoppingBag,
-    items: [
-      { href: "/acquisti/fornitori", label: "Fornitori" },
-      { href: "/acquisti/ordini", label: "Ordini Fornitore" },
-      { label: "Ricezioni / DDT", comingSoon: true },
-      { label: "Fatture Fornitore", comingSoon: true },
-      { href: "/acquisti/magazzini", label: "Magazzini" },
-      { href: "/acquisti/banche", label: "Banche" },
-      { href: "/acquisti/condizioni-pagamento", label: "Condizioni pagamento" },
-      { label: "Scadenzario", comingSoon: true },
-      { label: "Prima Nota", comingSoon: true },
     ],
   },
   {
@@ -101,7 +102,7 @@ function isHrefActive(pathname: string, href: string): boolean {
 export default function GlobalSidebar() {
   const pathname = usePathname();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    finance: true, inventory: true, acquisti: true, marketing: true, supporto: true, admin: true,
+    amministrazione: true, finance: true, inventory: true, marketing: true, supporto: true, admin: true,
   });
 
   const toggle = (key: string) => setOpenGroups(g => ({ ...g, [key]: !g[key] }));

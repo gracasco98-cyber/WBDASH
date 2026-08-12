@@ -16,9 +16,10 @@ describe("GlobalSidebar", () => {
   it("renders the Dashboard and Ordini top-level links", () => {
     render(<GlobalSidebar />);
     expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", "/");
-    // Exact match (not /ordini/i) — the INVENTORY group's "Ordini Fornitore"
-    // link also contains "Ordini" as a substring, so a case-insensitive
-    // substring regex matches both this top-level link and that one.
+    // Exact match (not /ordini/i) — the AMMINISTRAZIONE group's "Ordini
+    // Fornitore" link also contains "Ordini" as a substring, so a
+    // case-insensitive substring regex matches both this top-level link and
+    // that one.
     expect(screen.getByRole("link", { name: "Ordini" })).toHaveAttribute("href", "/ordini");
   });
 
@@ -29,6 +30,12 @@ describe("GlobalSidebar", () => {
     expect(screen.getByText("MARKETING")).toBeInTheDocument();
     expect(screen.getByText("SUPPORTO")).toBeInTheDocument();
     expect(screen.getByText("ADMIN")).toBeInTheDocument();
+  });
+
+  it("renders the AMMINISTRAZIONE group with a Panoramica link to /acquisti", () => {
+    render(<GlobalSidebar />);
+    expect(screen.getByText("AMMINISTRAZIONE")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Panoramica" })).toHaveAttribute("href", "/acquisti");
   });
 
   it("links P&L, Pagamenti, COGS, Magazzino, Advertising, Intelligence, Sync Center, Sicurezza to their existing unchanged URLs", () => {
