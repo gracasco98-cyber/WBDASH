@@ -33,6 +33,24 @@ Note tecniche verificate:
 - L'ambra scura (`#b5a500`, L≈0.713) è **leggermente sopra** il limite tecnico della banda scura (0.67) — scelta deliberata: mantenendola più chiara si perde la separazione dal rosso sotto simulazione di daltonismo (fallisce il floor di sicurezza a "distinguibile anche a vista normale", ΔE<15); a `#b5a500` quella separazione è ampiamente superata (ΔE 20.3) al costo di un'uscita minima (+0.04) dalla banda raccomandata. La palette scura attuale (pre-redesign) era comunque molto più fuori banda su tutti e 5 i colori (fino a L=0.845) — questo è un miglioramento netto anche con l'eccezione.
 - Ambra chiara (`#eda100`) ha un contrasto marginale (~2.1:1) se usata come sfondo pieno di badge — mitigato dal fatto che, verificato nel codice reale, `text-accent-amber` è **sempre** accompagnato da icona e/o testo descrittivo (mai un blocco di colore isolato), coerente con la regola della skill per i colori di stato ("mai il colore da solo a veicolare significato").
 
+## 2bis. Addendum — meccanismo colore riscritto (approvato dopo la scoperta di un terzo bug)
+
+Verificando come Tailwind compila le classi `bg-accent-*/NN` e `border-accent-*/NN` (165 usi nel frontend, non solo nei file di questa fase), è emerso che **oggi non esiste alcun meccanismo che le adatti al tema chiaro** — a differenza di `text-accent-*` (che ha un override dedicato), Tailwind "cuoce" il colore scuro fisso dentro ogni classe con opacità al momento della build. Risultato: ogni badge colorato in tema chiaro ha probabilmente testo corretto ma sfondo/bordo ancora scuro.
+
+Confermato con l'utente: **fix strutturale ora**, non solo il minimo approvato in §2. Il meccanismo passa da hex fissi in `tailwind.config.js` a variabili CSS RGB (pattern standard Tailwind `rgb(var(--x-rgb) / <alpha-value>)`), così un'unica definizione per tema copre automaticamente testo+sfondo+bordo+qualunque opacità, senza toccare i 165 punti d'uso nel resto dell'app. Il blocco `.text-accent-*` manuale (incluso il bug del §3.2) diventa **ridondante e va rimosso** — il meccanismo lo sostituisce interamente.
+
+Valori RGB (calcolati programmaticamente dagli hex del §2, non a mano):
+
+| Token | Scuro (`:root`) | Chiaro (`[data-theme="light"]`) |
+|---|---|---|
+| `--accent-primary-rgb` | `5, 150, 105` | `5, 150, 105` (invariato) |
+| `--accent-blue-rgb` | `57, 135, 229` | `42, 120, 214` |
+| `--accent-amber-rgb` | `181, 165, 0` | `237, 161, 0` |
+| `--accent-red-rgb` | `230, 103, 103` | `227, 73, 72` |
+| `--accent-purple-rgb` | `144, 133, 233` | `124, 58, 237` |
+
+Verificato con una build Tailwind reale isolata (non solo per lettura) che il pattern compila correttamente sia con che senza modificatore di opacità, prima di includerlo nel piano.
+
 ## 3. Bug trovati e da correggere in questa fase
 
 1. **`KpiCard.tsx` — `accentMap` con colori sbagliati**: le etichette (`green`/`blue`/`purple`/`amber`/`red`) sono corrette ma i valori hex/rgb sono **tutti** tonalità oro/giallo (`#FFC300`, `#ECCB08`, `#F5E080`, `#D4AF00`, `#F4B400`) indipendentemente dall'etichetta — quindi il bagliore d'angolo e lo sfondo dell'icona di ogni KPI card sono sempre giallastri, mentre solo il valore numerico grande (che usa la classe Tailwind `cls`, corretta) mostra il colore giusto. Corretto mappando ogni etichetta al vero hex della palette (§2).
@@ -40,9 +58,9 @@ Note tecniche verificate:
 
 ## 4. File coinvolti in questa fase
 
-**Fondamenta (fonte di verità, cambia tutto ciò che usa già le classi `text-accent-*`/`bg-accent-*`/`border-accent-*` in tutta l'app, senza toccare quei file):**
-- `frontend/tailwind.config.js` — nuovi valori scuri (base) per `accent.primary/blue/amber/red/purple`.
-- `frontend/src/app/globals.css` — nuovi valori chiari nel blocco `[data-theme="light"] .text-accent-*` (righe 251-256 circa), + fix del nome classe viola (§3.2).
+**Fondamenta (fonte di verità, cambia tutto ciò che usa già le classi `text-accent-*`/`bg-accent-*`/`border-accent-*` in tutta l'app, senza toccare quei file — vedi §2bis):**
+- `frontend/tailwind.config.js` — `accent.primary/blue/amber/red/purple` da hex fissi a `rgb(var(--accent-*-rgb) / <alpha-value>)`.
+- `frontend/src/app/globals.css` — nuove variabili `--accent-*-rgb` in `:root` (scuro) e `[data-theme="light"]` (chiaro); rimosso il blocco `.text-accent-*` manuale (righe 251-256, ridondante col nuovo meccanismo, include il bug §3.2).
 
 **Shell globale:**
 - `frontend/src/components/dashboard/KpiCard.tsx` — fix `accentMap` (§3.1); struttura aggiornata a coppie `{light, dark}` per hex/rgb (oggi un solo valore condiviso tra i due temi, sbagliato per blu/ambra/rosso/viola che *non* sono mode-invariant — solo il verde lo è).
