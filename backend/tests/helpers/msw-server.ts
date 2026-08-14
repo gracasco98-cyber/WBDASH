@@ -109,12 +109,18 @@ export const shopifyMocks = {
       async () => HttpResponse.error(),
     ),
 
-  /** productVariants(query: "sku:...") — usato da findVariantIdBySku */
+  /**
+   * productVariants(query: "sku:...") — usato da findVariantIdBySku.
+   * Discrimina sul testo della query GraphQL (non solo sull'URL, condiviso da
+   * tutte le operazioni Shopify) così può convivere con altri handler (es.
+   * orderCreate) registrati nello stesso test — vedi nota su orderCreate sotto.
+   */
   variantBySku: (skuToVariantId: Record<string, string>) =>
     http.post(
       /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
       async ({ request }) => {
-        const body: any = await request.json();
+        const body: any = await request.clone().json();
+        if (!body?.query?.includes("productVariants")) return; // non è mio: passa al prossimo handler
         const query: string = body.variables?.query ?? "";
         const sku = query.replace("sku:", "");
         const variantId = skuToVariantId[sku];
@@ -128,19 +134,31 @@ export const shopifyMocks = {
       },
     ),
 
-  /** orderCreate mutation */
+  /**
+   * orderCreate mutation.
+   * Discrimina sul testo della query GraphQL: tutte le operazioni Shopify
+   * passano dallo stesso endpoint REST, quindi senza questo controllo un
+   * handler orderCreate registrato dopo un handler variantBySku (es. mirakl
+   * sync: cerca la variante, poi crea l'ordine) intercetterebbe per priorità
+   * anche la richiesta di lookup variante (MSW dà priorità all'handler
+   * registrato più di recente). Ritornando `undefined` quando la richiesta
+   * non è una orderCreate, MSW passa al prossimo handler compatibile.
+   */
   orderCreate: (result: { id: string; name: string } | { userErrors: Array<{ field: string[]; message: string }> }) =>
     http.post(
       /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
-      async () =>
-        HttpResponse.json({
+      async ({ request }) => {
+        const body: any = await request.clone().json();
+        if (!body?.query?.includes("orderCreate")) return; // non è mio: passa al prossimo handler
+        return HttpResponse.json({
           data: {
             orderCreate:
               "id" in result
                 ? { order: result, userErrors: [] }
                 : { order: null, userErrors: result.userErrors },
           },
-        }),
+        });
+      },
     ),
 };
 
