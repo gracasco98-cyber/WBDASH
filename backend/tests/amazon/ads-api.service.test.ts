@@ -18,11 +18,15 @@ import { fetchSPAdvertisedProductReport } from "../../src/amazon/ads-api.service
 import { gzipSync } from "zlib";
 
 describe("fetchSPAdvertisedProductReport", () => {
+  let capturedHeaders: Record<string, string> | undefined;
+
   beforeEach(() => {
+    capturedHeaders = undefined;
     let call = 0;
     global.fetch = vi.fn(async (url: string, opts?: any) => {
       call++;
       if (String(url).includes("/reporting/reports") && opts?.method === "POST") {
+        if (!capturedHeaders) capturedHeaders = opts?.headers;
         return new Response(JSON.stringify({ reportId: "report-abc" }), { status: 200 });
       }
       if (String(url).includes("/reporting/reports/report-abc")) {
@@ -49,5 +53,6 @@ describe("fetchSPAdvertisedProductReport", () => {
       advertisedAsin: "B0ABC123", advertisedSku: "SKU-RSV-01",
       impressions: 100, clicks: 5, spend: 12.5, sales: 60, orders: 3,
     }]);
+    expect(capturedHeaders?.["Amazon-Advertising-API-ClientId"]).toBe("fake-client-id");
   });
 });
