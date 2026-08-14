@@ -1,0 +1,138 @@
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
+import { setupServer } from "msw/node";
+import { setupTestDb, truncateAll, type TestDb } from "../helpers/db";
+import { miraklMocks, shopifyMocks, http, HttpResponse } from "../helpers/msw-server";
+
+const server = setupServer();
+
+function miraklOrderPayload(overrides: Record<string, any> = {}) {
+  return {
+    order_id: "MK-1",
+    order_state: "WAITING_ACCEPTANCE",
+    created_date: "2026-08-01T10:00:00Z",
+    currency_iso_code: "EUR",
+    total_price: 39.98,
+    customer: {
+      email: "cliente@example.com",
+      shipping_address: {
+        firstname: "Mario", lastname: "Rossi", street_1: "Via Roma 1", street_2: null,
+        zip_code: "00100", city: "Roma", country: "Italy", country_iso_code: "IT", phone: null,
+      },
+    },
+    order_lines: [
+      { id: "L1", offer_sku: "SKU-001", product_title: "Prodotto A", quantity: 2, price: 19.99, total_price: 39.98 },
+    ],
+    ...overrides,
+  };
+}
+
+describe("runMiraklSync", () => {
+  let db: TestDb;
+  let runMiraklSync: typeof import("../../src/mirakl/syncOrders.job").runMiraklSync;
+
+  beforeAll(async () => {
+    db = await setupTestDb();
+
+    process.env.DATABASE_URL = db.databaseUrl;
+    process.env.SHOPIFY_STORE_DOMAIN = "test-shop.myshopify.com";
+    process.env.SHOPIFY_ADMIN_TOKEN = "shpat_test_token";
+    process.env.MIRAKL_API_URL = "https://shopapotheke.mirakl.net/api";
+    process.env.MIRAKL_API_KEY = "test-key";
+
+    const job = await import("../../src/mirakl/syncOrders.job");
+    runMiraklSync = job.runMiraklSync;
+
+    server.listen({ onUnhandledRequest: "error" });
+  }, 120_000);
+
+  afterAll(async () => {
+    server.close();
+    await db.cleanup();
+  });
+
+  beforeEach(async () => {
+    await truncateAll(db.prisma);
+  });
+
+  afterEach(() => server.resetHandlers());
+
+  it("happy path: creates a Shopify order, saves MiraklOrder, accepts on Mirakl", async () => {
+    server.use(miraklMocks.newOrders([miraklOrderPayload()]));
+    server.use(shopifyMocks.variantBySku({ "SKU-001": "gid://shopify/ProductVariant/1" }));
+    server.use(shopifyMocks.orderCreate({ id: "gid://shopify/Order/999", name: "#999" }));
+    server.use(miraklMocks.acceptOrder());
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 1, accepted: 1, errors: 0 });
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-1" } });
+    expect(row?.shopifyOrderId).toBe("gid://shopify/Order/999");
+    expect(row?.miraklState).toBe("ACCEPTED");
+    expect(row?.country).toBe("IT");
+  });
+
+  it("idempotency: an order already synced (state ACCEPTED) is not recreated on Shopify", async () => {
+    await db.prisma.miraklOrder.create({
+      data: {
+        miraklOrderId: "MK-1",
+        shopifyOrderId: "gid://shopify/Order/999",
+        country: "IT",
+        miraklState: "ACCEPTED",
+      },
+    });
+
+    // No orderCreate/accept handler registered — if the job tried to call them
+    // with onUnhandledRequest:'error' the test would fail.
+    server.use(miraklMocks.newOrders([miraklOrderPayload()]));
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 0, accepted: 0, errors: 0 });
+
+    const count = await db.prisma.miraklOrder.count();
+    expect(count).toBe(1);
+  });
+
+  it("retries only acceptOrder when Shopify order exists but is still PENDING_ACCEPT", async () => {
+    await db.prisma.miraklOrder.create({
+      data: {
+        miraklOrderId: "MK-1",
+        shopifyOrderId: "gid://shopify/Order/999",
+        country: "IT",
+        miraklState: "PENDING_ACCEPT",
+      },
+    });
+
+    server.use(miraklMocks.newOrders([miraklOrderPayload()]));
+    server.use(miraklMocks.acceptOrder());
+    // No orderCreate/variantBySku handler — creating a Shopify order here
+    // would hit onUnhandledRequest:'error' and fail the test.
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 0, accepted: 1, errors: 0 });
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-1" } });
+    expect(row?.miraklState).toBe("ACCEPTED");
+  });
+
+  it("missing SKU: logs the error, does not accept on Mirakl, no MiraklOrder row created", async () => {
+    server.use(miraklMocks.newOrders([miraklOrderPayload()]));
+    server.use(shopifyMocks.variantBySku({})); // SKU-001 not found
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 0, accepted: 0, errors: 1 });
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-1" } });
+    expect(row).toBeNull();
+
+    const errors = await db.prisma.appErrorLog.findMany({ where: { source: "mirakl-sync" } });
+    expect(errors.length).toBe(1);
+    expect(errors[0].message).toMatch(/SKU-001/);
+  });
+
+  it("Mirakl OR11 failure: returns errors=1, no orders processed", async () => {
+    server.use(miraklMocks.httpError(500, "boom"));
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 0, accepted: 0, errors: 1 });
+  });
+});
