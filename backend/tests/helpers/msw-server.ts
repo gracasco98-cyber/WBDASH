@@ -359,5 +359,36 @@ export const amazonMocks = {
     ),
 };
 
+// ─── Mirakl mock factories ────────────────────────────────────────────────────
+export const miraklMocks = {
+  /** OR11 — GET /orders?order_state_codes=WAITING_ACCEPTANCE */
+  newOrders: (orders: Array<Record<string, any>>) =>
+    http.get(
+      /mirakl\.net\/api\/orders/,
+      async () => HttpResponse.json({ orders, total_count: orders.length }),
+    ),
+
+  /** OR23 — PUT /orders/:id/accept */
+  acceptOrder: () =>
+    http.put(
+      /mirakl\.net\/api\/orders\/[^/]+\/accept/,
+      async () => HttpResponse.json({}),
+    ),
+
+  /** OR24 — PUT /orders/:id/tracking */
+  shipOrder: () =>
+    http.put(
+      /mirakl\.net\/api\/orders\/[^/]+\/tracking/,
+      async () => HttpResponse.json({}),
+    ),
+
+  /** Generic non-2xx error for any Mirakl endpoint */
+  httpError: (status: number, body = "Mirakl API Error") =>
+    http.all(
+      /mirakl\.net\/api\//,
+      async () => new HttpResponse(body, { status }),
+    ),
+};
+
 // Re-export per i test
 export { http, HttpResponse };
