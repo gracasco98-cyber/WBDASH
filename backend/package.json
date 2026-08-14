@@ -12,6 +12,7 @@
     "seed:admin": "ts-node src/seed-admin.ts",
     "seed:amazon-account": "ts-node src/seed-amazon-account.ts",
     "seed:products": "ts-node src/scripts/seed-products-from-sku.ts",
+    "set-ads-credentials": "ts-node src/scripts/set-ads-credentials.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
