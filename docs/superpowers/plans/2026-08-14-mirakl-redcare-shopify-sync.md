@@ -582,7 +582,9 @@ git commit -m "feat(mirakl): add Mirakl Connector API client (fetch/accept/ship 
 
 **Interfaces:**
 - Consumes: `MiraklOrder` da `../mirakl/client` (Task 2).
-- Produces: `MappedOrder`, `MappedLineItem`, `mapMiraklOrder(order: MiraklOrder): MappedOrder` — usato da Task 5 (`syncOrders.job.ts`) e deve produrre l'input diretto per `CreateOrderInput` di Task 4 (stessa forma di `shippingAddress`, `lineItems: { sku, quantity }[]`).
+- Produces: `MappedOrder`, `MappedLineItem`, `mapMiraklOrder(order: MiraklOrder): MappedOrder` — usato da Task 5 (`syncOrders.job.ts`) e deve produrre l'input diretto per `CreateOrderInput` di Task 4 (stessa forma di `shippingAddress`, `lineItems: { sku, quantity, unitPrice }[]`).
+
+> **Nota (corretta durante la review del Task 4):** `unitPrice` è stato aggiunto a `MappedLineItem` — senza il prezzo unitario Mirakl, l'ordine Shopify verrebbe prezzato dal catalogo Shopify invece che dal prezzo di vendita reale sul marketplace, disallineando l'incasso registrato. `unitPrice` proviene da `MiraklOrderLine.price` (già presente in `client.ts`, Task 2 — nessuna modifica lì necessaria).
 
 - [ ] **Step 1: Scrivere il test (fallente)**
 
@@ -642,9 +644,9 @@ describe("mapMiraklOrder", () => {
     expect(mapped.country).toBe("DE");
   });
 
-  it("maps order lines to sku/quantity pairs", () => {
+  it("maps order lines to sku/quantity/unitPrice", () => {
     const mapped = mapMiraklOrder(makeOrder());
-    expect(mapped.lineItems).toEqual([{ sku: "SKU-001", quantity: 2 }]);
+    expect(mapped.lineItems).toEqual([{ sku: "SKU-001", quantity: 2, unitPrice: 19.99 }]);
   });
 
   it("maps shipping address fields", () => {
@@ -691,6 +693,7 @@ import type { MiraklOrder } from "./client";
 export interface MappedLineItem {
   sku: string;
   quantity: number;
+  unitPrice: number;
 }
 
 export interface MappedShippingAddress {
@@ -742,6 +745,7 @@ export function mapMiraklOrder(order: MiraklOrder): MappedOrder {
     lineItems: order.orderLines.map((l) => ({
       sku: l.offerSku,
       quantity: l.quantity,
+      unitPrice: l.price,
     })),
   };
 }
@@ -865,7 +869,7 @@ describe("shopify.service — findVariantIdBySku / createOrder", () => {
         firstName: "Mario", lastName: "Rossi", address1: "Via Roma 1", address2: null,
         zip: "00100", city: "Roma", country: "IT", phone: null,
       },
-      lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 2 }],
+      lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 2, unitPrice: 19.99 }],
     });
 
     expect(order).toEqual({ id: "gid://shopify/Order/999", name: "#999" });
@@ -885,7 +889,7 @@ describe("shopify.service — findVariantIdBySku / createOrder", () => {
           firstName: "A", lastName: "B", address1: "X", address2: null,
           zip: "00100", city: "Roma", country: "IT", phone: null,
         },
-        lineItems: [{ variantId: "gid://shopify/ProductVariant/bad", quantity: 1 }],
+        lineItems: [{ variantId: "gid://shopify/ProductVariant/bad", quantity: 1, unitPrice: 10 }],
       }),
     ).rejects.toThrow(/Invalid variant/);
   });
@@ -920,7 +924,7 @@ export async function findVariantIdBySku(sku: string): Promise<string | null> {
 
 // ─── Create order (used by Mirakl sync — orders arrive already paid) ─────────
 const ORDER_CREATE_MUTATION = `
-  mutation CreateOrder($order: OrderInput!, $options: OrderCreateOptionsInput) {
+  mutation CreateOrder($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
     orderCreate(order: $order, options: $options) {
       order { id name }
       userErrors { field message }
@@ -944,7 +948,7 @@ export interface CreateOrderInput {
     country: string;
     phone: string | null;
   };
-  lineItems: Array<{ variantId: string; quantity: number }>;
+  lineItems: Array<{ variantId: string; quantity: number; unitPrice: number }>;
 }
 
 export async function createOrder(
@@ -964,6 +968,9 @@ export async function createOrder(
       lineItems: input.lineItems.map((li) => ({
         variantId: li.variantId,
         quantity: li.quantity,
+        priceSet: {
+          shopMoney: { amount: li.unitPrice.toFixed(2), currencyCode: input.currency },
+        },
       })),
       shippingAddress: input.shippingAddress,
       transactions: [
@@ -1206,7 +1213,7 @@ export async function runMiraklSync(): Promise<{ created: number; accepted: numb
       if (!existing) {
         const mapped = mapMiraklOrder(order);
 
-        const lineItems: Array<{ variantId: string; quantity: number }> = [];
+        const lineItems: Array<{ variantId: string; quantity: number; unitPrice: number }> = [];
         for (const item of mapped.lineItems) {
           const variantId = await findVariantIdBySku(item.sku);
           if (!variantId) {
@@ -1214,7 +1221,7 @@ export async function runMiraklSync(): Promise<{ created: number; accepted: numb
               `Nessuna variante Shopify trovata per SKU "${item.sku}" (ordine Mirakl ${order.orderId})`
             );
           }
-          lineItems.push({ variantId, quantity: item.quantity });
+          lineItems.push({ variantId, quantity: item.quantity, unitPrice: item.unitPrice });
         }
 
         const shopifyOrder = await createOrder({
