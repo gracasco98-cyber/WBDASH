@@ -122,6 +122,10 @@ async function miraklRequest<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`Mirakl API error ${res.status}: ${text}`);
   }
 
+  if (res.status === 204 || res.headers.get("content-length") === "0") {
+    return undefined as T;
+  }
+
   return (await res.json()) as T;
 }
 

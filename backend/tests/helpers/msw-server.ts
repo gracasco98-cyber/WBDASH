@@ -368,18 +368,22 @@ export const miraklMocks = {
       async () => HttpResponse.json({ orders, total_count: orders.length }),
     ),
 
-  /** OR23 — PUT /orders/:id/accept */
-  acceptOrder: () =>
+  /** OR23 — PUT /orders/:id/accept (default: 200 + empty JSON, supports 204) */
+  acceptOrder: (statusCode: number = 200) =>
     http.put(
       /mirakl\.net\/api\/orders\/[^/]+\/accept/,
-      async () => HttpResponse.json({}),
+      async () => statusCode === 204
+        ? new HttpResponse(null, { status: 204 })
+        : HttpResponse.json({}),
     ),
 
-  /** OR24 — PUT /orders/:id/tracking */
-  shipOrder: () =>
+  /** OR24 — PUT /orders/:id/tracking (default: 200 + empty JSON, supports 204) */
+  shipOrder: (statusCode: number = 200) =>
     http.put(
       /mirakl\.net\/api\/orders\/[^/]+\/tracking/,
-      async () => HttpResponse.json({}),
+      async () => statusCode === 204
+        ? new HttpResponse(null, { status: 204 })
+        : HttpResponse.json({}),
     ),
 
   /** Generic non-2xx error for any Mirakl endpoint */

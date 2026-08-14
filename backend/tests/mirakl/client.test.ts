@@ -107,4 +107,14 @@ describe("Mirakl client", () => {
     server.use(miraklMocks.httpError(500, "boom"));
     await expect(fetchNewOrders()).rejects.toThrow(/Mirakl API error 500/);
   });
+
+  it("acceptOrder handles 204 No Content (empty body) response", async () => {
+    server.use(miraklMocks.acceptOrder(204));
+    await expect(acceptOrder("MK-100", ["L1", "L2"])).resolves.toBeUndefined();
+  });
+
+  it("shipOrder handles 204 No Content (empty body) response", async () => {
+    server.use(miraklMocks.shipOrder(204));
+    await expect(shipOrder("MK-100", { carrierName: "BRT", trackingNumber: "T123" })).resolves.toBeUndefined();
+  });
 });
