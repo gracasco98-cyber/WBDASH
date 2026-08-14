@@ -108,6 +108,40 @@ export const shopifyMocks = {
       /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
       async () => HttpResponse.error(),
     ),
+
+  /** productVariants(query: "sku:...") — usato da findVariantIdBySku */
+  variantBySku: (skuToVariantId: Record<string, string>) =>
+    http.post(
+      /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+      async ({ request }) => {
+        const body: any = await request.json();
+        const query: string = body.variables?.query ?? "";
+        const sku = query.replace("sku:", "");
+        const variantId = skuToVariantId[sku];
+        return HttpResponse.json({
+          data: {
+            productVariants: {
+              edges: variantId ? [{ node: { id: variantId } }] : [],
+            },
+          },
+        });
+      },
+    ),
+
+  /** orderCreate mutation */
+  orderCreate: (result: { id: string; name: string } | { userErrors: Array<{ field: string[]; message: string }> }) =>
+    http.post(
+      /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+      async () =>
+        HttpResponse.json({
+          data: {
+            orderCreate:
+              "id" in result
+                ? { order: result, userErrors: [] }
+                : { order: null, userErrors: result.userErrors },
+          },
+        }),
+    ),
 };
 
 // ─── Amazon mock factories ────────────────────────────────────────────────────
