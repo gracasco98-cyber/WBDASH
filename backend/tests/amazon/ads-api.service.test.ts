@@ -4,6 +4,7 @@ const originalFetch = global.fetch;
 
 vi.mock("../../src/amazon/token.service", () => ({
   getAdsApiToken: vi.fn(async () => "fake-token"),
+  getAdsClientId: vi.fn(async () => "fake-client-id"),
   invalidateTokens: vi.fn(),
 }));
 vi.mock("../../src/repositories/amazon/accounts.repo", () => ({

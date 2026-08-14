@@ -6,15 +6,12 @@
 //   - Profile ID passed as Amazon-Advertising-API-Scope header
 
 import { ADS_ENDPOINT } from "./config";
-import { getAdsApiToken, invalidateTokens } from "./token.service";
+import { getAdsApiToken, getAdsClientId, invalidateTokens } from "./token.service";
 import { getAccountCredentials } from "../repositories/amazon/accounts.repo";
 import { prisma } from "../db";
 import { getCurrentAccountId } from "../context/account-context";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-const ADS_CLIENT_ID = () =>
-  process.env.AMAZON_ADVERTISING_CLIENT_ID || process.env.AMAZON_LWA_CLIENT_ID || "";
 
 // ── Content-Type mapping for SP v3 endpoints ─────────────────────────────────
 // Amazon SP v3 requires specific vendor media types for POST listing endpoints
@@ -34,11 +31,11 @@ async function adsRequest(
   profileId: string,
   body?: any
 ): Promise<any> {
-  const token = await getAdsApiToken();
+  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
   const ct = method === "POST" ? spContentType(path) : "application/json";
 
   const headers: Record<string, string> = {
-    "Amazon-Advertising-API-ClientId": ADS_CLIENT_ID(),
+    "Amazon-Advertising-API-ClientId": clientId,
     "Amazon-Advertising-API-Scope":    profileId,
     Authorization:                     `Bearer ${token}`,
     "Content-Type":                    ct,
@@ -100,10 +97,10 @@ export async function getConfiguredProfiles(): Promise<AdsProfileInfo[]> {
 
 /** List all profiles from the API (used to verify connection) */
 export async function listProfiles(): Promise<AdsProfileInfo[]> {
-  const token = await getAdsApiToken();
+  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
   const res = await fetch(`${ADS_ENDPOINT}/v2/profiles`, {
     headers: {
-      "Amazon-Advertising-API-ClientId": ADS_CLIENT_ID(),
+      "Amazon-Advertising-API-ClientId": clientId,
       Authorization: `Bearer ${token}`,
       Accept: "application/json",
     },
@@ -227,9 +224,9 @@ export async function fetchSPCampaignReport(
   endDate?: string    // YYYY-MM-DD (default = startDate for single-day)
 ): Promise<CampaignReport[]> {
   const end = endDate ?? startDate;
-  const token = await getAdsApiToken();
+  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
   const reportHeaders: Record<string, string> = {
-    "Amazon-Advertising-API-ClientId": ADS_CLIENT_ID(),
+    "Amazon-Advertising-API-ClientId": clientId,
     "Amazon-Advertising-API-Scope":    profileId,
     Authorization:                     `Bearer ${token}`,
     "Content-Type":                    "application/json",
@@ -305,9 +302,9 @@ export async function fetchSPAdvertisedProductReport(
   endDate?: string
 ): Promise<AdvertisedProductReport[]> {
   const end = endDate ?? startDate;
-  const token = await getAdsApiToken();
+  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
   const hdrs: Record<string, string> = {
-    "Amazon-Advertising-API-ClientId": ADS_CLIENT_ID(),
+    "Amazon-Advertising-API-ClientId": clientId,
     "Amazon-Advertising-API-Scope":    profileId,
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -467,9 +464,9 @@ export async function fetchSPKeywordReport(
 ): Promise<KeywordReport[]> {
   const end = endDate ?? startDate;
   const isRange = startDate !== end;
-  const token = await getAdsApiToken();
+  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
   const hdrs: Record<string, string> = {
-    "Amazon-Advertising-API-ClientId": ADS_CLIENT_ID(),
+    "Amazon-Advertising-API-ClientId": clientId,
     "Amazon-Advertising-API-Scope":    profileId,
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -541,9 +538,9 @@ export async function fetchSPSearchTermReport(
   endDate?:   string
 ): Promise<SearchTermReport[]> {
   const end = endDate ?? startDate;
-  const token = await getAdsApiToken();
+  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
   const hdrs: Record<string, string> = {
-    "Amazon-Advertising-API-ClientId": ADS_CLIENT_ID(),
+    "Amazon-Advertising-API-ClientId": clientId,
     "Amazon-Advertising-API-Scope":    profileId,
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
