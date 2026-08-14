@@ -145,6 +145,22 @@ model ProductDailySnapshot {
   @@index([marketplace])
 }
 
+// ─── Mirakl Module Models ──────────────────────────────────────────────────────
+
+model MiraklOrder {
+  id               String    @id @default(cuid())
+  miraklOrderId    String    @unique
+  shopifyOrderId   String    @unique
+  country          String
+  miraklState      String    @default("PENDING_ACCEPT")
+  trackingNumber   String?
+  trackingSyncedAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([miraklState])
+}
+
 // ─── Amazon Module Models ──────────────────────────────────────────────────────
 
 // One row per Amazon seller account connected to WBDASH. Credentials are
