@@ -268,7 +268,7 @@ export async function findVariantIdBySku(sku: string): Promise<string | null> {
 
 // ─── Create order (used by Mirakl sync — orders arrive already paid) ─────────
 const ORDER_CREATE_MUTATION = `
-  mutation CreateOrder($order: OrderInput!, $options: OrderCreateOptionsInput) {
+  mutation CreateOrder($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
     orderCreate(order: $order, options: $options) {
       order { id name }
       userErrors { field message }
@@ -292,7 +292,7 @@ export interface CreateOrderInput {
     country: string;
     phone: string | null;
   };
-  lineItems: Array<{ variantId: string; quantity: number }>;
+  lineItems: Array<{ variantId: string; quantity: number; unitPrice: number }>;
 }
 
 export async function createOrder(
@@ -312,6 +312,9 @@ export async function createOrder(
       lineItems: input.lineItems.map((li) => ({
         variantId: li.variantId,
         quantity: li.quantity,
+        priceSet: {
+          shopMoney: { amount: li.unitPrice.toFixed(2), currencyCode: input.currency },
+        },
       })),
       shippingAddress: input.shippingAddress,
       transactions: [

@@ -1,7 +1,7 @@
 // backend/tests/services/shopify-create-order.test.ts
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { setupServer } from "msw/node";
-import { shopifyMocks } from "../helpers/msw-server";
+import { shopifyMocks, http, HttpResponse } from "../helpers/msw-server";
 
 const server = setupServer();
 
@@ -48,10 +48,53 @@ describe("shopify.service — findVariantIdBySku / createOrder", () => {
         firstName: "Mario", lastName: "Rossi", address1: "Via Roma 1", address2: null,
         zip: "00100", city: "Roma", country: "IT", phone: null,
       },
-      lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 2 }],
+      lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 2, unitPrice: 19.99 }],
     });
 
     expect(order).toEqual({ id: "gid://shopify/Order/999", name: "#999" });
+  });
+
+  it("createOrder sends the transaction amount and line item prices as correctly formatted strings", async () => {
+    let capturedBody: any = null;
+    server.use(
+      http.post(
+        /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+        async ({ request }) => {
+          capturedBody = await request.json();
+          return HttpResponse.json({
+            data: {
+              orderCreate: {
+                order: { id: "gid://shopify/Order/999", name: "#999" },
+                userErrors: [],
+              },
+            },
+          });
+        },
+      ),
+    );
+
+    await createOrder({
+      email: "cliente@example.com",
+      tags: ["redcare_it"],
+      note: "Importato da Mirakl — ordine MK-1",
+      currency: "EUR",
+      totalAmount: 44.97,
+      shippingAddress: {
+        firstName: "Mario", lastName: "Rossi", address1: "Via Roma 1", address2: null,
+        zip: "00100", city: "Roma", country: "IT", phone: null,
+      },
+      lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 2, unitPrice: 19.99 }],
+    });
+
+    expect(capturedBody).not.toBeNull();
+    const amount = capturedBody.variables.order.transactions[0].amountSet.shopMoney.amount;
+    expect(amount).toBe("44.97");
+    expect(typeof amount).toBe("string");
+
+    const lineItem = capturedBody.variables.order.lineItems[0];
+    expect(lineItem.priceSet.shopMoney.amount).toBe("19.99");
+    expect(typeof lineItem.priceSet.shopMoney.amount).toBe("string");
+    expect(lineItem.priceSet.shopMoney.currencyCode).toBe("EUR");
   });
 
   it("createOrder throws when Shopify returns userErrors", async () => {
@@ -68,7 +111,7 @@ describe("shopify.service — findVariantIdBySku / createOrder", () => {
           firstName: "A", lastName: "B", address1: "X", address2: null,
           zip: "00100", city: "Roma", country: "IT", phone: null,
         },
-        lineItems: [{ variantId: "gid://shopify/ProductVariant/bad", quantity: 1 }],
+        lineItems: [{ variantId: "gid://shopify/ProductVariant/bad", quantity: 1, unitPrice: 5 }],
       }),
     ).rejects.toThrow(/Invalid variant/);
   });

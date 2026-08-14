@@ -5,6 +5,7 @@ import type { MiraklOrder } from "./client";
 export interface MappedLineItem {
   sku: string;
   quantity: number;
+  unitPrice: number;
 }
 
 export interface MappedShippingAddress {
@@ -56,6 +57,7 @@ export function mapMiraklOrder(order: MiraklOrder): MappedOrder {
     lineItems: order.orderLines.map((l) => ({
       sku: l.offerSku,
       quantity: l.quantity,
+      unitPrice: l.price,
     })),
   };
 }

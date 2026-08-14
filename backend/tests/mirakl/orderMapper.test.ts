@@ -52,9 +52,9 @@ describe("mapMiraklOrder", () => {
     expect(mapped.country).toBe("DE");
   });
 
-  it("maps order lines to sku/quantity pairs", () => {
+  it("maps order lines to sku/quantity/unitPrice", () => {
     const mapped = mapMiraklOrder(makeOrder());
-    expect(mapped.lineItems).toEqual([{ sku: "SKU-001", quantity: 2 }]);
+    expect(mapped.lineItems).toEqual([{ sku: "SKU-001", quantity: 2, unitPrice: 19.99 }]);
   });
 
   it("maps shipping address fields", () => {
