@@ -179,7 +179,10 @@ describe("webhook: fulfillments/create -> Mirakl tracking", () => {
     );
 
     await handleWebhook(req, res);
-    await waitForProcessed("", "fulfillments/create");
+    // shopifyId is now derived from payload.order_id when the header is
+    // missing (see webhooks.ts) — the WebhookEventLog row is keyed on "333",
+    // not "".
+    await waitForProcessed("333", "fulfillments/create");
 
     expect(capturedTracking).toEqual({
       carrier_name: "GLS",
@@ -190,6 +193,75 @@ describe("webhook: fulfillments/create -> Mirakl tracking", () => {
     const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-3" } });
     expect(row?.miraklState).toBe("SHIPPED");
     expect(row?.trackingNumber).toBe("TRACK-3");
+  });
+
+  it("does not collapse the idempotency key across different orders when the header is missing for both", async () => {
+    // Regression test for the dedup-collision bug: if shopifyId fell back to
+    // the raw (empty) header instead of payload.order_id, both webhooks below
+    // would share WebhookEventLog key {shopifyId: "", topic: "fulfillments/create"}.
+    // The first to finish would mark that row processed:true, and the second
+    // would hit the idempotency short-circuit and return before ever reaching
+    // the fulfillments/create branch — silently dropping tracking sync for
+    // every order after the first.
+    await db.prisma.miraklOrder.create({
+      data: {
+        miraklOrderId: "MK-5",
+        shopifyOrderId: "gid://shopify/Order/444",
+        country: "IT",
+        miraklState: "ACCEPTED",
+      },
+    });
+    await db.prisma.miraklOrder.create({
+      data: {
+        miraklOrderId: "MK-6",
+        shopifyOrderId: "gid://shopify/Order/555",
+        country: "IT",
+        miraklState: "ACCEPTED",
+      },
+    });
+
+    const captured: Record<string, any> = {};
+    server.use(
+      http.put(/mirakl\.net\/api\/orders\/MK-5\/tracking/, async ({ request }) => {
+        captured["MK-5"] = await request.json();
+        return HttpResponse.json({});
+      }),
+      http.put(/mirakl\.net\/api\/orders\/MK-6\/tracking/, async ({ request }) => {
+        captured["MK-6"] = await request.json();
+        return HttpResponse.json({});
+      }),
+    );
+
+    const first = makeReqRes(
+      { "x-shopify-topic": "fulfillments/create", "x-shopify-hmac-sha256": "" },
+      { order_id: 444, tracking_number: "TRACK-444", tracking_company: "BRT" },
+    );
+    const second = makeReqRes(
+      { "x-shopify-topic": "fulfillments/create", "x-shopify-hmac-sha256": "" },
+      { order_id: 555, tracking_number: "TRACK-555", tracking_company: "DHL" },
+    );
+
+    await handleWebhook(first.req, first.res);
+    await waitForProcessed("444", "fulfillments/create");
+
+    await handleWebhook(second.req, second.res);
+    await waitForProcessed("555", "fulfillments/create");
+
+    expect(captured["MK-5"]).toEqual({
+      carrier_name: "BRT",
+      tracking_number: "TRACK-444",
+      carrier_url: undefined,
+    });
+    expect(captured["MK-6"]).toEqual({
+      carrier_name: "DHL",
+      tracking_number: "TRACK-555",
+      carrier_url: undefined,
+    });
+
+    const row5 = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-5" } });
+    const row6 = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-6" } });
+    expect(row5?.miraklState).toBe("SHIPPED");
+    expect(row6?.miraklState).toBe("SHIPPED");
   });
 
   it("does not call Mirakl when the local row is still PENDING_ACCEPT", async () => {

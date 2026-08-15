@@ -23,7 +23,7 @@ function verifyHmac(rawBody: Buffer, hmacHeader: string): boolean {
 // ─── Main webhook handler ─────────────────────────────────────────────────────
 export async function handleWebhook(req: Request, res: Response): Promise<void> {
   const topic     = req.headers["x-shopify-topic"] as string;
-  const shopifyId = req.headers["x-shopify-order-id"] as string ?? "";
+  const headerOrderId = req.headers["x-shopify-order-id"] as string ?? "";
   const hmac      = req.headers["x-shopify-hmac-sha256"] as string ?? "";
   const rawBody: Buffer = (req as any).rawBody;
 
@@ -40,6 +40,14 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
   // ── Step 3: async processing — does NOT block the HTTP response ───────────
   // req.body is already parsed and held in memory, safe to read after respond.
   const payload = req.body;
+
+  // X-Shopify-Order-Id is reliable for orders/* topics but not guaranteed for
+  // fulfillments/create — fall back to the payload's own order_id for that
+  // topic so the idempotency key (and the WebhookEventLog row) never collapses
+  // to an empty shopifyId shared across unrelated orders.
+  const shopifyId = topic === "fulfillments/create"
+    ? String(payload.order_id ?? headerOrderId)
+    : headerOrderId;
 
   setImmediate(async () => {
     // Idempotency: skip if this event was already processed successfully
@@ -86,11 +94,7 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         // Order shipped on Shopify -> push tracking to Mirakl if this order
         // was created from a Mirakl (Redcare) order and tracking wasn't
         // already synced (idempotency across duplicate/retried webhooks).
-        // NB: X-Shopify-Order-Id isn't a guaranteed header for this topic
-        // (unlike orders/*), so fall back to the payload's own order_id —
-        // the fulfillment payload always carries it.
-        const fulfillmentOrderId = String(payload.order_id ?? shopifyId);
-        const gid = `gid://shopify/Order/${fulfillmentOrderId}`;
+        const gid = `gid://shopify/Order/${shopifyId}`;
         const miraklOrder = await findByShopifyOrderId(prisma, gid);
         if (miraklOrder && miraklOrder.miraklState === "ACCEPTED" && !miraklOrder.trackingSyncedAt) {
           const trackingNumber: string | null =
