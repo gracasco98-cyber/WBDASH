@@ -151,4 +151,70 @@ describe("webhook: fulfillments/create -> Mirakl tracking", () => {
     const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-2" } });
     expect(row?.trackingNumber).toBe("TRACK-2"); // unchanged
   });
+
+  it("falls back to payload.order_id when x-shopify-order-id header is missing", async () => {
+    await db.prisma.miraklOrder.create({
+      data: {
+        miraklOrderId: "MK-3",
+        shopifyOrderId: "gid://shopify/Order/333",
+        country: "IT",
+        miraklState: "ACCEPTED",
+      },
+    });
+
+    let capturedTracking: any = null;
+    server.use(
+      http.put(/mirakl\.net\/api\/orders\/MK-3\/tracking/, async ({ request }) => {
+        capturedTracking = await request.json();
+        return HttpResponse.json({});
+      }),
+    );
+
+    // No "x-shopify-order-id" header at all — fulfillments/create doesn't
+    // guarantee it the way orders/* topics do. The order id must come from
+    // the payload instead.
+    const { req, res } = makeReqRes(
+      { "x-shopify-topic": "fulfillments/create", "x-shopify-hmac-sha256": "" },
+      { order_id: 333, tracking_number: "TRACK-3", tracking_company: "GLS" },
+    );
+
+    await handleWebhook(req, res);
+    await waitForProcessed("", "fulfillments/create");
+
+    expect(capturedTracking).toEqual({
+      carrier_name: "GLS",
+      tracking_number: "TRACK-3",
+      carrier_url: undefined,
+    });
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-3" } });
+    expect(row?.miraklState).toBe("SHIPPED");
+    expect(row?.trackingNumber).toBe("TRACK-3");
+  });
+
+  it("does not call Mirakl when the local row is still PENDING_ACCEPT", async () => {
+    await db.prisma.miraklOrder.create({
+      data: {
+        miraklOrderId: "MK-4",
+        shopifyOrderId: "gid://shopify/Order/4",
+        country: "IT",
+        miraklState: "PENDING_ACCEPT",
+      },
+    });
+
+    // No miraklMocks.shipOrder registered on purpose — calling Mirakl here
+    // would race ahead of local acceptance state and hit onUnhandledRequest.
+    const { req, res } = makeReqRes(
+      { "x-shopify-topic": "fulfillments/create", "x-shopify-order-id": "4", "x-shopify-hmac-sha256": "" },
+      { order_id: 4, tracking_number: "TRACK-4", tracking_company: "BRT" },
+    );
+
+    await handleWebhook(req, res);
+    await waitForProcessed("4", "fulfillments/create");
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-4" } });
+    expect(row?.miraklState).toBe("PENDING_ACCEPT");
+    expect(row?.trackingNumber).toBeNull();
+    expect(row?.trackingSyncedAt).toBeNull();
+  });
 });

@@ -86,9 +86,13 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         // Order shipped on Shopify -> push tracking to Mirakl if this order
         // was created from a Mirakl (Redcare) order and tracking wasn't
         // already synced (idempotency across duplicate/retried webhooks).
-        const gid = `gid://shopify/Order/${shopifyId}`;
+        // NB: X-Shopify-Order-Id isn't a guaranteed header for this topic
+        // (unlike orders/*), so fall back to the payload's own order_id —
+        // the fulfillment payload always carries it.
+        const fulfillmentOrderId = String(payload.order_id ?? shopifyId);
+        const gid = `gid://shopify/Order/${fulfillmentOrderId}`;
         const miraklOrder = await findByShopifyOrderId(prisma, gid);
-        if (miraklOrder && !miraklOrder.trackingSyncedAt) {
+        if (miraklOrder && miraklOrder.miraklState === "ACCEPTED" && !miraklOrder.trackingSyncedAt) {
           const trackingNumber: string | null =
             payload.tracking_number ?? payload.tracking_numbers?.[0] ?? null;
           if (trackingNumber) {
