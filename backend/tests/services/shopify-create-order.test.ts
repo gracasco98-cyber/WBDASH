@@ -44,6 +44,7 @@ describe("shopify.service — findVariantIdBySku / createOrder", () => {
       note: "Importato da Mirakl — ordine MK-1",
       currency: "EUR",
       totalAmount: 44.97,
+      shippingAmount: 4.99,
       shippingAddress: {
         firstName: "Mario", lastName: "Rossi", address1: "Via Roma 1", address2: null,
         zip: "00100", city: "Roma", country: "IT", phone: null,
@@ -79,6 +80,7 @@ describe("shopify.service — findVariantIdBySku / createOrder", () => {
       note: "Importato da Mirakl — ordine MK-1",
       currency: "EUR",
       totalAmount: 44.97,
+      shippingAmount: 4.99,
       shippingAddress: {
         firstName: "Mario", lastName: "Rossi", address1: "Via Roma 1", address2: null,
         zip: "00100", city: "Roma", country: "IT", phone: null,
@@ -95,6 +97,53 @@ describe("shopify.service — findVariantIdBySku / createOrder", () => {
     expect(lineItem.priceSet.shopMoney.amount).toBe("19.99");
     expect(typeof lineItem.priceSet.shopMoney.amount).toBe("string");
     expect(lineItem.priceSet.shopMoney.currencyCode).toBe("EUR");
+
+    // requiresShipping va inviato esplicitamente: nello schema 2025-01 il
+    // default è false (non eredita l'impostazione della variante), e una riga
+    // non spedibile romperebbe il flusso fulfillment -> tracking Mirakl.
+    expect(lineItem.requiresShipping).toBe(true);
+
+    // La spedizione (inclusa in totalAmount) viaggia come shippingLines,
+    // altrimenti il totale calcolato da Shopify non riconcilia con la transazione.
+    expect(capturedBody.variables.order.shippingLines).toEqual([
+      { title: "Spedizione", priceSet: { shopMoney: { amount: "4.99", currencyCode: "EUR" } } },
+    ]);
+  });
+
+  it("createOrder omits shippingLines when the shipping amount is zero", async () => {
+    let capturedBody: any = null;
+    server.use(
+      http.post(
+        /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+        async ({ request }) => {
+          capturedBody = await request.json();
+          return HttpResponse.json({
+            data: {
+              orderCreate: {
+                order: { id: "gid://shopify/Order/1000", name: "#1000" },
+                userErrors: [],
+              },
+            },
+          });
+        },
+      ),
+    );
+
+    await createOrder({
+      email: null,
+      tags: ["redcare_it"],
+      note: "Importato da Mirakl — ordine MK-2",
+      currency: "EUR",
+      totalAmount: 39.98,
+      shippingAmount: 0,
+      shippingAddress: {
+        firstName: "Mario", lastName: "Rossi", address1: "Via Roma 1", address2: null,
+        zip: "00100", city: "Roma", country: "IT", phone: null,
+      },
+      lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 2, unitPrice: 19.99 }],
+    });
+
+    expect(capturedBody.variables.order.shippingLines).toBeUndefined();
   });
 
   it("createOrder throws when Shopify returns userErrors", async () => {
@@ -107,6 +156,7 @@ describe("shopify.service — findVariantIdBySku / createOrder", () => {
         note: "test",
         currency: "EUR",
         totalAmount: 10,
+        shippingAmount: 0,
         shippingAddress: {
           firstName: "A", lastName: "B", address1: "X", address2: null,
           zip: "00100", city: "Roma", country: "IT", phone: null,

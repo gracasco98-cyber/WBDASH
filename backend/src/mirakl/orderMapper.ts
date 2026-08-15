@@ -24,7 +24,8 @@ export interface MappedOrder {
   country: "IT" | "DE";
   currency: string;
   email: string | null;
-  totalAmount: number;
+  totalAmount: number;   // totale ordine, spedizione inclusa
+  shippingAmount: number;
   shippingAddress: MappedShippingAddress;
   lineItems: MappedLineItem[];
 }
@@ -44,6 +45,7 @@ export function mapMiraklOrder(order: MiraklOrder): MappedOrder {
     currency: order.currencyIsoCode,
     email: order.customer.email,
     totalAmount: order.totalPrice,
+    shippingAmount: order.shippingPrice,
     shippingAddress: {
       firstName: addr.firstname,
       lastName: addr.lastname,
@@ -57,7 +59,7 @@ export function mapMiraklOrder(order: MiraklOrder): MappedOrder {
     lineItems: order.orderLines.map((l) => ({
       sku: l.offerSku,
       quantity: l.quantity,
-      unitPrice: l.price,
+      unitPrice: l.priceUnit,
     })),
   };
 }

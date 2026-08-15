@@ -9,6 +9,7 @@ function makeOrder(overrides: Partial<MiraklOrder> = {}): MiraklOrder {
     createdDate: "2026-08-01T10:00:00Z",
     currencyIsoCode: "EUR",
     totalPrice: 44.97,
+    shippingPrice: 4.99,
     customer: {
       email: "cliente@example.com",
       shippingAddress: {
@@ -24,7 +25,10 @@ function makeOrder(overrides: Partial<MiraklOrder> = {}): MiraklOrder {
       },
     },
     orderLines: [
-      { id: "L1", offerSku: "SKU-001", productTitle: "Prodotto A", quantity: 2, price: 19.99, totalPrice: 39.98 },
+      // priceUnit = prezzo unitario, price = totale di riga (2 * 19.99):
+      // valori volutamente diversi, così la mappatura unitPrice non può passare
+      // per coincidenza leggendo il campo sbagliato.
+      { id: "L1", offerSku: "SKU-001", productTitle: "Prodotto A", quantity: 2, priceUnit: 19.99, price: 39.98, totalPrice: 44.97 },
     ],
     ...overrides,
   };
@@ -52,8 +56,10 @@ describe("mapMiraklOrder", () => {
     expect(mapped.country).toBe("DE");
   });
 
-  it("maps order lines to sku/quantity/unitPrice", () => {
+  it("maps order lines to sku/quantity/unitPrice, using the UNIT price, not the line total", () => {
     const mapped = mapMiraklOrder(makeOrder());
+    // Se leggesse `price` (39.98, totale di riga) Shopify calcolerebbe
+    // 39.98 * 2 = 79.96, raddoppiando il fatturato registrato.
     expect(mapped.lineItems).toEqual([{ sku: "SKU-001", quantity: 2, unitPrice: 19.99 }]);
   });
 
@@ -71,11 +77,12 @@ describe("mapMiraklOrder", () => {
     });
   });
 
-  it("carries currency, email and totalAmount through", () => {
+  it("carries currency, email, totalAmount and shippingAmount through", () => {
     const mapped = mapMiraklOrder(makeOrder());
     expect(mapped.currency).toBe("EUR");
     expect(mapped.email).toBe("cliente@example.com");
     expect(mapped.totalAmount).toBe(44.97);
+    expect(mapped.shippingAmount).toBe(4.99);
   });
 
   it("throws when the order has no line items", () => {

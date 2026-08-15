@@ -281,7 +281,8 @@ export interface CreateOrderInput {
   tags: string[];
   note: string;
   currency: string;
-  totalAmount: number;
+  totalAmount: number;    // totale ordine, spedizione inclusa (= importo transazione)
+  shippingAmount: number; // quota spedizione, inviata come shippingLines
   shippingAddress: {
     firstName: string;
     lastName: string;
@@ -312,11 +313,24 @@ export async function createOrder(
       lineItems: input.lineItems.map((li) => ({
         variantId: li.variantId,
         quantity: li.quantity,
+        // OrderCreateLineItemInput.requiresShipping default a false nello schema
+        // 2025-01: senza questo flag le righe risulterebbero non spedibili e il
+        // flusso fulfillment/tracking verso Mirakl non partirebbe mai.
+        requiresShipping: true,
         priceSet: {
           shopMoney: { amount: li.unitPrice.toFixed(2), currencyCode: input.currency },
         },
       })),
       shippingAddress: input.shippingAddress,
+      // Senza questa riga il totale calcolato da Shopify (somma delle righe)
+      // non riconcilierebbe con l'importo della transazione, che include la
+      // spedizione.
+      shippingLines: input.shippingAmount > 0 ? [{
+        title: "Spedizione",
+        priceSet: {
+          shopMoney: { amount: input.shippingAmount.toFixed(2), currencyCode: input.currency },
+        },
+      }] : undefined,
       transactions: [
         {
           kind: "SALE",
