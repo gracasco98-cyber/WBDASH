@@ -19,6 +19,7 @@ import productsRouter from "./routes/products.routes";
 import { runInitialSync, startPolling, startSnapshotPolling } from "./jobs/sync.job";
 import amazonRouter from "./amazon/routes";
 import { startAmazonPolling, startAmazonSnapshotPolling, forEachActiveAccount } from "./amazon/sync.job";
+import { startMiraklPolling } from "./mirakl/syncOrders.job";
 import { bootstrapCalibration, bootstrapFromExcel, bootstrapComponentModel, runDailyCalibration } from "./amazon/forecast";
 import chatRouter from "./routes/chat.routes";
 import analyticsRouter from "./routes/analytics.routes";
@@ -221,6 +222,13 @@ async function bootstrap() {
     console.log(`[Server] Calibration daily job scheduled (first run in ${Math.round(msUntil2am / 60000)} min)`);
   } else {
     console.log("[Server] Amazon module disabled (AMAZON_EU_REFRESH_TOKEN not set)");
+  }
+
+  // ── Mirakl module (Redcare / Shop-Apotheke) ──
+  if (process.env.MIRAKL_API_KEY) {
+    startMiraklPolling();
+  } else {
+    console.log("[Server] Mirakl module disabled (MIRAKL_API_KEY not set)");
   }
 }
 
