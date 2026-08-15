@@ -96,16 +96,36 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         // already synced (idempotency across duplicate/retried webhooks).
         const gid = `gid://shopify/Order/${shopifyId}`;
         const miraklOrder = await findByShopifyOrderId(prisma, gid);
-        if (miraklOrder && miraklOrder.miraklState === "ACCEPTED" && !miraklOrder.trackingSyncedAt) {
-          const trackingNumber: string | null =
-            payload.tracking_number ?? payload.tracking_numbers?.[0] ?? null;
-          if (trackingNumber) {
-            await shipOrder(miraklOrder.miraklOrderId, {
-              carrierName: payload.tracking_company ?? "N/D",
-              trackingNumber,
-              carrierUrl: payload.tracking_url ?? payload.tracking_urls?.[0],
-            });
-            await markShipped(prisma, gid, trackingNumber);
+        if (miraklOrder && !miraklOrder.trackingSyncedAt) {
+          if (miraklOrder.miraklState !== "ACCEPTED") {
+            // Caso realistico: l'ordine è stato accettato a mano nel back-office
+            // Mirakl (pressione SLA), quindi lo stato locale non arriva mai ad
+            // ACCEPTED e il tracking non viene mai spinto. Senza questo log il
+            // fallimento sarebbe completamente silenzioso.
+            await logError(
+              "webhook-fulfillment",
+              new Error(
+                `Tracking non inviato a Mirakl: stato locale "${miraklOrder.miraklState}" invece di ACCEPTED`
+              ),
+              { shopifyOrderId: gid, miraklOrderId: miraklOrder.miraklOrderId, miraklState: miraklOrder.miraklState }
+            );
+          } else {
+            const trackingNumber: string | null =
+              payload.tracking_number ?? payload.tracking_numbers?.[0] ?? null;
+            if (trackingNumber) {
+              await shipOrder(miraklOrder.miraklOrderId, {
+                carrierName: payload.tracking_company ?? "N/D",
+                trackingNumber,
+                carrierUrl: payload.tracking_url ?? payload.tracking_urls?.[0],
+              });
+              await markShipped(prisma, gid, trackingNumber);
+            } else {
+              await logError(
+                "webhook-fulfillment",
+                new Error("Tracking non inviato a Mirakl: fulfillment senza tracking number"),
+                { shopifyOrderId: gid, miraklOrderId: miraklOrder.miraklOrderId }
+              );
+            }
           }
         }
       }

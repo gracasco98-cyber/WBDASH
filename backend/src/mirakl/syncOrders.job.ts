@@ -80,6 +80,7 @@ export async function runMiraklSync(): Promise<{ created: number; accepted: numb
             note: `Importato da Mirakl — ordine ${order.orderId}`,
             currency: mapped.currency,
             totalAmount: mapped.totalAmount,
+            shippingAmount: mapped.shippingAmount,
             shippingAddress: mapped.shippingAddress,
             lineItems,
           });
@@ -107,9 +108,20 @@ export async function runMiraklSync(): Promise<{ created: number; accepted: numb
   return { created, accepted, errors };
 }
 
+// Guard anti-overlap: a differenza del poller Shopify (idempotente per upsert),
+// questo job crea ordini pagati e la sua difesa contro i duplicati
+// (findOrderByMiraklTag) interroga l'indice di ricerca Shopify, che è
+// eventually consistent — un run sovrapposto potrebbe legittimamente non vedere
+// un ordine creato pochi istanti prima dal run precedente ancora in corso.
+let isRunning = false;
+
 export function startMiraklPolling(intervalMs = 300_000): void {
   console.log(`[Mirakl] Polling started (every ${intervalMs / 1000}s)`);
   setInterval(() => {
-    runMiraklSync().catch((err) => logError("mirakl-polling", err));
+    if (isRunning) return;
+    isRunning = true;
+    runMiraklSync()
+      .catch((err) => logError("mirakl-polling", err))
+      .finally(() => { isRunning = false; });
   }, intervalMs);
 }

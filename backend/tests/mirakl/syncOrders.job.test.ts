@@ -11,7 +11,8 @@ function miraklOrderPayload(overrides: Record<string, any> = {}) {
     order_state: "WAITING_ACCEPTANCE",
     created_date: "2026-08-01T10:00:00Z",
     currency_iso_code: "EUR",
-    total_price: 39.98,
+    total_price: 44.97,   // 39.98 di righe + 4.99 di spedizione
+    shipping_price: 4.99,
     customer: {
       email: "cliente@example.com",
       shipping_address: {
@@ -20,7 +21,8 @@ function miraklOrderPayload(overrides: Record<string, any> = {}) {
       },
     },
     order_lines: [
-      { id: "L1", offer_sku: "SKU-001", product_title: "Prodotto A", quantity: 2, price: 19.99, total_price: 39.98 },
+      // price_unit = prezzo unitario, price = totale di riga (2 * 19.99)
+      { order_line_id: "L1", offer_sku: "SKU-001", product_title: "Prodotto A", quantity: 2, price_unit: 19.99, price: 39.98, total_price: 44.97 },
     ],
     ...overrides,
   };
@@ -70,6 +72,59 @@ describe("runMiraklSync", () => {
     expect(row?.shopifyOrderId).toBe("gid://shopify/Order/999");
     expect(row?.miraklState).toBe("ACCEPTED");
     expect(row?.country).toBe("IT");
+  });
+
+  it("sends the UNIT price, a shipping line and the real Mirakl line ids downstream", async () => {
+    let orderCreateVars: any = null;
+    let acceptBody: any = null;
+
+    server.use(
+      miraklMocks.newOrders([miraklOrderPayload()]),
+      shopifyMocks.orderByTag(null),
+      shopifyMocks.variantBySku({ "SKU-001": "gid://shopify/ProductVariant/1" }),
+      http.post(
+        /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+        async ({ request }) => {
+          const body: any = await request.clone().json();
+          if (!body?.query?.includes("orderCreate")) return; // non è mio
+          orderCreateVars = body.variables;
+          return HttpResponse.json({
+            data: {
+              orderCreate: {
+                order: { id: "gid://shopify/Order/999", name: "#999" },
+                userErrors: [],
+              },
+            },
+          });
+        },
+      ),
+      http.put(/mirakl\.net\/api\/orders\/MK-1\/accept/, async ({ request }) => {
+        acceptBody = await request.json();
+        return HttpResponse.json({});
+      }),
+    );
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 1, accepted: 1, errors: 0 });
+
+    // Prezzo unitario (19.99), NON il totale di riga (39.98): altrimenti
+    // Shopify calcolerebbe 39.98 * 2 e il fatturato risulterebbe doppio.
+    const lineItem = orderCreateVars.order.lineItems[0];
+    expect(lineItem.priceSet.shopMoney.amount).toBe("19.99");
+    expect(lineItem.quantity).toBe(2);
+    expect(lineItem.requiresShipping).toBe(true);
+
+    // La spedizione viaggia come shippingLines, così la somma delle righe
+    // riconcilia con l'importo della transazione (44.97).
+    expect(orderCreateVars.order.shippingLines).toEqual([
+      { title: "Spedizione", priceSet: { shopMoney: { amount: "4.99", currencyCode: "EUR" } } },
+    ]);
+    expect(orderCreateVars.order.transactions[0].amountSet.shopMoney.amount).toBe("44.97");
+
+    // Gli id riga vengono da order_line_id sul wire: se leggessimo un campo
+    // `id` inesistente, JSON.stringify li eliminerebbe e Mirakl non
+    // accetterebbe nulla.
+    expect(acceptBody).toEqual({ order_lines: [{ id: "L1", accepted: true }] });
   });
 
   it("idempotency: an order already synced (state ACCEPTED) is not recreated on Shopify", async () => {

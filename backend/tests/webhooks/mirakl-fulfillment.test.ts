@@ -86,9 +86,15 @@ describe("webhook: fulfillments/create -> Mirakl tracking", () => {
     });
 
     let capturedTracking: any = null;
+    let shipCalls = 0;
     server.use(
       http.put(/mirakl\.net\/api\/orders\/MK-1\/tracking/, async ({ request }) => {
         capturedTracking = await request.json();
+        return HttpResponse.json({});
+      }),
+      // OR24: senza questa chiamata Mirakl non marcherebbe mai l'ordine spedito.
+      http.put(/mirakl\.net\/api\/orders\/MK-1\/ship/, async () => {
+        shipCalls++;
         return HttpResponse.json({});
       }),
     );
@@ -106,6 +112,7 @@ describe("webhook: fulfillments/create -> Mirakl tracking", () => {
       tracking_number: "TRACK-1",
       carrier_url: undefined,
     });
+    expect(shipCalls).toBe(1);
 
     const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-1" } });
     expect(row?.miraklState).toBe("SHIPPED");
@@ -168,6 +175,7 @@ describe("webhook: fulfillments/create -> Mirakl tracking", () => {
         capturedTracking = await request.json();
         return HttpResponse.json({});
       }),
+      miraklMocks.shipConfirm(),
     );
 
     // No "x-shopify-order-id" header at all — fulfillments/create doesn't
@@ -230,6 +238,7 @@ describe("webhook: fulfillments/create -> Mirakl tracking", () => {
         captured["MK-6"] = await request.json();
         return HttpResponse.json({});
       }),
+      miraklMocks.shipConfirm(),
     );
 
     const first = makeReqRes(
@@ -288,5 +297,48 @@ describe("webhook: fulfillments/create -> Mirakl tracking", () => {
     expect(row?.miraklState).toBe("PENDING_ACCEPT");
     expect(row?.trackingNumber).toBeNull();
     expect(row?.trackingSyncedAt).toBeNull();
+
+    // Il no-op non deve essere silenzioso: caso realistico è l'accettazione
+    // manuale nel back-office Mirakl, che lascia lo stato locale indietro.
+    const errors = await db.prisma.appErrorLog.findMany({ where: { source: "webhook-fulfillment" } });
+    expect(errors.length).toBe(1);
+    expect(errors[0].context).toMatchObject({
+      shopifyOrderId: "gid://shopify/Order/4",
+      miraklOrderId: "MK-4",
+      miraklState: "PENDING_ACCEPT",
+    });
+  });
+
+  it("logs (and does not crash) when the fulfillment payload has no tracking number", async () => {
+    await db.prisma.miraklOrder.create({
+      data: {
+        miraklOrderId: "MK-7",
+        shopifyOrderId: "gid://shopify/Order/7",
+        country: "IT",
+        miraklState: "ACCEPTED",
+      },
+    });
+
+    // Nessun handler Mirakl registrato: senza tracking number non deve partire
+    // alcuna chiamata (finirebbe in onUnhandledRequest:'error').
+    const { req, res } = makeReqRes(
+      { "x-shopify-topic": "fulfillments/create", "x-shopify-order-id": "7", "x-shopify-hmac-sha256": "" },
+      { order_id: 7, tracking_company: "BRT" },
+    );
+
+    await handleWebhook(req, res);
+    await waitForProcessed("7", "fulfillments/create");
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-7" } });
+    expect(row?.miraklState).toBe("ACCEPTED"); // invariato, nessun crash
+    expect(row?.trackingSyncedAt).toBeNull();
+
+    const errors = await db.prisma.appErrorLog.findMany({ where: { source: "webhook-fulfillment" } });
+    expect(errors.length).toBe(1);
+    expect(errors[0].message).toMatch(/tracking number/i);
+    expect(errors[0].context).toMatchObject({
+      shopifyOrderId: "gid://shopify/Order/7",
+      miraklOrderId: "MK-7",
+    });
   });
 });
