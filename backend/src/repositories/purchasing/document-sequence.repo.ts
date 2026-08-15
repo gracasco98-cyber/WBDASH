@@ -30,3 +30,7 @@ export async function nextSequenceValue(
 export function formatPoNumber(year: number, value: number): string {
   return `PO-${year}-${String(value).padStart(6, "0")}`;
 }
+
+export function formatGrnNumber(year: number, value: number): string {
+  return `GR-${year}-${String(value).padStart(6, "0")}`;
+}
