@@ -195,4 +195,16 @@ describe("goods-receipts.repo", () => {
     expect(receipts[0].lines).toHaveLength(1);
     expect(receipts[0].lines[0].receivedQty).toBe(20);
   });
+
+  // No automated test here for the PurchaseOrderLine_receivedQty_check DB
+  // constraint (migration 20260815210711_add_received_qty_check_constraint):
+  // this file's setupTestDb() (see helpers/db.ts) provisions its Postgres
+  // container via `prisma db push`, which diffs against schema.prisma only
+  // and never reads migration SQL — so a raw CHECK constraint (not expressible
+  // in this Prisma version's schema language) never exists in the test
+  // database, only in real dev/production databases built via `migrate
+  // deploy`/`migrate dev`. Verified manually against the real dedicated dev
+  // DB instead: a direct `purchaseOrderLine.update` bypassing
+  // createGoodsReceipt entirely, setting receivedQty above orderedQty,
+  // was rejected by Postgres with a CHECK constraint violation.
 });
