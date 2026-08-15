@@ -53,12 +53,25 @@ export async function createGoodsReceipt(
     }
 
     const linesById = new Map(order.lines.map((l) => [l.id, l]));
+
+    // Aggregate requested quantities per purchaseOrderLineId BEFORE validating: a single
+    // call can legitimately contain multiple rows for the same line (e.g. mixed-lot DDT),
+    // and the overage check must compare their SUM against `remaining`, not each row in
+    // isolation against a snapshot that never reflects the other rows in this same call.
+    const requestedByLineId = new Map<string, number>();
     for (const input of data.lines) {
       const line = linesById.get(input.purchaseOrderLineId);
       if (!line) throw new Error(`PurchaseOrderLine ${input.purchaseOrderLineId} does not belong to order ${data.purchaseOrderId}`);
+      requestedByLineId.set(
+        input.purchaseOrderLineId,
+        (requestedByLineId.get(input.purchaseOrderLineId) ?? 0) + input.receivedQty
+      );
+    }
+    for (const [purchaseOrderLineId, totalRequested] of requestedByLineId) {
+      const line = linesById.get(purchaseOrderLineId)!;
       const remaining = Number(line.orderedQty) - Number(line.receivedQty);
-      if (input.receivedQty > remaining) {
-        throw new OverReceiptError(input.purchaseOrderLineId, input.receivedQty, remaining);
+      if (totalRequested > remaining) {
+        throw new OverReceiptError(purchaseOrderLineId, totalRequested, remaining);
       }
     }
 
@@ -86,10 +99,13 @@ export async function createGoodsReceipt(
     });
 
     for (const input of data.lines) {
-      const line = linesById.get(input.purchaseOrderLineId)!;
+      // Atomic DB-side increment (not a JS-computed absolute SET): this is what makes it
+      // safe for multiple rows in this same call to target the same line — each increment
+      // compounds on top of the previous one instead of overwriting it — and it also
+      // narrows the true-concurrency check-time race window described in the report.
       await tx.purchaseOrderLine.update({
-        where: { id: line.id },
-        data: { receivedQty: Number(line.receivedQty) + input.receivedQty },
+        where: { id: input.purchaseOrderLineId },
+        data: { receivedQty: { increment: input.receivedQty } },
       });
     }
 

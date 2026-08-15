@@ -122,6 +122,45 @@ describe("goods-receipts.repo", () => {
     expect(unchanged!.logisticStatus).toBe("CONFIRMED");
   });
 
+  it("rejects a receipt with two lines for the SAME purchaseOrderLineId whose sum exceeds remaining", async () => {
+    const po = await confirmedOrder();
+    const full = await findPurchaseOrderById(db.prisma, po.id);
+    const lineId = full!.lines[0].id;
+
+    // 60 + 60 = 120 > 100 remaining. Neither individual row exceeds remaining on its own,
+    // so a validation loop that checks each row independently against a stale snapshot
+    // would wrongly let both pass.
+    await expect(createGoodsReceipt(db.prisma, {
+      purchaseOrderId: po.id, receiptDate: new Date("2026-08-14"),
+      supplierDdtNumber: "DDT-1001", supplierDdtDate: new Date("2026-08-13"),
+      receivedById: userId,
+      lines: [
+        { purchaseOrderLineId: lineId, receivedQty: 60 },
+        { purchaseOrderLineId: lineId, receivedQty: 60 },
+      ],
+    })).rejects.toThrow(OverReceiptError);
+
+    const unchanged = await findPurchaseOrderById(db.prisma, po.id);
+    expect(unchanged!.lines[0].receivedQty).toBe(0);
+    expect(unchanged!.logisticStatus).toBe("CONFIRMED");
+    const receipts = await findGoodsReceiptsByOrderId(db.prisma, po.id);
+    expect(receipts).toHaveLength(0);
+  });
+
+  it("rejects a receipt whose purchaseOrderLineId does not belong to the target order", async () => {
+    const po = await confirmedOrder();
+    const otherPo = await confirmedOrder();
+    const otherFull = await findPurchaseOrderById(db.prisma, otherPo.id);
+    const foreignLineId = otherFull!.lines[0].id;
+
+    await expect(createGoodsReceipt(db.prisma, {
+      purchaseOrderId: po.id, receiptDate: new Date("2026-08-14"),
+      supplierDdtNumber: "DDT-1001", supplierDdtDate: new Date("2026-08-13"),
+      receivedById: userId,
+      lines: [{ purchaseOrderLineId: foreignLineId, receivedQty: 10 }],
+    })).rejects.toThrow(`PurchaseOrderLine ${foreignLineId} does not belong to order ${po.id}`);
+  });
+
   it("rejects a receipt against an order in a non-receivable status (DRAFT)", async () => {
     const po = await createPurchaseOrder(db.prisma, baseOrder());
     const full = await findPurchaseOrderById(db.prisma, po.id);
