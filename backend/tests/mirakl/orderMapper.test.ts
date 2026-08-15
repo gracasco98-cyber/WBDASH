@@ -89,4 +89,13 @@ describe("mapMiraklOrder", () => {
     const order = makeOrder({ orderLines: [] });
     expect(() => mapMiraklOrder(order)).toThrow(/nessuna riga|non ha righe/i);
   });
+
+  it("throws when the order has an invalid (non-numeric) shippingPrice", () => {
+    // Simula una risposta API Mirakl malformata: senza questo guard,
+    // `undefined > 0` in shopify.service.ts risulterebbe false e le shippingLines
+    // verrebbero silenziosamente omesse pur addebitando l'intero totalAmount
+    // (spedizione inclusa) come transazione, disallineando l'ordine Shopify creato.
+    const order = makeOrder({ shippingPrice: undefined as unknown as number });
+    expect(() => mapMiraklOrder(order)).toThrow(/shippingPrice/i);
+  });
 });

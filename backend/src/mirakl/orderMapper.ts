@@ -34,6 +34,9 @@ export function mapMiraklOrder(order: MiraklOrder): MappedOrder {
   if (order.orderLines.length === 0) {
     throw new Error(`Ordine Mirakl ${order.orderId} non ha righe`);
   }
+  if (typeof order.shippingPrice !== "number") {
+    throw new Error(`Ordine Mirakl ${order.orderId} non ha un shippingPrice valido`);
+  }
 
   const addr = order.customer.shippingAddress;
   const country: "IT" | "DE" = addr.countryIsoCode.toUpperCase() === "DE" ? "DE" : "IT";
