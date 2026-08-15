@@ -437,7 +437,7 @@ export const miraklMocks = {
       async () => HttpResponse.json({ orders, total_count: orders.length }),
     ),
 
-  /** OR23 — PUT /orders/:id/accept (default: 200 + empty JSON, supports 204) */
+  /** OR21 — PUT /orders/:id/accept (default: 200 + empty JSON, supports 204) */
   acceptOrder: (statusCode: number = 200) =>
     http.put(
       /mirakl\.net\/api\/orders\/[^/]+\/accept/,
@@ -446,10 +446,24 @@ export const miraklMocks = {
         : HttpResponse.json({}),
     ),
 
-  /** OR24 — PUT /orders/:id/tracking (default: 200 + empty JSON, supports 204) */
+  /** OR23 — PUT /orders/:id/tracking (default: 200 + empty JSON, supports 204) */
   shipOrder: (statusCode: number = 200) =>
     http.put(
       /mirakl\.net\/api\/orders\/[^/]+\/tracking/,
+      async () => statusCode === 204
+        ? new HttpResponse(null, { status: 204 })
+        : HttpResponse.json({}),
+    ),
+
+  /**
+   * OR24 — PUT /orders/:id/ship (default: 200 + empty JSON, supports 204).
+   * shipOrder() nel client chiama SEMPRE questo endpoint dopo OR23: ogni test
+   * che registra un handler tracking deve registrare anche questo, altrimenti
+   * la seconda PUT finisce in onUnhandledRequest:'error'.
+   */
+  shipConfirm: (statusCode: number = 200) =>
+    http.put(
+      /mirakl\.net\/api\/orders\/[^/]+\/ship/,
       async () => statusCode === 204
         ? new HttpResponse(null, { status: 204 })
         : HttpResponse.json({}),

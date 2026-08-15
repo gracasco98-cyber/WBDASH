@@ -21,7 +21,8 @@ export interface MiraklOrderLine {
   offerSku: string;
   productTitle: string;
   quantity: number;
-  price: number;
+  priceUnit: number;
+  price: number;       // line total (qty * priceUnit, before shipping)
   totalPrice: number;
 }
 
@@ -30,7 +31,8 @@ export interface MiraklOrder {
   orderState: string;
   createdDate: string;
   currencyIsoCode: string;
-  totalPrice: number;
+  totalPrice: number;  // order total, shipping included
+  shippingPrice: number;
   customer: {
     email: string | null;
     shippingAddress: MiraklShippingAddress;
@@ -45,6 +47,7 @@ interface RawMiraklOrder {
   created_date: string;
   currency_iso_code: string;
   total_price: number;
+  shipping_price: number;
   customer: {
     email: string | null;
     shipping_address: {
@@ -59,11 +62,14 @@ interface RawMiraklOrder {
       phone: string | null;
     };
   };
+  // Per lo schema OR11 reale: `price_unit` è il prezzo unitario, `price` è il
+  // totale di riga (quantity * price_unit, spedizione esclusa).
   order_lines: Array<{
-    id: string;
+    order_line_id: string;
     offer_sku: string;
     product_title: string;
     quantity: number;
+    price_unit: number;
     price: number;
     total_price: number;
   }>;
@@ -81,6 +87,7 @@ function mapOrder(raw: RawMiraklOrder): MiraklOrder {
     createdDate: raw.created_date,
     currencyIsoCode: raw.currency_iso_code,
     totalPrice: raw.total_price,
+    shippingPrice: raw.shipping_price,
     customer: {
       email: raw.customer.email,
       shippingAddress: {
@@ -96,10 +103,11 @@ function mapOrder(raw: RawMiraklOrder): MiraklOrder {
       },
     },
     orderLines: raw.order_lines.map((l) => ({
-      id: l.id,
+      id: l.order_line_id,
       offerSku: l.offer_sku,
       productTitle: l.product_title,
       quantity: l.quantity,
+      priceUnit: l.price_unit,
       price: l.price,
       totalPrice: l.total_price,
     })),
@@ -137,7 +145,7 @@ export async function fetchNewOrders(): Promise<MiraklOrder[]> {
   return data.orders.map(mapOrder);
 }
 
-// ─── OR23 — accept an order (all lines) ────────────────────────────────────────
+// ─── OR21 — accept an order (all lines) ────────────────────────────────────────
 export async function acceptOrder(orderId: string, lineIds: string[]): Promise<void> {
   await miraklRequest(`/orders/${orderId}/accept`, {
     method: "PUT",
@@ -147,7 +155,12 @@ export async function acceptOrder(orderId: string, lineIds: string[]): Promise<v
   });
 }
 
-// ─── OR24 — push tracking info for a shipped order ─────────────────────────────
+// ─── OR23 (tracking) + OR24 (ship) — mark an order as shipped ──────────────────
+// OR23 aggiorna SOLO le informazioni di tracking: non fa transitare l'ordine
+// nello stato SHIPPED. La documentazione Mirakl richiede di chiamare OR24
+// (`PUT /orders/{order_id}/ship`, body vuoto) dopo ogni aggiornamento di
+// tracking — senza, Mirakl non sa mai che l'ordine è partito e la SLA di
+// spedizione non risulta rispettata.
 export async function shipOrder(
   orderId: string,
   tracking: { carrierName: string; trackingNumber: string; carrierUrl?: string }
@@ -160,4 +173,5 @@ export async function shipOrder(
       carrier_url: tracking.carrierUrl,
     }),
   });
+  await miraklRequest(`/orders/${orderId}/ship`, { method: "PUT" });
 }

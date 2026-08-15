@@ -33,6 +33,7 @@ describe("Mirakl client", () => {
           created_date: "2026-08-01T10:00:00Z",
           currency_iso_code: "EUR",
           total_price: 44.97,
+          shipping_price: 4.99,
           customer: {
             email: "cliente@example.com",
             shipping_address: {
@@ -48,7 +49,8 @@ describe("Mirakl client", () => {
             },
           },
           order_lines: [
-            { id: "L1", offer_sku: "SKU-001", product_title: "Prodotto A", quantity: 2, price: 19.99, total_price: 39.98 },
+            // price_unit = prezzo unitario, price = totale di riga (2 * 19.99)
+            { order_line_id: "L1", offer_sku: "SKU-001", product_title: "Prodotto A", quantity: 2, price_unit: 19.99, price: 39.98, total_price: 44.97 },
           ],
         },
       ]),
@@ -60,11 +62,14 @@ describe("Mirakl client", () => {
       orderId: "MK-100",
       currencyIsoCode: "EUR",
       totalPrice: 44.97,
+      shippingPrice: 4.99,
       customer: {
         email: "cliente@example.com",
         shippingAddress: { firstname: "Mario", countryIsoCode: "IT" },
       },
-      orderLines: [{ id: "L1", offerSku: "SKU-001", quantity: 2 }],
+      // id viene da order_line_id (non esiste alcun campo `id` sul wire OR11),
+      // priceUnit dal prezzo unitario e price dal totale di riga.
+      orderLines: [{ id: "L1", offerSku: "SKU-001", quantity: 2, priceUnit: 19.99, price: 39.98 }],
     });
   });
 
@@ -86,11 +91,19 @@ describe("Mirakl client", () => {
     });
   });
 
-  it("shipOrder sends tracking info as snake_case", async () => {
+  it("shipOrder sends tracking info as snake_case (OR23) and then confirms the shipment (OR24)", async () => {
     let capturedBody: any = null;
+    let shipCalls = 0;
+    const callOrder: string[] = [];
     server.use(
       http.put(/mirakl\.net\/api\/orders\/MK-100\/tracking/, async ({ request }) => {
         capturedBody = await request.json();
+        callOrder.push("tracking");
+        return HttpResponse.json({});
+      }),
+      http.put(/mirakl\.net\/api\/orders\/MK-100\/ship/, async () => {
+        shipCalls++;
+        callOrder.push("ship");
         return HttpResponse.json({});
       }),
     );
@@ -101,6 +114,26 @@ describe("Mirakl client", () => {
       tracking_number: "T123",
       carrier_url: undefined,
     });
+    // OR23 aggiorna solo il tracking: senza OR24 l'ordine non passa mai a SHIPPED.
+    expect(shipCalls).toBe(1);
+    expect(callOrder).toEqual(["tracking", "ship"]);
+  });
+
+  it("shipOrder does NOT call OR24 when the tracking update (OR23) fails", async () => {
+    let shipCalls = 0;
+    server.use(
+      http.put(/mirakl\.net\/api\/orders\/MK-100\/tracking/, async () =>
+        new HttpResponse("boom", { status: 500 })),
+      http.put(/mirakl\.net\/api\/orders\/MK-100\/ship/, async () => {
+        shipCalls++;
+        return HttpResponse.json({});
+      }),
+    );
+
+    await expect(
+      shipOrder("MK-100", { carrierName: "BRT", trackingNumber: "T123" }),
+    ).rejects.toThrow(/Mirakl API error 500/);
+    expect(shipCalls).toBe(0);
   });
 
   it("throws with status and body on non-2xx response", async () => {
@@ -114,7 +147,7 @@ describe("Mirakl client", () => {
   });
 
   it("shipOrder handles 204 No Content (empty body) response", async () => {
-    server.use(miraklMocks.shipOrder(204));
+    server.use(miraklMocks.shipOrder(204), miraklMocks.shipConfirm(204));
     await expect(shipOrder("MK-100", { carrierName: "BRT", trackingNumber: "T123" })).resolves.toBeUndefined();
   });
 });
