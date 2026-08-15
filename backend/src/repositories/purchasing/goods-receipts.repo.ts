@@ -41,7 +41,7 @@ export type GoodsReceiptWithLines = GoodsReceipt & { lines: GoodsReceiptLine[] }
 export async function createGoodsReceipt(
   prisma: PrismaClient,
   data: CreateGoodsReceiptInput
-): Promise<GoodsReceipt> {
+): Promise<GoodsReceiptWithLines> {
   return prisma.$transaction(async (tx) => {
     const order = await tx.purchaseOrder.findUniqueOrThrow({
       where: { id: data.purchaseOrderId },
@@ -96,6 +96,7 @@ export async function createGoodsReceipt(
           })),
         },
       },
+      include: { lines: true },
     });
 
     for (const input of data.lines) {
