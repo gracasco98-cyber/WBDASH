@@ -58,6 +58,7 @@ describe("runMiraklSync", () => {
 
   it("happy path: creates a Shopify order, saves MiraklOrder, accepts on Mirakl", async () => {
     server.use(miraklMocks.newOrders([miraklOrderPayload()]));
+    server.use(shopifyMocks.orderByTag(null)); // no recovery match — proceeds to create
     server.use(shopifyMocks.variantBySku({ "SKU-001": "gid://shopify/ProductVariant/1" }));
     server.use(shopifyMocks.orderCreate({ id: "gid://shopify/Order/999", name: "#999" }));
     server.use(miraklMocks.acceptOrder());
@@ -116,6 +117,7 @@ describe("runMiraklSync", () => {
 
   it("missing SKU: logs the error, does not accept on Mirakl, no MiraklOrder row created", async () => {
     server.use(miraklMocks.newOrders([miraklOrderPayload()]));
+    server.use(shopifyMocks.orderByTag(null)); // no recovery match — proceeds to create
     server.use(shopifyMocks.variantBySku({})); // SKU-001 not found
 
     const result = await runMiraklSync();
@@ -134,5 +136,36 @@ describe("runMiraklSync", () => {
 
     const result = await runMiraklSync();
     expect(result).toEqual({ created: 0, accepted: 0, errors: 1 });
+  });
+
+  it("recovery: a Shopify order already tagged for this Mirakl order is reused, not recreated", async () => {
+    // No MiraklOrder row locally (as if createPendingAcceptOrder failed after
+    // a prior createOrder() succeeded) — the job must find the existing
+    // Shopify order by its mirakl:<id> tag instead of creating a duplicate.
+    server.use(miraklMocks.newOrders([miraklOrderPayload()]));
+    server.use(shopifyMocks.orderByTag({ id: "gid://shopify/Order/999", name: "#999" }));
+    server.use(miraklMocks.acceptOrder());
+    // No variantBySku/orderCreate handler registered — with onUnhandledRequest:
+    // 'error' the test fails if the job tries to create a Shopify order again.
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 1, accepted: 1, errors: 0 });
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-1" } });
+    expect(row?.shopifyOrderId).toBe("gid://shopify/Order/999");
+    expect(row?.miraklState).toBe("ACCEPTED");
+  });
+
+  it("markAcceptedWithRetry: logs distinctly under source 'mirakl-sync-stuck' and rethrows when the local write keeps failing", async () => {
+    const job = await import("../../src/mirakl/syncOrders.job");
+
+    // No MiraklOrder row exists for this id, so markAccepted's findUniqueOrThrow
+    // fails on every attempt — simulates acceptOrder succeeding on Mirakl while
+    // the local state write is permanently broken.
+    await expect(job.markAcceptedWithRetry("MK-DOES-NOT-EXIST", 2)).rejects.toThrow();
+
+    const errors = await db.prisma.appErrorLog.findMany({ where: { source: "mirakl-sync-stuck" } });
+    expect(errors.length).toBe(1);
+    expect(errors[0].context).toMatchObject({ miraklOrderId: "MK-DOES-NOT-EXIST" });
   });
 });

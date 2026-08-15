@@ -342,3 +342,21 @@ export async function createOrder(
 
   return data.orderCreate.order;
 }
+
+// ─── Find an order previously created by Mirakl sync, by its recovery tag ────
+const ORDER_BY_TAG_QUERY = `
+  query FindOrderByTag($query: String!) {
+    orders(first: 1, query: $query) {
+      edges { node { id name } }
+    }
+  }
+`;
+
+export async function findOrderByMiraklTag(
+  miraklOrderId: string
+): Promise<{ id: string; name: string } | null> {
+  const data = await gqlRequest<{
+    orders: { edges: Array<{ node: { id: string; name: string } }> };
+  }>(ORDER_BY_TAG_QUERY, { query: `tag:'mirakl:${miraklOrderId}'` });
+  return data.orders.edges[0]?.node ?? null;
+}

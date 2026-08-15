@@ -160,6 +160,23 @@ export const shopifyMocks = {
         });
       },
     ),
+
+  /**
+   * orders(query: "tag:'mirakl:...'") — usato da findOrderByMiraklTag.
+   * Discrimina sul nome dell'operazione GraphQL (FindOrderByTag) per
+   * convivere con altri handler orders/GetOrders registrati nello stesso test.
+   */
+  orderByTag: (result: { id: string; name: string } | null) =>
+    http.post(
+      /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+      async ({ request }) => {
+        const body: any = await request.clone().json();
+        if (!body?.query?.includes("FindOrderByTag")) return;
+        return HttpResponse.json({
+          data: { orders: { edges: result ? [{ node: result }] : [] } },
+        });
+      },
+    ),
 };
 
 // ─── Amazon mock factories ────────────────────────────────────────────────────
