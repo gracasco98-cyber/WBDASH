@@ -5,6 +5,9 @@ import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import { api } from "@/lib/api";
 import type { PurchaseOrderDetail, LogisticStatus } from "@/lib/api/purchase-orders";
+import GoodsReceiptForm from "@/components/purchasing/GoodsReceiptForm";
+import GoodsReceiptsList from "@/components/purchasing/GoodsReceiptsList";
+import type { GoodsReceipt } from "@/lib/api/purchase-orders";
 
 const STATUS_LABEL: Record<LogisticStatus, string> = {
   DRAFT: "Bozza", SENT: "Inviato", CONFIRMED: "Confermato", IN_PRODUCTION: "In produzione",
@@ -23,6 +26,10 @@ const NEXT_STATUSES: Record<LogisticStatus, LogisticStatus[]> = {
   PARTIALLY_RECEIVED: [], RECEIVED: [], COMPLETED: [], CANCELLED: [],
 };
 
+const RECEIVABLE_STATUSES: LogisticStatus[] = [
+  "CONFIRMED", "IN_PRODUCTION", "READY", "PARTIALLY_SHIPPED", "SHIPPED", "PARTIALLY_RECEIVED",
+];
+
 export default function OrdineDettaglioPage() {
   const { id } = useParams<{ id: string }>();
   const [po, setPo] = useState<PurchaseOrderDetail | null>(null);
@@ -31,6 +38,14 @@ export default function OrdineDettaglioPage() {
 
   const load = useCallback(() => { api.purchaseOrders.get(id).then(setPo).catch(() => setError("Ordine non trovato")); }, [id]);
   useEffect(() => { load(); }, [load]);
+
+  const [receipts, setReceipts] = useState<GoodsReceipt[]>([]);
+  const [showReceiptForm, setShowReceiptForm] = useState(false);
+
+  const loadReceipts = useCallback(() => {
+    api.purchaseOrders.goodsReceipts.list(id).then(setReceipts).catch(() => {});
+  }, [id]);
+  useEffect(() => { loadReceipts(); }, [loadReceipts]);
 
   const handleTransition = async (toStatus: LogisticStatus) => {
     setTransitioning(true);
@@ -113,6 +128,26 @@ export default function OrdineDettaglioPage() {
               </div>
               {error && <div className="text-xs text-accent-red bg-accent-red/10 border border-accent-red/20 rounded-lg px-3 py-2">{error}</div>}
             </div>
+
+            {po.lines.some(l => l.remainingQty > 0) && RECEIVABLE_STATUSES.includes(po.logisticStatus) && (
+              <div className="space-y-2">
+                {!showReceiptForm ? (
+                  <button onClick={() => setShowReceiptForm(true)}
+                    className="px-3 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/20 text-accent-primary text-xs font-medium hover:bg-accent-primary/20 transition-colors">
+                    + Registra DDT
+                  </button>
+                ) : (
+                  <GoodsReceiptForm
+                    purchaseOrderId={id}
+                    lines={po.lines.filter(l => l.remainingQty > 0)}
+                    onDone={() => { setShowReceiptForm(false); load(); loadReceipts(); }}
+                    onCancel={() => setShowReceiptForm(false)}
+                  />
+                )}
+              </div>
+            )}
+
+            <GoodsReceiptsList receipts={receipts} />
 
             <div className="rounded-xl border border-bg-border bg-bg-card p-5 space-y-2">
               <h2 className="text-sm font-semibold text-white">Storico stato</h2>
