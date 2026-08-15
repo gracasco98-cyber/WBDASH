@@ -1,7 +1,7 @@
 // purchasing/routes/goods-receipts.routes.ts — GoodsReceipt creation + listing, nested under a purchase order.
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
-import { createGoodsReceipt, findGoodsReceiptsByOrderId, OverReceiptError } from "../../repositories/purchasing/goods-receipts.repo";
+import { createGoodsReceipt, findGoodsReceiptsByOrderId, OverReceiptError, ForeignLineError } from "../../repositories/purchasing/goods-receipts.repo";
 import { InvalidTransitionError } from "../../repositories/purchasing/purchase-orders.repo";
 
 export const goodsReceiptsRouter = Router();
@@ -53,6 +53,7 @@ goodsReceiptsRouter.post("/purchase-orders/:id/goods-receipts", async (req: Requ
   } catch (err) {
     if (err instanceof OverReceiptError) return res.status(409).json({ error: err.message });
     if (err instanceof InvalidTransitionError) return res.status(409).json({ error: err.message });
+    if (err instanceof ForeignLineError) return res.status(400).json({ error: err.message });
     if (notFound(err)) return res.status(404).json({ error: "Purchase order not found" });
     res.status(500).json({ error: String(err) });
   }

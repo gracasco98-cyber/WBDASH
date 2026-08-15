@@ -67,8 +67,32 @@ describe("goods-receipts routes", () => {
     const res = await request(app).post(`/api/purchasing/purchase-orders/${poId}/goods-receipts`).send(baseBody());
     expect(res.status).toBe(201);
     expect(res.body.supplierDdtNumber).toBe("DDT-001");
+    expect(res.body.lines).toHaveLength(1);
+    expect(res.body.lines[0]).toMatchObject({ purchaseOrderLineId: poLineId, receivedQty: 10 });
     const po = await db.prisma.purchaseOrder.findUniqueOrThrow({ where: { id: poId } });
     expect(po.logisticStatus).toBe("RECEIVED");
+  });
+
+  it("POST with a purchaseOrderLineId that doesn't belong to the order returns 400", async () => {
+    const other = await db.prisma.purchaseOrder.create({
+      data: {
+        poNumber: "PO-2026-000003",
+        supplierId, orderDate: new Date("2026-08-08"), currency: "EUR",
+        logisticStatus: "CONFIRMED",
+        buyerId: userId, warehouseId, paymentTermId,
+        lines: {
+          create: [{
+            productId, description: "Widget", orderedQty: 10, unitOfMeasure: "PZ",
+            unitPrice: 5, taxableAmount: 50, vatAmount: 11, totalAmount: 61,
+          }],
+        },
+      },
+      include: { lines: true },
+    });
+    const res = await request(app).post(`/api/purchasing/purchase-orders/${poId}/goods-receipts`).send(
+      baseBody({ lines: [{ purchaseOrderLineId: other.lines[0].id, receivedQty: 5 }] })
+    );
+    expect(res.status).toBe(400);
   });
 
   it("POST with receivedQty exceeding the remaining quantity returns 409", async () => {

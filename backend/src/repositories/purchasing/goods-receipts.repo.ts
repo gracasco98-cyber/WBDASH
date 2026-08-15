@@ -19,6 +19,13 @@ export class OverReceiptError extends Error {
   }
 }
 
+export class ForeignLineError extends Error {
+  constructor(purchaseOrderLineId: string, purchaseOrderId: string) {
+    super(`PurchaseOrderLine ${purchaseOrderLineId} does not belong to order ${purchaseOrderId}`);
+    this.name = "ForeignLineError";
+  }
+}
+
 export interface CreateGoodsReceiptLineInput {
   purchaseOrderLineId: string;
   receivedQty: number;
@@ -61,7 +68,7 @@ export async function createGoodsReceipt(
     const requestedByLineId = new Map<string, number>();
     for (const input of data.lines) {
       const line = linesById.get(input.purchaseOrderLineId);
-      if (!line) throw new Error(`PurchaseOrderLine ${input.purchaseOrderLineId} does not belong to order ${data.purchaseOrderId}`);
+      if (!line) throw new ForeignLineError(input.purchaseOrderLineId, data.purchaseOrderId);
       requestedByLineId.set(
         input.purchaseOrderLineId,
         (requestedByLineId.get(input.purchaseOrderLineId) ?? 0) + input.receivedQty
