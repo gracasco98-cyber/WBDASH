@@ -31,9 +31,9 @@ describe("purchase-order-state-machine", () => {
     expect(allowedNextStatuses("CANCELLED")).toEqual([]);
   });
 
-  it("rejects transitions into or out of the not-yet-reachable receiving states", () => {
-    expect(isValidTransition("SHIPPED", "PARTIALLY_RECEIVED")).toBe(false);
-    expect(allowedNextStatuses("PARTIALLY_RECEIVED")).toEqual([]);
+  it("allows the receiving states reachable since FASE E1, keeps COMPLETED unreachable", () => {
+    expect(isValidTransition("SHIPPED", "PARTIALLY_RECEIVED")).toBe(true);
+    expect(allowedNextStatuses("PARTIALLY_RECEIVED")).toEqual(["RECEIVED"]);
     expect(allowedNextStatuses("RECEIVED")).toEqual([]);
     expect(allowedNextStatuses("COMPLETED")).toEqual([]);
   });
