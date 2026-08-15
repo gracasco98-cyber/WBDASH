@@ -6,6 +6,8 @@ import { fetchOrderById, logError } from "../services/shopify.service";
 import { upsertOrder } from "../services/order.service";
 import { broadcast } from "../sse/sse";
 import { findOrderForBroadcast } from "../repositories/shopify/orders.repo";
+import { findByShopifyOrderId, markShipped } from "../repositories/mirakl/orders.repo";
+import { shipOrder } from "../mirakl/client";
 const WEBHOOK_SECRET = process.env.SHOPIFY_WEBHOOK_SECRET ?? "";
 
 // ─── HMAC verification ────────────────────────────────────────────────────────
@@ -78,6 +80,24 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
             } catch {
               // broadcast failure must never crash the webhook handler
             }
+          }
+        }
+      } else if (topic === "fulfillments/create") {
+        // Order shipped on Shopify -> push tracking to Mirakl if this order
+        // was created from a Mirakl (Redcare) order and tracking wasn't
+        // already synced (idempotency across duplicate/retried webhooks).
+        const gid = `gid://shopify/Order/${shopifyId}`;
+        const miraklOrder = await findByShopifyOrderId(prisma, gid);
+        if (miraklOrder && !miraklOrder.trackingSyncedAt) {
+          const trackingNumber: string | null =
+            payload.tracking_number ?? payload.tracking_numbers?.[0] ?? null;
+          if (trackingNumber) {
+            await shipOrder(miraklOrder.miraklOrderId, {
+              carrierName: payload.tracking_company ?? "N/D",
+              trackingNumber,
+              carrierUrl: payload.tracking_url ?? payload.tracking_urls?.[0],
+            });
+            await markShipped(prisma, gid, trackingNumber);
           }
         }
       }
