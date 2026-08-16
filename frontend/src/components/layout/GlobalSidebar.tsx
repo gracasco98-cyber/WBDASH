@@ -31,7 +31,7 @@ const GROUPS: Group[] = [
       { href: "/acquisti", label: "Panoramica" },
       { href: "/acquisti/fornitori", label: "Fornitori" },
       { href: "/acquisti/ordini", label: "Ordini Fornitore" },
-      { label: "Ricezioni / DDT", comingSoon: true },
+      { href: "/acquisti/ordini", label: "Ricezioni / DDT" },
       { label: "Fatture Fornitore", comingSoon: true },
       { href: "/acquisti/magazzini", label: "Magazzini" },
       { href: "/acquisti/banche", label: "Banche" },
