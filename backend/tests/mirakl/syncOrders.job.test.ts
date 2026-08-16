@@ -13,11 +13,12 @@ function miraklOrderPayload(overrides: Record<string, any> = {}) {
     currency_iso_code: "EUR",
     total_price: 44.97,   // 39.98 di righe + 4.99 di spedizione
     shipping_price: 4.99,
+    channel: { code: "IT", label: "Canale IT" },
+    customer_notification_email: "cliente@example.com",
     customer: {
-      email: "cliente@example.com",
       shipping_address: {
         firstname: "Mario", lastname: "Rossi", street_1: "Via Roma 1", street_2: null,
-        zip_code: "00100", city: "Roma", country: "Italy", country_iso_code: "IT", phone: null,
+        zip_code: "00100", city: "Roma", country: "Italy", country_iso_code: "ITA", phone: null,
       },
     },
     order_lines: [
@@ -72,6 +73,25 @@ describe("runMiraklSync", () => {
     expect(row?.shopifyOrderId).toBe("gid://shopify/Order/999");
     expect(row?.miraklState).toBe("ACCEPTED");
     expect(row?.country).toBe("IT");
+  });
+
+  it("RECEIVED order (Mirakl already accepted it): creates the Shopify order but does NOT call Mirakl's accept endpoint", async () => {
+    // Verificato contro l'account reale (2026-08-16): questo canale non produce
+    // mai ordini in WAITING_ACCEPTANCE, arrivano già RECEIVED/AUTO_RECEIVED —
+    // chiamare comunque l'accettazione sarebbe una scrittura Mirakl inutile
+    // (nessun handler miraklMocks.acceptOrder() registrato: se il job la
+    // chiamasse comunque, onUnhandledRequest:'error' farebbe fallire il test).
+    server.use(miraklMocks.newOrders([miraklOrderPayload({ order_state: "RECEIVED" })]));
+    server.use(shopifyMocks.orderByTag(null));
+    server.use(shopifyMocks.variantBySku({ "SKU-001": "gid://shopify/ProductVariant/1" }));
+    server.use(shopifyMocks.orderCreate({ id: "gid://shopify/Order/998", name: "#998" }));
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 1, accepted: 1, errors: 0 });
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-1" } });
+    expect(row?.shopifyOrderId).toBe("gid://shopify/Order/998");
+    expect(row?.miraklState).toBe("ACCEPTED");
   });
 
   it("sends the UNIT price, a shipping line and the real Mirakl line ids downstream", async () => {

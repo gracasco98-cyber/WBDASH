@@ -33,7 +33,14 @@ export interface MiraklOrder {
   currencyIsoCode: string;
   totalPrice: number;  // order total, shipping included
   shippingPrice: number;
+  // Codice canale/paese (es. "IT", "DE") — fonte diretta e affidabile per la
+  // decisione IT/DE, a differenza di shippingAddress.countryIsoCode che è
+  // in formato ISO-3166-1 alpha-3 ("ITA"/"DEU"), verificato contro l'API reale.
+  channelCode: string;
   customer: {
+    // Fonte: customer_notification_email (a livello ordine nel payload reale,
+    // non customer.email che non esiste) — indirizzo relay anonimizzato Mirakl,
+    // non l'email reale del cliente.
     email: string | null;
     shippingAddress: MiraklShippingAddress;
   };
@@ -48,8 +55,9 @@ interface RawMiraklOrder {
   currency_iso_code: string;
   total_price: number;
   shipping_price: number;
+  channel: { code: string };
+  customer_notification_email: string | null;
   customer: {
-    email: string | null;
     shipping_address: {
       firstname: string;
       lastname: string;
@@ -88,8 +96,9 @@ function mapOrder(raw: RawMiraklOrder): MiraklOrder {
     currencyIsoCode: raw.currency_iso_code,
     totalPrice: raw.total_price,
     shippingPrice: raw.shipping_price,
+    channelCode: raw.channel.code,
     customer: {
-      email: raw.customer.email,
+      email: raw.customer_notification_email,
       shippingAddress: {
         firstname: raw.customer.shipping_address.firstname,
         lastname: raw.customer.shipping_address.lastname,
@@ -137,10 +146,14 @@ async function miraklRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-// ─── OR11 — fetch orders waiting for seller acceptance ─────────────────────────
+// ─── OR11 — fetch new orders needing a Shopify order created ───────────────────
+// Verificato contro l'account reale (2026-08-16): questo canale non produce
+// mai ordini in WAITING_ACCEPTANCE — arrivano già in RECEIVED (con
+// order_line_state_reason_code "AUTO_RECEIVED"), quindi si interrogano
+// entrambi gli stati per restare corretti anche se la configurazione cambia.
 export async function fetchNewOrders(): Promise<MiraklOrder[]> {
   const data = await miraklRequest<MiraklOrdersResponse>(
-    "/orders?order_state_codes=WAITING_ACCEPTANCE"
+    "/orders?order_state_codes=WAITING_ACCEPTANCE,RECEIVED"
   );
   return data.orders.map(mapOrder);
 }
