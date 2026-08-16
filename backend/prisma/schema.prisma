@@ -681,6 +681,7 @@ model User {
   mfaDevices          MfaDevice[]
   purchaseOrdersAsBuyer      PurchaseOrder[]
   purchaseOrderStatusChanges PurchaseOrderStatusHistory[]
+  goodsReceiptsReceived      GoodsReceipt[]
 
   @@index([email])
   @@index([role])
@@ -1048,6 +1049,7 @@ model PurchaseOrder {
 
   lines         PurchaseOrderLine[]
   statusHistory PurchaseOrderStatusHistory[]
+  goodsReceipts GoodsReceipt[]
 
   @@index([supplierId])
   @@index([logisticStatus])
@@ -1066,7 +1068,7 @@ model PurchaseOrderLine {
   supplierSku     String?
   description     String
   orderedQty      Decimal       @db.Decimal(14, 4)
-  receivedQty     Decimal       @default(0) @db.Decimal(14, 4) // written only from FASE E onward; stays 0 here
+  receivedQty     Decimal       @default(0) @db.Decimal(14, 4) // sum of GoodsReceiptLine.receivedQty across this line's receipts (FASE E1)
   unitOfMeasure   String
   unitPrice       Decimal       @db.Decimal(14, 4)
   discountPct     Decimal?      @db.Decimal(5, 2)
@@ -1075,6 +1077,8 @@ model PurchaseOrderLine {
   totalAmount     Decimal       @db.Decimal(14, 4)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
+  goodsReceiptLines GoodsReceiptLine[]
 
   @@index([purchaseOrderId])
   @@index([productId])
@@ -1094,4 +1098,41 @@ model PurchaseOrderStatusHistory {
 
   @@index([purchaseOrderId])
   @@index([changedById])
+}
+
+// ─── Purchasing module — FASE E1: goods receipts (DDT) ─────────────────────────
+// See docs/superpowers/specs/2026-08-14-goods-receipt-fase-e1-design.md.
+// Append-only, same principle as PurchaseOrderStatusHistory — no update/delete.
+model GoodsReceipt {
+  id                 String        @id @default(cuid())
+  grnNumber          String        @unique
+  purchaseOrderId    String
+  purchaseOrder      PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  receiptDate        DateTime
+  supplierDdtNumber  String
+  supplierDdtDate    DateTime
+  carrier            String?
+  receivedById       String
+  receivedBy         User          @relation(fields: [receivedById], references: [id])
+  notes              String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  lines GoodsReceiptLine[]
+
+  @@index([purchaseOrderId])
+  @@index([receivedById])
+}
+
+model GoodsReceiptLine {
+  id                  String            @id @default(cuid())
+  goodsReceiptId      String
+  goodsReceipt        GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  purchaseOrderLineId String
+  purchaseOrderLine   PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+  receivedQty         Decimal           @db.Decimal(14, 4)
+  notes               String?
+
+  @@index([goodsReceiptId])
+  @@index([purchaseOrderLineId])
 }

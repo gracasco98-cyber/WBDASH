@@ -30,6 +30,7 @@ import { amazonAccountMiddleware } from "./middleware/amazon-account.middleware"
 import { masterDataRouter } from "./purchasing/routes/master-data.routes";
 import { suppliersRouter } from "./purchasing/routes/suppliers.routes";
 import { purchaseOrdersRouter } from "./purchasing/routes/purchase-orders.routes";
+import { goodsReceiptsRouter } from "./purchasing/routes/goods-receipts.routes";
 import { dashboardRouter } from "./purchasing/routes/dashboard.routes";
 import { addSSEClient, sseClientCount } from "./sse/sse";
 
@@ -155,6 +156,7 @@ app.use("/api/auth/admin", requireAuth, adminRouter);
 app.use("/api/purchasing", requireAuth, masterDataRouter);
 app.use("/api/purchasing", requireAuth, suppliersRouter);
 app.use("/api/purchasing", requireAuth, purchaseOrdersRouter);
+app.use("/api/purchasing", requireAuth, goodsReceiptsRouter);
 app.use("/api/purchasing", requireAuth, dashboardRouter);
 
 // ─── 404 / error handler ─────────────────────────────────────────────────────

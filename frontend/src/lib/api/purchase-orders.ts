@@ -32,6 +32,25 @@ export type PurchaseOrderDetail = PurchaseOrder & {
   statusHistory: PurchaseOrderStatusHistoryEntry[];
 };
 
+export interface GoodsReceiptLine {
+  id: string; purchaseOrderLineId: string; receivedQty: number; notes: string | null;
+}
+
+export interface GoodsReceipt {
+  id: string; grnNumber: string; purchaseOrderId: string; receiptDate: string;
+  supplierDdtNumber: string; supplierDdtDate: string; carrier: string | null;
+  receivedById: string; notes: string | null; lines: GoodsReceiptLine[];
+}
+
+export interface CreateGoodsReceiptLineInput {
+  purchaseOrderLineId: string; receivedQty: number; notes?: string;
+}
+
+export interface CreateGoodsReceiptInput {
+  receiptDate: string; supplierDdtNumber: string; supplierDdtDate: string;
+  carrier?: string; notes?: string; lines: CreateGoodsReceiptLineInput[];
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(apiUrl(path), {
     method: "POST", credentials: "include",
@@ -63,5 +82,10 @@ export const purchaseOrders = {
     post<PurchaseOrder>(`/api/purchasing/purchase-orders/${id}/transition`, { toStatus, note }),
   products: {
     listForPicker: () => get<PickerProduct[]>("/api/purchasing/products"),
+  },
+  goodsReceipts: {
+    list: (orderId: string) => get<GoodsReceipt[]>(`/api/purchasing/purchase-orders/${orderId}/goods-receipts`),
+    create: (orderId: string, data: CreateGoodsReceiptInput) =>
+      post<GoodsReceipt>(`/api/purchasing/purchase-orders/${orderId}/goods-receipts`, data),
   },
 };
