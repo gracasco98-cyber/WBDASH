@@ -249,3 +249,128 @@ export async function logError(
     });
   } catch (_) {}
 }
+
+// ─── Find variant by SKU (used by Mirakl order sync) ──────────────────────────
+const VARIANT_BY_SKU_QUERY = `
+  query FindVariantBySku($query: String!) {
+    productVariants(first: 1, query: $query) {
+      edges { node { id } }
+    }
+  }
+`;
+
+export async function findVariantIdBySku(sku: string): Promise<string | null> {
+  const data = await gqlRequest<{
+    productVariants: { edges: Array<{ node: { id: string } }> };
+  }>(VARIANT_BY_SKU_QUERY, { query: `sku:${sku}` });
+  return data.productVariants.edges[0]?.node.id ?? null;
+}
+
+// ─── Create order (used by Mirakl sync — orders arrive already paid) ─────────
+const ORDER_CREATE_MUTATION = `
+  mutation CreateOrder($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+    orderCreate(order: $order, options: $options) {
+      order { id name }
+      userErrors { field message }
+    }
+  }
+`;
+
+export interface CreateOrderInput {
+  email: string | null;
+  tags: string[];
+  note: string;
+  currency: string;
+  totalAmount: number;    // totale ordine, spedizione inclusa (= importo transazione)
+  shippingAmount: number; // quota spedizione, inviata come shippingLines
+  shippingAddress: {
+    firstName: string;
+    lastName: string;
+    address1: string;
+    address2: string | null;
+    zip: string;
+    city: string;
+    country: string;
+    phone: string | null;
+  };
+  lineItems: Array<{ variantId: string; quantity: number; unitPrice: number }>;
+}
+
+export async function createOrder(
+  input: CreateOrderInput
+): Promise<{ id: string; name: string }> {
+  const data = await gqlRequest<{
+    orderCreate: {
+      order: { id: string; name: string } | null;
+      userErrors: Array<{ field: string[]; message: string }>;
+    };
+  }>(ORDER_CREATE_MUTATION, {
+    order: {
+      email: input.email,
+      tags: input.tags,
+      note: input.note,
+      currency: input.currency,
+      lineItems: input.lineItems.map((li) => ({
+        variantId: li.variantId,
+        quantity: li.quantity,
+        // OrderCreateLineItemInput.requiresShipping default a false nello schema
+        // 2025-01: senza questo flag le righe risulterebbero non spedibili e il
+        // flusso fulfillment/tracking verso Mirakl non partirebbe mai.
+        requiresShipping: true,
+        priceSet: {
+          shopMoney: { amount: li.unitPrice.toFixed(2), currencyCode: input.currency },
+        },
+      })),
+      shippingAddress: input.shippingAddress,
+      // Senza questa riga il totale calcolato da Shopify (somma delle righe)
+      // non riconcilierebbe con l'importo della transazione, che include la
+      // spedizione.
+      shippingLines: input.shippingAmount > 0 ? [{
+        title: "Spedizione",
+        priceSet: {
+          shopMoney: { amount: input.shippingAmount.toFixed(2), currencyCode: input.currency },
+        },
+      }] : undefined,
+      transactions: [
+        {
+          kind: "SALE",
+          status: "SUCCESS",
+          gateway: "Mirakl",
+          amountSet: {
+            shopMoney: { amount: input.totalAmount.toFixed(2), currencyCode: input.currency },
+          },
+        },
+      ],
+    },
+    options: {
+      inventoryBehaviour: "DECREMENT_OBEYING_POLICY",
+    },
+  });
+
+  if (data.orderCreate.userErrors.length > 0) {
+    throw new Error(`Shopify orderCreate errors: ${JSON.stringify(data.orderCreate.userErrors)}`);
+  }
+  if (!data.orderCreate.order) {
+    throw new Error("Shopify orderCreate returned no order and no userErrors");
+  }
+
+  return data.orderCreate.order;
+}
+
+// ─── Find an order previously created by Mirakl sync, by its recovery tag ────
+const ORDER_BY_TAG_QUERY = `
+  query FindOrderByTag($query: String!) {
+    orders(first: 1, query: $query) {
+      edges { node { id name } }
+    }
+  }
+`;
+
+export async function findOrderByMiraklTag(
+  miraklOrderId: string
+): Promise<{ id: string; name: string } | null> {
+  const data = await gqlRequest<{
+    orders: { edges: Array<{ node: { id: string; name: string } }> };
+  }>(ORDER_BY_TAG_QUERY, { query: `tag:'mirakl:${miraklOrderId}'` });
+  return data.orders.edges[0]?.node ?? null;
+}
