@@ -138,3 +138,23 @@ export async function transitionPurchaseOrderStatus(
     return tx.purchaseOrder.update({ where: { id }, data: { logisticStatus: toStatus } });
   });
 }
+
+/**
+ * Permanently deletes a purchase order, regardless of status — including any
+ * goods receipts (DDT) registered against it. Deliberate exception to this
+ * project's usual soft-delete/append-only conventions, requested explicitly
+ * by the user for cleaning up mistaken/test orders; real orders should
+ * normally be cancelled (transitionPurchaseOrderStatus → CANCELLED), not
+ * deleted, since that preserves history. GoodsReceipt rows are deleted first
+ * (their GoodsReceiptLine rows cascade automatically) so the FK from
+ * GoodsReceipt.purchaseOrderId — which is RESTRICT, not CASCADE — doesn't
+ * block the purchaseOrder.delete() that follows. PurchaseOrderLine and
+ * PurchaseOrderStatusHistory already cascade on PurchaseOrder deletion per
+ * the schema, so no explicit cleanup needed for those two.
+ */
+export async function deletePurchaseOrder(prisma: PrismaClient, id: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await tx.goodsReceipt.deleteMany({ where: { purchaseOrderId: id } });
+    await tx.purchaseOrder.delete({ where: { id } });
+  });
+}

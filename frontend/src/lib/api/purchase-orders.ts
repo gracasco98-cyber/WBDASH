@@ -60,6 +60,11 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function del(path: string): Promise<void> {
+  const res = await fetch(apiUrl(path), { method: "DELETE", credentials: "include" });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+}
+
 export interface CreatePurchaseOrderLineInput {
   productId: string; supplierSku?: string; description: string; orderedQty: number;
   unitOfMeasure: string; unitPrice: number; discountPct?: number;
@@ -80,6 +85,7 @@ export const purchaseOrders = {
   create: (data: CreatePurchaseOrderInput) => post<PurchaseOrder>("/api/purchasing/purchase-orders", data),
   transition: (id: string, toStatus: string, note?: string) =>
     post<PurchaseOrder>(`/api/purchasing/purchase-orders/${id}/transition`, { toStatus, note }),
+  delete: (id: string) => del(`/api/purchasing/purchase-orders/${id}`),
   products: {
     listForPicker: () => get<PickerProduct[]>("/api/purchasing/products"),
   },

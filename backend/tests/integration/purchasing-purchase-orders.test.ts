@@ -91,4 +91,17 @@ describe("purchase-orders routes", () => {
     const res = await request(app).post("/api/purchasing/purchase-orders/does-not-exist/transition").send({ toStatus: "SENT" });
     expect(res.status).toBe(404);
   });
+
+  it("DELETE /:id removes the order and returns 204", async () => {
+    const post = await request(app).post("/api/purchasing/purchase-orders").send(baseBody());
+    const del = await request(app).delete(`/api/purchasing/purchase-orders/${post.body.id}`);
+    expect(del.status).toBe(204);
+    const get = await request(app).get(`/api/purchasing/purchase-orders/${post.body.id}`);
+    expect(get.status).toBe(404);
+  });
+
+  it("DELETE /:id returns 404 for an unknown order", async () => {
+    const res = await request(app).delete("/api/purchasing/purchase-orders/does-not-exist");
+    expect(res.status).toBe(404);
+  });
 });

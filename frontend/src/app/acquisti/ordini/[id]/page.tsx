@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import { api } from "@/lib/api";
@@ -32,9 +32,13 @@ const RECEIVABLE_STATUSES: LogisticStatus[] = [
 
 export default function OrdineDettaglioPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [po, setPo] = useState<PurchaseOrderDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(() => { api.purchaseOrders.get(id).then(setPo).catch(() => setError("Ordine non trovato")); }, [id]);
   useEffect(() => { load(); }, [load]);
@@ -57,6 +61,19 @@ export default function OrdineDettaglioPage() {
       setError(err instanceof Error ? err.message : "Errore durante la transizione di stato");
     } finally {
       setTransitioning(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!po || deleteConfirmInput !== po.poNumber) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await api.purchaseOrders.delete(id);
+      router.push("/acquisti/ordini");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Errore durante l'eliminazione");
+      setDeleting(false);
     }
   };
 
@@ -158,6 +175,47 @@ export default function OrdineDettaglioPage() {
                   {h.note ? ` (${h.note})` : ""}
                 </div>
               ))}
+            </div>
+
+            <div className="rounded-xl border border-accent-red/20 bg-bg-card p-5 space-y-3">
+              <h2 className="text-sm font-semibold text-accent-red">Zona pericolosa</h2>
+              <p className="text-xs text-zinc-500">
+                Elimina definitivamente questo ordine, incluse le righe, lo storico stato e tutti i DDT registrati. Operazione irreversibile — per un ordine reale usa "Annulla" invece, che conserva lo storico.
+              </p>
+              {!showDeleteConfirm ? (
+                <button onClick={() => setShowDeleteConfirm(true)}
+                  className="px-3 py-1.5 rounded-lg bg-accent-red/10 border border-accent-red/20 text-accent-red text-xs font-medium hover:bg-accent-red/20 transition-colors">
+                  Elimina definitivamente
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <label className="block text-xs text-zinc-400">
+                    Digita <span className="font-mono text-zinc-200">{po.poNumber}</span> per confermare:
+                  </label>
+                  <input
+                    value={deleteConfirmInput}
+                    onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                    className="w-full max-w-xs rounded-lg bg-bg-hover border border-bg-border px-2.5 py-1.5 text-zinc-200 text-xs font-mono"
+                    placeholder={po.poNumber}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleDelete}
+                      disabled={deleting || deleteConfirmInput !== po.poNumber}
+                      className="px-3 py-1.5 rounded-lg bg-accent-red/10 border border-accent-red/20 text-accent-red text-xs font-medium hover:bg-accent-red/20 disabled:opacity-40 transition-colors"
+                    >
+                      Conferma eliminazione
+                    </button>
+                    <button
+                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmInput(""); }}
+                      disabled={deleting}
+                      className="px-3 py-1.5 rounded-lg border border-bg-border text-zinc-400 text-xs font-medium hover:bg-bg-hover transition-colors"
+                    >
+                      Annulla
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </main>
         </div>
