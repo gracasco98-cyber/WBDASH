@@ -34,8 +34,9 @@ describe("Mirakl client", () => {
           currency_iso_code: "EUR",
           total_price: 44.97,
           shipping_price: 4.99,
+          channel: { code: "IT", label: "Canale IT" },
+          customer_notification_email: "cliente@example.com",
           customer: {
-            email: "cliente@example.com",
             shipping_address: {
               firstname: "Mario",
               lastname: "Rossi",
@@ -44,7 +45,8 @@ describe("Mirakl client", () => {
               zip_code: "00100",
               city: "Roma",
               country: "Italy",
-              country_iso_code: "IT",
+              // Verificato contro l'API reale: ISO-3166-1 alpha-3, non alpha-2.
+              country_iso_code: "ITA",
               phone: null,
             },
           },
@@ -63,9 +65,10 @@ describe("Mirakl client", () => {
       currencyIsoCode: "EUR",
       totalPrice: 44.97,
       shippingPrice: 4.99,
+      channelCode: "IT",
       customer: {
         email: "cliente@example.com",
-        shippingAddress: { firstname: "Mario", countryIsoCode: "IT" },
+        shippingAddress: { firstname: "Mario", countryIsoCode: "ITA" },
       },
       // id viene da order_line_id (non esiste alcun campo `id` sul wire OR11),
       // priceUnit dal prezzo unitario e price dal totale di riga.

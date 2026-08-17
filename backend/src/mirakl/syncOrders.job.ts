@@ -95,7 +95,13 @@ export async function runMiraklSync(): Promise<{ created: number; accepted: numb
       }
 
       if (existing.miraklState === "PENDING_ACCEPT") {
-        await acceptOrder(order.orderId, order.orderLines.map((l) => l.id));
+        // L'account reale non produce ordini in WAITING_ACCEPTANCE (arrivano
+        // già RECEIVED/AUTO_RECEIVED) — chiamare l'accettazione ha senso solo
+        // se l'ordine è davvero ancora in attesa; altrimenti Mirakl lo ha già
+        // gestito e serve solo allineare lo stato locale.
+        if (order.orderState === "WAITING_ACCEPTANCE") {
+          await acceptOrder(order.orderId, order.orderLines.map((l) => l.id));
+        }
         await markAcceptedWithRetry(order.orderId);
         accepted++;
       }

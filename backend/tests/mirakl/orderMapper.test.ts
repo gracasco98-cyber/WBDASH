@@ -10,6 +10,7 @@ function makeOrder(overrides: Partial<MiraklOrder> = {}): MiraklOrder {
     currencyIsoCode: "EUR",
     totalPrice: 44.97,
     shippingPrice: 4.99,
+    channelCode: "IT",
     customer: {
       email: "cliente@example.com",
       shippingAddress: {
@@ -43,11 +44,32 @@ describe("mapMiraklOrder", () => {
 
   it("tags DE orders as redcare_de", () => {
     const order = makeOrder({
+      channelCode: "DE",
       customer: {
         email: "kunde@example.de",
         shippingAddress: {
           firstname: "Hans", lastname: "Muller", street1: "Hauptstr 1", street2: null,
-          zipCode: "10115", city: "Berlin", country: "Germany", countryIsoCode: "DE", phone: null,
+          zipCode: "10115", city: "Berlin", country: "Germany", countryIsoCode: "DEU", phone: null,
+        },
+      },
+    });
+    const mapped = mapMiraklOrder(order);
+    expect(mapped.tag).toBe("redcare_de");
+    expect(mapped.country).toBe("DE");
+  });
+
+  it("uses channelCode alone to decide IT vs DE, ignoring shippingAddress.countryIsoCode", () => {
+    // shippingAddress.countryIsoCode è ISO-3166-1 alpha-3 e non è la fonte
+    // della decisione: qui vale volutamente "ITA" mentre channelCode dice "DE",
+    // per dimostrare che solo channelCode guida il tag — un ordine spedito
+    // in Italia ma venduto sul canale DE non deve finire taggato redcare_it.
+    const order = makeOrder({
+      channelCode: "DE",
+      customer: {
+        email: "kunde@example.de",
+        shippingAddress: {
+          firstname: "Hans", lastname: "Muller", street1: "Hauptstr 1", street2: null,
+          zipCode: "10115", city: "Berlin", country: "Italy", countryIsoCode: "ITA", phone: null,
         },
       },
     });
@@ -72,7 +94,8 @@ describe("mapMiraklOrder", () => {
       address2: null,
       zip: "00100",
       city: "Roma",
-      country: "IT",
+      // Nome esteso, non il codice ISO — vedi commento in orderMapper.ts.
+      country: "Italy",
       phone: null,
     });
   });

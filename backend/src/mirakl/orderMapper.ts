@@ -39,7 +39,10 @@ export function mapMiraklOrder(order: MiraklOrder): MappedOrder {
   }
 
   const addr = order.customer.shippingAddress;
-  const country: "IT" | "DE" = addr.countryIsoCode.toUpperCase() === "DE" ? "DE" : "IT";
+  // channel.code è la fonte diretta per paese/canale — shippingAddress.countryIsoCode
+  // è ISO-3166-1 alpha-3 ("ITA"/"DEU"), verificato contro l'API reale (2026-08-16),
+  // quindi non era mai confrontabile con "DE".
+  const country: "IT" | "DE" = order.channelCode.toUpperCase() === "DE" ? "DE" : "IT";
   const tag: "redcare_it" | "redcare_de" = country === "DE" ? "redcare_de" : "redcare_it";
 
   return {
@@ -56,7 +59,9 @@ export function mapMiraklOrder(order: MiraklOrder): MappedOrder {
       address2: addr.street2,
       zip: addr.zipCode,
       city: addr.city,
-      country: addr.countryIsoCode,
+      // Nome paese per esteso (es. "Italy") — countryIsoCode è ISO-3166-1
+      // alpha-3, non il formato a 2 lettere/nome atteso da Shopify.
+      country: addr.country,
       phone: addr.phone,
     },
     lineItems: order.orderLines.map((l) => ({

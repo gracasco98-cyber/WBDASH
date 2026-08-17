@@ -430,7 +430,7 @@ export const amazonMocks = {
 
 // ─── Mirakl mock factories ────────────────────────────────────────────────────
 export const miraklMocks = {
-  /** OR11 — GET /orders?order_state_codes=WAITING_ACCEPTANCE */
+  /** OR11 — GET /orders?order_state_codes=WAITING_ACCEPTANCE,RECEIVED */
   newOrders: (orders: Array<Record<string, any>>) =>
     http.get(
       /mirakl\.net\/api\/orders/,
