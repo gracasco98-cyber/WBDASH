@@ -33,6 +33,12 @@ export interface MiraklOrder {
   currencyIsoCode: string;
   totalPrice: number;  // order total, shipping included
   shippingPrice: number;
+  // Tracking, presente direttamente sulla risposta OR11 per gli ordini SHIPPED
+  // (verificato contro l'account reale, 2026-08-16) — nessuna chiamata extra
+  // per ordine necessaria per l'import storico.
+  shippingTracking: string | null;
+  shippingTrackingUrl: string | null;
+  shippingCompany: string | null;
   // Codice canale/paese (es. "IT", "DE") — fonte diretta e affidabile per la
   // decisione IT/DE, a differenza di shippingAddress.countryIsoCode che è
   // in formato ISO-3166-1 alpha-3 ("ITA"/"DEU"), verificato contro l'API reale.
@@ -55,6 +61,9 @@ interface RawMiraklOrder {
   currency_iso_code: string;
   total_price: number;
   shipping_price: number;
+  shipping_tracking: string | null;
+  shipping_tracking_url: string | null;
+  shipping_company: string | null;
   channel: { code: string };
   customer_notification_email: string | null;
   customer: {
@@ -96,6 +105,9 @@ function mapOrder(raw: RawMiraklOrder): MiraklOrder {
     currencyIsoCode: raw.currency_iso_code,
     totalPrice: raw.total_price,
     shippingPrice: raw.shipping_price,
+    shippingTracking: raw.shipping_tracking,
+    shippingTrackingUrl: raw.shipping_tracking_url,
+    shippingCompany: raw.shipping_company,
     channelCode: raw.channel.code,
     customer: {
       email: raw.customer_notification_email,
@@ -154,6 +166,14 @@ async function miraklRequest<T>(path: string, init?: RequestInit): Promise<T> {
 export async function fetchNewOrders(): Promise<MiraklOrder[]> {
   const data = await miraklRequest<MiraklOrdersResponse>(
     "/orders?order_state_codes=WAITING_ACCEPTANCE,RECEIVED"
+  );
+  return data.orders.map(mapOrder);
+}
+
+// ─── OR11 — fetch already-shipped orders (one-off historical import) ──────────
+export async function fetchShippedOrders(): Promise<MiraklOrder[]> {
+  const data = await miraklRequest<MiraklOrdersResponse>(
+    "/orders?order_state_codes=SHIPPED"
   );
   return data.orders.map(mapOrder);
 }

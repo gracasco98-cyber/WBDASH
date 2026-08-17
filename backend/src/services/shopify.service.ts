@@ -374,3 +374,73 @@ export async function findOrderByMiraklTag(
   }>(ORDER_BY_TAG_QUERY, { query: `tag:'mirakl:${miraklOrderId}'` });
   return data.orders.edges[0]?.node ?? null;
 }
+
+// ─── Create a fulfillment for an order (used by the historical import script —
+// Mirakl orders that were already shipped before this integration existed) ───
+const FULFILLMENT_ORDERS_QUERY = `
+  query GetFulfillmentOrders($id: ID!) {
+    order(id: $id) {
+      fulfillmentOrders(first: 5) {
+        edges { node { id } }
+      }
+    }
+  }
+`;
+
+const FULFILLMENT_CREATE_MUTATION = `
+  mutation CreateFulfillment($fulfillment: FulfillmentV2Input!) {
+    fulfillmentCreateV2(fulfillment: $fulfillment) {
+      fulfillment { id status }
+      userErrors { field message }
+    }
+  }
+`;
+
+export interface CreateFulfillmentInput {
+  orderId: string; // Shopify order gid
+  trackingNumber: string;
+  trackingUrl?: string;
+  trackingCompany: string;
+}
+
+export async function createFulfillment(
+  input: CreateFulfillmentInput
+): Promise<{ id: string; status: string }> {
+  const orderData = await gqlRequest<{
+    order: { fulfillmentOrders: { edges: Array<{ node: { id: string } }> } } | null;
+  }>(FULFILLMENT_ORDERS_QUERY, { id: input.orderId });
+
+  const fulfillmentOrderId = orderData.order?.fulfillmentOrders.edges[0]?.node.id;
+  if (!fulfillmentOrderId) {
+    throw new Error(`Nessun FulfillmentOrder trovato per l'ordine Shopify ${input.orderId}`);
+  }
+
+  const data = await gqlRequest<{
+    fulfillmentCreateV2: {
+      fulfillment: { id: string; status: string } | null;
+      userErrors: Array<{ field: string[]; message: string }>;
+    };
+  }>(FULFILLMENT_CREATE_MUTATION, {
+    fulfillment: {
+      lineItemsByFulfillmentOrder: [{ fulfillmentOrderId }],
+      trackingInfo: {
+        number: input.trackingNumber,
+        url: input.trackingUrl,
+        company: input.trackingCompany,
+      },
+      // Import storico: l'ordine è già stato spedito (e ricevuto) nella realtà
+      // giorni/settimane fa — non deve partire un'email "il tuo ordine è stato
+      // spedito" per un evento passato.
+      notifyCustomer: false,
+    },
+  });
+
+  if (data.fulfillmentCreateV2.userErrors.length > 0) {
+    throw new Error(`Shopify fulfillmentCreateV2 errors: ${JSON.stringify(data.fulfillmentCreateV2.userErrors)}`);
+  }
+  if (!data.fulfillmentCreateV2.fulfillment) {
+    throw new Error("Shopify fulfillmentCreateV2 returned no fulfillment and no userErrors");
+  }
+
+  return data.fulfillmentCreateV2.fulfillment;
+}

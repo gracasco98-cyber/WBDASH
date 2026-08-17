@@ -6,6 +6,7 @@ const server = setupServer();
 
 describe("Mirakl client", () => {
   let fetchNewOrders: typeof import("../../src/mirakl/client").fetchNewOrders;
+  let fetchShippedOrders: typeof import("../../src/mirakl/client").fetchShippedOrders;
   let acceptOrder: typeof import("../../src/mirakl/client").acceptOrder;
   let shipOrder: typeof import("../../src/mirakl/client").shipOrder;
 
@@ -15,6 +16,7 @@ describe("Mirakl client", () => {
 
     const client = await import("../../src/mirakl/client");
     fetchNewOrders = client.fetchNewOrders;
+    fetchShippedOrders = client.fetchShippedOrders;
     acceptOrder = client.acceptOrder;
     shipOrder = client.shipOrder;
 
@@ -34,6 +36,9 @@ describe("Mirakl client", () => {
           currency_iso_code: "EUR",
           total_price: 44.97,
           shipping_price: 4.99,
+          shipping_tracking: null,
+          shipping_tracking_url: null,
+          shipping_company: null,
           channel: { code: "IT", label: "Canale IT" },
           customer_notification_email: "cliente@example.com",
           customer: {
@@ -73,6 +78,45 @@ describe("Mirakl client", () => {
       // id viene da order_line_id (non esiste alcun campo `id` sul wire OR11),
       // priceUnit dal prezzo unitario e price dal totale di riga.
       orderLines: [{ id: "L1", offerSku: "SKU-001", quantity: 2, priceUnit: 19.99, price: 39.98 }],
+    });
+  });
+
+  it("fetchShippedOrders queries order_state_codes=SHIPPED and maps tracking fields", async () => {
+    server.use(
+      miraklMocks.newOrders([
+        {
+          order_id: "MK-200",
+          order_state: "SHIPPED",
+          created_date: "2026-07-01T10:00:00Z",
+          currency_iso_code: "EUR",
+          total_price: 11.9,
+          shipping_price: 0,
+          shipping_tracking: "1UW1TJV560728",
+          shipping_tracking_url: "https://www.poste.it/cerca/index.html#/risultati-spedizioni/1UW1TJV560728",
+          shipping_company: "Poste Italiane",
+          channel: { code: "IT", label: "Canale IT" },
+          customer_notification_email: "cliente@example.com",
+          customer: {
+            shipping_address: {
+              firstname: "Mario", lastname: "Rossi", street_1: "Via Roma 1", street_2: null,
+              zip_code: "00100", city: "Roma", country: "Italy", country_iso_code: "ITA", phone: null,
+            },
+          },
+          order_lines: [
+            { order_line_id: "L1", offer_sku: "SKU-001", product_title: "Prodotto A", quantity: 1, price_unit: 11.9, price: 11.9, total_price: 11.9 },
+          ],
+        },
+      ]),
+    );
+
+    const orders = await fetchShippedOrders();
+    expect(orders).toHaveLength(1);
+    expect(orders[0]).toMatchObject({
+      orderId: "MK-200",
+      orderState: "SHIPPED",
+      shippingTracking: "1UW1TJV560728",
+      shippingTrackingUrl: "https://www.poste.it/cerca/index.html#/risultati-spedizioni/1UW1TJV560728",
+      shippingCompany: "Poste Italiane",
     });
   });
 
