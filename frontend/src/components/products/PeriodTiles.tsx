@@ -81,6 +81,10 @@ export default function PeriodTiles() {
   // endpoint: only Amazon channels narrow the scope, everything else is "all".
   const productMarketplace = isAmazonChannel(globalMarketplace) ? (amazonChannelCode(globalMarketplace) ?? "all") : "all";
   const [totals, setTotals] = useState<Partial<Record<PeriodPreset, ProductPerformanceRow | null>>>({});
+  // Shopify (Redcare/Temu/eBay/...) contribution to "Ricavi"/"Unità" — kept
+  // separate from `totals` (Amazon-only) rather than merged into it, since
+  // fee/COGS/profit/ads figures genuinely have no Shopify-side data to add.
+  const [shopifyTotals, setShopifyTotals] = useState<Partial<Record<PeriodPreset, { sales: number; units: number }>>>({});
   const { selectedAccountId } = useAmazonAccount();
   // Main dashboard default: when the user hasn't drilled into one specific
   // Amazon account, sum every active account instead of leaving the tiles
@@ -108,10 +112,42 @@ export default function PeriodTiles() {
     return () => { cancelled = true; };
   }, [productMarketplace, amazonAccountId]);
 
+  useEffect(() => {
+    // Hidden when an Amazon-specific channel is selected, matching the same
+    // "solo canale Amazon" scoping the home page's other Shopify fetches use.
+    if (isAmazonChannel(globalMarketplace)) { setShopifyTotals({}); return; }
+    const shopifyMarketplace = globalMarketplace === "all" ? undefined : globalMarketplace;
+    let cancelled = false;
+    (async () => {
+      try {
+        const results = await Promise.all(
+          TILES.map(async ({ preset }) => {
+            const { products } = await api.products({
+              filter: preset,
+              ...(shopifyMarketplace ? { marketplace: shopifyMarketplace } : {}),
+            });
+            return [preset, {
+              sales: products.reduce((s, p) => s + p.grossRevenue, 0),
+              units: products.reduce((s, p) => s + p.unitsSold, 0),
+            }] as const;
+          })
+        );
+        if (!cancelled) setShopifyTotals(Object.fromEntries(results));
+      } catch (err) {
+        if (!cancelled) console.error("[PeriodTiles] Failed to load Shopify totals:", err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [globalMarketplace]);
+
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
       {TILES.map(({ preset, label, headerBg }) => {
         const totalRow = totals[preset];
+        const shopifyRow = shopifyTotals[preset];
+        const hasAny = totalRow != null || shopifyRow != null;
+        const combinedSales = (totalRow?.sales ?? 0) + (shopifyRow?.sales ?? 0);
+        const combinedUnits = (totalRow?.units ?? 0) + (shopifyRow?.units ?? 0);
         const active = state.preset === preset;
         return (
           <button
@@ -128,12 +164,12 @@ export default function PeriodTiles() {
             <div className="px-3.5 py-3 flex-1 flex flex-col gap-2.5">
               <div>
                 <div className="text-zinc-500 text-[10px]">Ricavi</div>
-                <div className="text-[19px] font-bold text-white tabular-nums">{totalRow ? fmtEur(totalRow.sales) : "—"}</div>
+                <div className="text-[19px] font-bold text-white tabular-nums">{hasAny ? fmtEur(combinedSales) : "—"}</div>
               </div>
               <div className="grid grid-cols-2 gap-x-2 gap-y-2 text-[11px]">
                 <div>
                   <div className="text-zinc-500 text-[10px]">Unità</div>
-                  <div className="text-zinc-300 tabular-nums">{totalRow ? totalRow.units : "—"}</div>
+                  <div className="text-zinc-300 tabular-nums">{hasAny ? combinedUnits : "—"}</div>
                 </div>
                 <div>
                   <div className="text-zinc-500 text-[10px]">Resi</div>

@@ -34,6 +34,8 @@ function getDateRange(filter: string, from?: string, to?: string) {
     }
     case "last7":
       return { gte: new Date(Date.now() - 7 * 86400000), lte: todayEnd };
+    case "last14":
+      return { gte: new Date(Date.now() - 14 * 86400000), lte: todayEnd };
     case "last30":
       return { gte: new Date(Date.now() - 30 * 86400000), lte: todayEnd };
     case "last90":
