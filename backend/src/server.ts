@@ -48,7 +48,7 @@ if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
 // ─── Session store (PostgreSQL) ───────────────────────────────────────────────
 const PgSessionStore = connectPgSimple(session);
 
-const SESSION_MAX_AGE = parseInt(process.env.SESSION_MAX_AGE_HOURS ?? "8") * 60 * 60 * 1000;
+const SESSION_MAX_AGE = parseInt(process.env.SESSION_MAX_AGE_HOURS ?? "720") * 60 * 60 * 1000;
 
 const sessionMiddleware = session({
   name:   "dash_sid",
@@ -62,6 +62,11 @@ const sessionMiddleware = session({
   }),
   resave:            false,
   saveUninitialized: false,
+  // Rolling: every authenticated request resets the cookie's expiry, so the
+  // session only expires after SESSION_MAX_AGE_HOURS of inactivity, not a
+  // fixed window from login — matches the 30-day trust window already used
+  // for the MFA "trusted device" cookie (TRUSTED_DEVICE_DAYS, auth.routes.ts).
+  rolling: true,
   cookie: {
     httpOnly: true,
     secure:   process.env.NODE_ENV === "production",
