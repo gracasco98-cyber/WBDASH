@@ -163,9 +163,18 @@ async function miraklRequest<T>(path: string, init?: RequestInit): Promise<T> {
 // mai ordini in WAITING_ACCEPTANCE — arrivano già in RECEIVED (con
 // order_line_state_reason_code "AUTO_RECEIVED"), quindi si interrogano
 // entrambi gli stati per restare corretti anche se la configurazione cambia.
+// Include anche SHIPPED: per questo account il fulfillment center spedisce
+// spesso l'ordine entro pochi minuti dalla ricezione — più veloce del poll a
+// 5 minuti — quindi un ordine può saltare direttamente da WAITING_ACCEPTANCE/
+// RECEIVED a SHIPPED tra un giro e l'altro. Prima di questa modifica un
+// ordine del genere spariva per sempre dalla vista del job live (mai creato
+// su Shopify): confermato in produzione il 2026-08-22, 9 ordini reali persi
+// così tra il 18 e il 21/08. runMiraklSync() già gestisce un ordine con
+// tracking già presente (crea + evade subito), quindi qui basta allargare
+// la query.
 export async function fetchNewOrders(): Promise<MiraklOrder[]> {
   const data = await miraklRequest<MiraklOrdersResponse>(
-    "/orders?order_state_codes=WAITING_ACCEPTANCE,RECEIVED"
+    "/orders?order_state_codes=WAITING_ACCEPTANCE,RECEIVED,SHIPPED"
   );
   return data.orders.map(mapOrder);
 }
