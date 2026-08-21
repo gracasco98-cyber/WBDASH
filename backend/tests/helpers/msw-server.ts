@@ -122,7 +122,10 @@ export const shopifyMocks = {
         const body: any = await request.clone().json();
         if (!body?.query?.includes("productVariants")) return; // non è mio: passa al prossimo handler
         const query: string = body.variables?.query ?? "";
-        const sku = query.replace("sku:", "");
+        // La query reale è ora `(sku:X) OR (barcode:X)` — si estrae X con una
+        // regex invece di un replace secco, per restare compatibili col
+        // formato wrappato senza dover aggiornare ogni test esistente.
+        const sku = query.match(/sku:([^\s)]+)/)?.[1] ?? query.replace("sku:", "");
         const variantId = skuToVariantId[sku];
         return HttpResponse.json({
           data: {
