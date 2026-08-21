@@ -310,6 +310,58 @@ describe("runMiraklSync", () => {
     expect(result).toEqual({ created: 0, accepted: 0, errors: 0 });
   });
 
+  it("ordine ACCEPTED già evaso fuori da questo job (es. manualmente su Shopify): Shopify risponde 'unfulfillable/closed', non è un errore da ritentare — si allinea solo lo stato locale a SHIPPED", async () => {
+    await db.prisma.miraklOrder.create({
+      data: {
+        miraklOrderId: "MK-1",
+        shopifyOrderId: "gid://shopify/Order/999",
+        country: "IT",
+        miraklState: "ACCEPTED",
+      },
+    });
+
+    server.use(miraklMocks.newOrders([miraklOrderPayload({
+      order_state: "RECEIVED",
+      shipping_tracking: "1UW1TJV556027",
+      shipping_company: "Poste Italiane",
+    })]));
+    server.use(shopifyMocks.fulfillment({
+      fulfillmentOrderId: "gid://shopify/FulfillmentOrder/1",
+      result: { userErrors: [{ field: ["fulfillment"], message: "Fulfillment order 1 has an unfulfillable status= closed." }] },
+    }));
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 0, accepted: 0, errors: 0 });
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-1" } });
+    expect(row?.miraklState).toBe("SHIPPED");
+    expect(row?.trackingNumber).toBe("1UW1TJV556027");
+  });
+
+  it("ordine ACCEPTED con un vero errore di fulfillment (non 'unfulfillable'): resta un errore normale, non viene marcato SHIPPED", async () => {
+    await db.prisma.miraklOrder.create({
+      data: {
+        miraklOrderId: "MK-1",
+        shopifyOrderId: "gid://shopify/Order/999",
+        country: "IT",
+        miraklState: "ACCEPTED",
+      },
+    });
+
+    server.use(miraklMocks.newOrders([miraklOrderPayload({
+      order_state: "RECEIVED",
+      shipping_tracking: "1UW1TJV556027",
+      shipping_company: "Poste Italiane",
+    })]));
+    server.use(shopifyMocks.fulfillment({ fulfillmentOrderId: null })); // "Nessun FulfillmentOrder trovato"
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 0, accepted: 0, errors: 1 });
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-1" } });
+    expect(row?.miraklState).toBe("ACCEPTED"); // non passato a SHIPPED
+  });
+
   it("markAcceptedWithRetry: logs distinctly under source 'mirakl-sync-stuck' and rethrows when the local write keeps failing", async () => {
     const job = await import("../../src/mirakl/syncOrders.job");
 
