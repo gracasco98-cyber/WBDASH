@@ -119,8 +119,13 @@ export const amazon = {
   pl: (params?: Record<string, string>) =>
     get<AmazonPLResponse>("/api/amazon/pl", params),
 
+  // amazonAccountId=ALL: catalog images are account-agnostic (same ASIN, same
+  // photo, regardless of which seller account's SP-API token fetches it), but
+  // amazonAccountMiddleware leaves no account bound when 2+ accounts are
+  // active and none is specified — without this, every lookup throws "No
+  // Amazon account in scope" and no image ever loads.
   catalogImages: (asins: string[]) =>
-    get<Record<string, string | null>>("/api/amazon/catalog/images", { asins: asins.join(",") }),
+    get<Record<string, string | null>>("/api/amazon/catalog/images", { asins: asins.join(","), amazonAccountId: "ALL" }),
 
   inventory: (params?: Record<string, string>) =>
     get<{ inventory: AmazonInventoryItem[] }>("/api/amazon/inventory", params),
