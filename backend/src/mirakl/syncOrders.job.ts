@@ -120,12 +120,22 @@ export async function runMiraklSync(): Promise<{ created: number; accepted: numb
       // indipendentemente da Mirakl) — se il tracking è già disponibile,
       // evadilo subito invece di lasciarlo "da spedire" all'infinito.
       if (order.shippingTracking && existing.miraklState === "ACCEPTED") {
-        await createFulfillment({
-          orderId: existing.shopifyOrderId,
-          trackingNumber: order.shippingTracking,
-          trackingUrl: order.shippingTrackingUrl ?? undefined,
-          trackingCompany: order.shippingCompany ?? "N/D",
-        });
+        try {
+          await createFulfillment({
+            orderId: existing.shopifyOrderId,
+            trackingNumber: order.shippingTracking,
+            trackingUrl: order.shippingTrackingUrl ?? undefined,
+            trackingCompany: order.shippingCompany ?? "N/D",
+          });
+        } catch (err) {
+          // L'ordine può essere già stato evaso fuori da questo job (es.
+          // manualmente su Shopify, prima che questa fulfillment automatica
+          // esistesse): Shopify risponde con un fulfillment order "closed"/
+          // unfulfillable, non un vero errore da ritentare all'infinito ogni
+          // 5 minuti — si allinea solo lo stato locale a SHIPPED.
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!msg.includes("unfulfillable")) throw err;
+        }
         await markShipped(prisma, existing.shopifyOrderId, order.shippingTracking);
       }
     } catch (err) {
