@@ -254,6 +254,16 @@ export default function DashboardPage() {
   const loadRef                       = useRef(load);
   useEffect(() => { loadRef.current = load; }, [load]);
 
+  // Re-baseline the "new order" toast detector whenever the filter/scope
+  // changes: a different filter's top order is not a new sale, just a
+  // different view of existing orders — without this, switching marketplace/
+  // date-range/status re-triggers load() (see the [load] effect above) and
+  // detectNewOrders() below mistakes that different top-of-list order for a
+  // fresh one, toasting a "new order" that never happened.
+  useEffect(() => {
+    isFirstLoadRef.current = true;
+  }, [filter, marketplace, status, apiFrom, apiTo]);
+
   const pushToast = useCallback((order: LiveOrder) => {
     setLiveOrders(prev => [...prev.slice(-4), order]);
   }, []);
