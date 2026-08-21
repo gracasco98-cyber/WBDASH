@@ -177,6 +177,50 @@ export const shopifyMocks = {
         });
       },
     ),
+
+  /**
+   * GetFulfillmentOrders + CreateFulfillment — usato da createFulfillment().
+   * Discrimina sul testo della query (stesso motivo di orderCreate/orderByTag
+   * sopra: un solo endpoint REST condiviso da tutte le operazioni Shopify).
+   */
+  fulfillment: (opts: {
+    fulfillmentOrderId?: string | null;
+    result?: { id: string; status: string } | { userErrors: Array<{ field: string[]; message: string }> };
+  }) =>
+    http.post(
+      /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+      async ({ request }) => {
+        const body: any = await request.clone().json();
+
+        if (body?.query?.includes("GetFulfillmentOrders")) {
+          return HttpResponse.json({
+            data: {
+              order: opts.fulfillmentOrderId === null
+                ? null
+                : {
+                    fulfillmentOrders: {
+                      edges: [{ node: { id: opts.fulfillmentOrderId ?? "gid://shopify/FulfillmentOrder/1" } }],
+                    },
+                  },
+            },
+          });
+        }
+
+        if (body?.query?.includes("CreateFulfillment")) {
+          const result = opts.result ?? { id: "gid://shopify/Fulfillment/1", status: "SUCCESS" };
+          return HttpResponse.json({
+            data: {
+              fulfillmentCreateV2:
+                "id" in result
+                  ? { fulfillment: result, userErrors: [] }
+                  : { fulfillment: null, userErrors: result.userErrors },
+            },
+          });
+        }
+
+        return undefined; // non è mio
+      },
+    ),
 };
 
 // ─── Amazon mock factories ────────────────────────────────────────────────────

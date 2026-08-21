@@ -231,6 +231,85 @@ describe("runMiraklSync", () => {
     expect(row?.miraklState).toBe("ACCEPTED");
   });
 
+  it("ordine con tracking già presente su Mirakl (spedito prima ancora di essere sincronizzato): viene creato, accettato E marcato spedito su Shopify nello stesso run", async () => {
+    server.use(miraklMocks.newOrders([miraklOrderPayload({
+      order_state: "RECEIVED",
+      shipping_tracking: "1UW1TJV556027",
+      shipping_tracking_url: "https://www.poste.it/cerca/index.html#/risultati-spedizioni/1UW1TJV556027",
+      shipping_company: "Poste Italiane",
+    })]));
+    server.use(shopifyMocks.orderByTag(null));
+    server.use(shopifyMocks.variantBySku({ "SKU-001": "gid://shopify/ProductVariant/1" }));
+    server.use(shopifyMocks.orderCreate({ id: "gid://shopify/Order/999", name: "#999" }));
+    server.use(shopifyMocks.fulfillment({
+      fulfillmentOrderId: "gid://shopify/FulfillmentOrder/1",
+      result: { id: "gid://shopify/Fulfillment/1", status: "SUCCESS" },
+    }));
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 1, accepted: 1, errors: 0 });
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-1" } });
+    expect(row?.miraklState).toBe("SHIPPED");
+    expect(row?.trackingNumber).toBe("1UW1TJV556027");
+    expect(row?.trackingSyncedAt).not.toBeNull();
+  });
+
+  it("ordine già ACCEPTED in un run precedente: se il tracking compare solo ora su Mirakl, viene marcato spedito", async () => {
+    await db.prisma.miraklOrder.create({
+      data: {
+        miraklOrderId: "MK-1",
+        shopifyOrderId: "gid://shopify/Order/999",
+        country: "IT",
+        miraklState: "ACCEPTED",
+      },
+    });
+
+    server.use(miraklMocks.newOrders([miraklOrderPayload({
+      order_state: "RECEIVED",
+      shipping_tracking: "1UW1TJV556027",
+      shipping_company: "Poste Italiane",
+    })]));
+    // Nessun handler orderCreate/variantBySku/orderByTag: l'ordine esiste già
+    // localmente come ACCEPTED, ricrearlo su Shopify farebbe fallire il test
+    // (onUnhandledRequest: 'error').
+    server.use(shopifyMocks.fulfillment({
+      fulfillmentOrderId: "gid://shopify/FulfillmentOrder/1",
+      result: { id: "gid://shopify/Fulfillment/1", status: "SUCCESS" },
+    }));
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 0, accepted: 0, errors: 0 });
+
+    const row = await db.prisma.miraklOrder.findUnique({ where: { miraklOrderId: "MK-1" } });
+    expect(row?.miraklState).toBe("SHIPPED");
+    expect(row?.trackingNumber).toBe("1UW1TJV556027");
+  });
+
+  it("ordine già SHIPPED localmente: non tenta di rifare la fulfillment (idempotente)", async () => {
+    await db.prisma.miraklOrder.create({
+      data: {
+        miraklOrderId: "MK-1",
+        shopifyOrderId: "gid://shopify/Order/999",
+        country: "IT",
+        miraklState: "SHIPPED",
+        trackingNumber: "1UW1TJV556027",
+        trackingSyncedAt: new Date(),
+      },
+    });
+
+    // Nessun handler orderCreate/fulfillment registrato: se il job tentasse di
+    // rifare la fulfillment fallirebbe per onUnhandledRequest: 'error'.
+    server.use(miraklMocks.newOrders([miraklOrderPayload({
+      order_state: "RECEIVED",
+      shipping_tracking: "1UW1TJV556027",
+      shipping_company: "Poste Italiane",
+    })]));
+
+    const result = await runMiraklSync();
+    expect(result).toEqual({ created: 0, accepted: 0, errors: 0 });
+  });
+
   it("markAcceptedWithRetry: logs distinctly under source 'mirakl-sync-stuck' and rethrows when the local write keeps failing", async () => {
     const job = await import("../../src/mirakl/syncOrders.job");
 
