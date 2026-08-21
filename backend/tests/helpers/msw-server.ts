@@ -122,7 +122,10 @@ export const shopifyMocks = {
         const body: any = await request.clone().json();
         if (!body?.query?.includes("productVariants")) return; // non è mio: passa al prossimo handler
         const query: string = body.variables?.query ?? "";
-        const sku = query.replace("sku:", "");
+        // La query reale è ora `(sku:X) OR (barcode:X)` — si estrae X con una
+        // regex invece di un replace secco, per restare compatibili col
+        // formato wrappato senza dover aggiornare ogni test esistente.
+        const sku = query.match(/sku:([^\s)]+)/)?.[1] ?? query.replace("sku:", "");
         const variantId = skuToVariantId[sku];
         return HttpResponse.json({
           data: {
@@ -175,6 +178,50 @@ export const shopifyMocks = {
         return HttpResponse.json({
           data: { orders: { edges: result ? [{ node: result }] : [] } },
         });
+      },
+    ),
+
+  /**
+   * GetFulfillmentOrders + CreateFulfillment — usato da createFulfillment().
+   * Discrimina sul testo della query (stesso motivo di orderCreate/orderByTag
+   * sopra: un solo endpoint REST condiviso da tutte le operazioni Shopify).
+   */
+  fulfillment: (opts: {
+    fulfillmentOrderId?: string | null;
+    result?: { id: string; status: string } | { userErrors: Array<{ field: string[]; message: string }> };
+  }) =>
+    http.post(
+      /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+      async ({ request }) => {
+        const body: any = await request.clone().json();
+
+        if (body?.query?.includes("GetFulfillmentOrders")) {
+          return HttpResponse.json({
+            data: {
+              order: opts.fulfillmentOrderId === null
+                ? null
+                : {
+                    fulfillmentOrders: {
+                      edges: [{ node: { id: opts.fulfillmentOrderId ?? "gid://shopify/FulfillmentOrder/1" } }],
+                    },
+                  },
+            },
+          });
+        }
+
+        if (body?.query?.includes("CreateFulfillment")) {
+          const result = opts.result ?? { id: "gid://shopify/Fulfillment/1", status: "SUCCESS" };
+          return HttpResponse.json({
+            data: {
+              fulfillmentCreateV2:
+                "id" in result
+                  ? { fulfillment: result, userErrors: [] }
+                  : { fulfillment: null, userErrors: result.userErrors },
+            },
+          });
+        }
+
+        return undefined; // non è mio
       },
     ),
 };

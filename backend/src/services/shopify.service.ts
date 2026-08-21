@@ -259,10 +259,14 @@ const VARIANT_BY_SKU_QUERY = `
   }
 `;
 
+// Alcuni canali Mirakl (es. Redcare per la categoria parafarmacia) inviano
+// come offer_sku l'EAN del prodotto, non lo SKU interno usato su Shopify —
+// non è un errore di dato, sono due sistemi con convenzioni diverse per lo
+// stesso codice. Si cerca quindi anche per barcode, non solo per sku.
 export async function findVariantIdBySku(sku: string): Promise<string | null> {
   const data = await gqlRequest<{
     productVariants: { edges: Array<{ node: { id: string } }> };
-  }>(VARIANT_BY_SKU_QUERY, { query: `sku:${sku}` });
+  }>(VARIANT_BY_SKU_QUERY, { query: `(sku:${sku}) OR (barcode:${sku})` });
   return data.productVariants.edges[0]?.node.id ?? null;
 }
 

@@ -35,6 +35,26 @@ describe("shopify.service — findVariantIdBySku / createOrder", () => {
     expect(id).toBeNull();
   });
 
+  it("findVariantIdBySku falls back to barcode: some Mirakl channels (Redcare/parafarmacia) send the EAN as offer_sku, not Shopify's internal SKU", async () => {
+    let sentQuery: string | null = null;
+    server.use(
+      http.post(/myshopify\.com\/admin\/api\/.*\/graphql\.json/, async ({ request }) => {
+        const body: any = await request.clone().json();
+        if (!body?.query?.includes("productVariants")) return;
+        sentQuery = body.variables?.query ?? null;
+        // Nessuna variante ha questo valore come sku, ma una lo ha come barcode.
+        return HttpResponse.json({
+          data: { productVariants: { edges: [{ node: { id: "gid://shopify/ProductVariant/42" } }] } },
+        });
+      }),
+    );
+
+    const id = await findVariantIdBySku("8057358390019");
+
+    expect(id).toBe("gid://shopify/ProductVariant/42");
+    expect(sentQuery).toBe("(sku:8057358390019) OR (barcode:8057358390019)");
+  });
+
   it("createOrder returns the created order id/name on success", async () => {
     server.use(shopifyMocks.orderCreate({ id: "gid://shopify/Order/999", name: "#999" }));
 

@@ -3,11 +3,18 @@
 import { prisma } from "../db";
 import { fetchNewOrders, acceptOrder } from "./client";
 import { mapMiraklOrder } from "./orderMapper";
-import { findVariantIdBySku, createOrder, findOrderByMiraklTag, logError } from "../services/shopify.service";
+import {
+  findVariantIdBySku,
+  createOrder,
+  createFulfillment,
+  findOrderByMiraklTag,
+  logError,
+} from "../services/shopify.service";
 import {
   findByMiraklOrderId,
   createPendingAcceptOrder,
   markAccepted,
+  markShipped,
 } from "../repositories/mirakl/orders.repo";
 
 // Retries the local "accepted" write a few times before giving up. Covers the
@@ -103,7 +110,23 @@ export async function runMiraklSync(): Promise<{ created: number; accepted: numb
           await acceptOrder(order.orderId, order.orderLines.map((l) => l.id));
         }
         await markAcceptedWithRetry(order.orderId);
+        existing.miraklState = "ACCEPTED"; // riflette la transizione appena fatta, per il controllo sotto
         accepted++;
+      }
+
+      // Il canale reale spedisce spesso l'ordine prima ancora che WBDASH
+      // riesca a sincronizzarlo (es. un gap nel catalogo Shopify che ha
+      // ritardato la creazione, o fulfillment center esterno che spedisce
+      // indipendentemente da Mirakl) — se il tracking è già disponibile,
+      // evadilo subito invece di lasciarlo "da spedire" all'infinito.
+      if (order.shippingTracking && existing.miraklState === "ACCEPTED") {
+        await createFulfillment({
+          orderId: existing.shopifyOrderId,
+          trackingNumber: order.shippingTracking,
+          trackingUrl: order.shippingTrackingUrl ?? undefined,
+          trackingCompany: order.shippingCompany ?? "N/D",
+        });
+        await markShipped(prisma, existing.shopifyOrderId, order.shippingTracking);
       }
     } catch (err) {
       errors++;
