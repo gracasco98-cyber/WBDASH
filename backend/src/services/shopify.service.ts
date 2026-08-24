@@ -287,6 +287,12 @@ export interface CreateOrderInput {
   currency: string;
   totalAmount: number;    // totale ordine, spedizione inclusa (= importo transazione)
   shippingAmount: number; // quota spedizione, inviata come shippingLines
+  // Data reale dell'ordine (es. created_date su Mirakl), non il momento in
+  // cui questo job crea l'ordine su Shopify — senza questo, `processedAt`
+  // di Shopify (e di conseguenza il fatturato per data in WBDASH) finisce
+  // sempre sul giorno del sync, non sul vero giorno di vendita. Opzionale:
+  // se assente Shopify usa "adesso" come per un ordine normale.
+  processedAt?: Date;
   shippingAddress: {
     firstName: string;
     lastName: string;
@@ -314,6 +320,7 @@ export async function createOrder(
       tags: input.tags,
       note: input.note,
       currency: input.currency,
+      processedAt: input.processedAt?.toISOString(),
       lineItems: input.lineItems.map((li) => ({
         variantId: li.variantId,
         quantity: li.quantity,

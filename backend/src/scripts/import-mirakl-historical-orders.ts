@@ -72,6 +72,7 @@ async function importHistoricalOrders(): Promise<void> {
           currency: mapped.currency,
           totalAmount: mapped.totalAmount,
           shippingAmount: mapped.shippingAmount,
+          processedAt: new Date(order.createdDate),
           shippingAddress: mapped.shippingAddress,
           lineItems,
         });
