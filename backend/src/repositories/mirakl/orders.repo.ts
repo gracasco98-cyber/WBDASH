@@ -24,6 +24,10 @@ export async function findByShopifyOrderId(
   return prisma.miraklOrder.findUnique({ where: { shopifyOrderId } });
 }
 
+export async function findAllMiraklOrders(prisma: PrismaClient): Promise<MiraklOrder[]> {
+  return prisma.miraklOrder.findMany({ orderBy: { createdAt: "asc" } });
+}
+
 export async function createPendingAcceptOrder(
   prisma: PrismaClient,
   data: { miraklOrderId: string; shopifyOrderId: string; country: string }
