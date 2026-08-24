@@ -149,6 +149,18 @@ describe("Mirakl client", () => {
     ]);
   });
 
+  it("fetchNewOrders skips a malformed order (es. shipping_address ancora nullo appena dopo la creazione) invece di far fallire l'intero batch", async () => {
+    const goodOrder = miraklRawOrder("MK-GOOD");
+    const malformedOrder = { ...miraklRawOrder("MK-BAD"), customer: { shipping_address: null } };
+
+    server.use(miraklMocks.newOrders([goodOrder, malformedOrder]));
+
+    const orders = await fetchNewOrders();
+
+    expect(orders).toHaveLength(1);
+    expect(orders[0].orderId).toBe("MK-GOOD");
+  });
+
   it("fetchShippedOrders queries order_state_codes=SHIPPED and maps tracking fields", async () => {
     server.use(
       miraklMocks.newOrders([
