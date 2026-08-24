@@ -7,6 +7,7 @@ import type { PrismaClient, GoodsReceipt, GoodsReceiptLine, PurchaseOrderLogisti
 import { nextSequenceValue, formatGrnNumber } from "./document-sequence.repo";
 import { isValidTransition } from "../../purchasing/purchase-order-state-machine";
 import { InvalidTransitionError } from "./purchase-orders.repo";
+import { computePaymentSchedule } from "../../purchasing/payment-schedule";
 
 const RECEIVABLE_STATUSES: PurchaseOrderLogisticStatus[] = [
   "CONFIRMED", "IN_PRODUCTION", "READY", "PARTIALLY_SHIPPED", "SHIPPED", "PARTIALLY_RECEIVED",
@@ -52,7 +53,7 @@ export async function createGoodsReceipt(
   return prisma.$transaction(async (tx) => {
     const order = await tx.purchaseOrder.findUniqueOrThrow({
       where: { id: data.purchaseOrderId },
-      include: { lines: true },
+      include: { lines: true, paymentTerm: { include: { installments: true } } },
     });
 
     if (!RECEIVABLE_STATUSES.includes(order.logisticStatus)) {
@@ -135,6 +136,31 @@ export async function createGoodsReceipt(
         },
       });
       await tx.purchaseOrder.update({ where: { id: data.purchaseOrderId }, data: { logisticStatus: newStatus } });
+
+      if (newStatus === "RECEIVED") {
+        const totalAmount = updatedLines.reduce((sum, l) => sum + Number(l.totalAmount), 0);
+        // Convert Decimal -> number at this repository boundary (see CLAUDE.md
+        // principle 13 / docs/tech-debt.md E.2): computePaymentSchedule is a pure
+        // module that must not depend on Prisma's Decimal type.
+        const paymentTermForSchedule = {
+          endOfMonth: order.paymentTerm.endOfMonth,
+          fixedDay: order.paymentTerm.fixedDay,
+          installments: order.paymentTerm.installments.map((i) => ({
+            installmentNumber: i.installmentNumber,
+            offsetDays: i.offsetDays,
+            percentage: Number(i.percentage),
+          })),
+        };
+        const schedule = computePaymentSchedule(data.receiptDate, paymentTermForSchedule, totalAmount);
+        await tx.supplierPaymentDue.createMany({
+          data: schedule.map((s) => ({
+            purchaseOrderId: data.purchaseOrderId,
+            installmentNumber: s.installmentNumber,
+            dueDate: s.dueDate,
+            amount: s.amount,
+          })),
+        });
+      }
     }
 
     return receipt;

@@ -36,7 +36,7 @@ const GROUPS: Group[] = [
       { href: "/acquisti/magazzini", label: "Magazzini" },
       { href: "/acquisti/banche", label: "Banche" },
       { href: "/acquisti/condizioni-pagamento", label: "Condizioni pagamento" },
-      { label: "Scadenzario", comingSoon: true },
+      { href: "/acquisti/scadenzario", label: "Scadenzario" },
       { label: "Prima Nota", comingSoon: true },
     ],
   },
