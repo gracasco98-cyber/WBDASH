@@ -21,7 +21,10 @@ beforeEach(async () => {
   })).id;
   warehouseId = (await db.prisma.warehouse.create({ data: { name: "Magazzino Centrale", code: "MAG-1" } })).id;
   paymentTermId = (await db.prisma.paymentTerm.create({
-    data: { name: "30 giorni fine mese", type: "STANDARD", paymentMethod: "BONIFICO" },
+    data: {
+      name: "30 giorni fine mese", type: "STANDARD", paymentMethod: "BONIFICO",
+      installments: { create: [{ installmentNumber: 1, offsetDays: 30, percentage: 100 }] },
+    },
   })).id;
   productId = (await db.prisma.product.create({ data: { name: "Widget Test" } })).id;
   userId = (await db.prisma.user.create({ data: { email: "buyer@example.com", passwordHash: "x", role: "user" } })).id;
@@ -104,6 +107,58 @@ describe("goods-receipts.repo", () => {
     const updated = await findPurchaseOrderById(db.prisma, po.id);
     expect(updated!.logisticStatus).toBe("RECEIVED");
     expect(updated!.lines[0].receivedQty).toBe(100);
+  });
+
+  it("generates the payment schedule when a full receipt completes the order", async () => {
+    const po = await confirmedOrder();
+    const full = await findPurchaseOrderById(db.prisma, po.id);
+    const lineId = full!.lines[0].id;
+
+    await createGoodsReceipt(db.prisma, {
+      purchaseOrderId: po.id, receiptDate: new Date("2026-03-05"),
+      supplierDdtNumber: "DDT-1001", supplierDdtDate: new Date("2026-03-04"),
+      receivedById: userId, lines: [{ purchaseOrderLineId: lineId, receivedQty: 100 }],
+    });
+
+    const dues = await db.prisma.supplierPaymentDue.findMany({ where: { purchaseOrderId: po.id }, orderBy: { installmentNumber: "asc" } });
+    expect(dues).toHaveLength(1);
+    expect(dues[0].status).toBe("PENDING");
+    expect(Number(dues[0].amount)).toBe(305); // baseOrder()'s single line totalAmount
+  });
+
+  it("does NOT generate a payment schedule for a partial receipt", async () => {
+    const po = await confirmedOrder();
+    const full = await findPurchaseOrderById(db.prisma, po.id);
+    const lineId = full!.lines[0].id;
+
+    await createGoodsReceipt(db.prisma, {
+      purchaseOrderId: po.id, receiptDate: new Date("2026-03-05"),
+      supplierDdtNumber: "DDT-1001", supplierDdtDate: new Date("2026-03-04"),
+      receivedById: userId, lines: [{ purchaseOrderLineId: lineId, receivedQty: 40 }],
+    });
+
+    const dues = await db.prisma.supplierPaymentDue.findMany({ where: { purchaseOrderId: po.id } });
+    expect(dues).toHaveLength(0);
+  });
+
+  it("generates the schedule only once, on the receipt that completes the order (not the earlier partial one)", async () => {
+    const po = await confirmedOrder();
+    const full = await findPurchaseOrderById(db.prisma, po.id);
+    const lineId = full!.lines[0].id;
+
+    await createGoodsReceipt(db.prisma, {
+      purchaseOrderId: po.id, receiptDate: new Date("2026-03-01"),
+      supplierDdtNumber: "DDT-1001", supplierDdtDate: new Date("2026-02-28"),
+      receivedById: userId, lines: [{ purchaseOrderLineId: lineId, receivedQty: 40 }],
+    });
+    await createGoodsReceipt(db.prisma, {
+      purchaseOrderId: po.id, receiptDate: new Date("2026-03-10"),
+      supplierDdtNumber: "DDT-1002", supplierDdtDate: new Date("2026-03-09"),
+      receivedById: userId, lines: [{ purchaseOrderLineId: lineId, receivedQty: 60 }],
+    });
+
+    const dues = await db.prisma.supplierPaymentDue.findMany({ where: { purchaseOrderId: po.id } });
+    expect(dues).toHaveLength(1); // not generated on the first (partial) receipt, generated once on the second
   });
 
   it("rejects a receipt that would exceed the ordered quantity", async () => {
