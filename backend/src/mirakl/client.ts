@@ -163,19 +163,48 @@ async function miraklRequest<T>(path: string, init?: RequestInit): Promise<T> {
 // mai ordini in WAITING_ACCEPTANCE — arrivano già in RECEIVED (con
 // order_line_state_reason_code "AUTO_RECEIVED"), quindi si interrogano
 // entrambi gli stati per restare corretti anche se la configurazione cambia.
+// Include anche SHIPPED: per questo account il fulfillment center spedisce
+// spesso l'ordine entro pochi minuti dalla ricezione — più veloce del poll a
+// 5 minuti — quindi un ordine può saltare direttamente da WAITING_ACCEPTANCE/
+// RECEIVED a SHIPPED tra un giro e l'altro. Prima di questa modifica un
+// ordine del genere spariva per sempre dalla vista del job live (mai creato
+// su Shopify): confermato in produzione il 2026-08-22, 9 ordini reali persi
+// così tra il 18 e il 21/08. runMiraklSync() già gestisce un ordine con
+// tracking già presente (crea + evade subito), quindi qui basta allargare
+// la query.
+// OR11 pagina i risultati (10 per pagina di default) e ignorarlo lascia
+// silenziosamente fuori tutto oltre la prima pagina — confermato in
+// produzione il 2026-08-24: total_count=27 ordini aperti, la sola prima
+// pagina ne restituiva 10, i 17 oltre non venivano mai sincronizzati (né
+// creati su Shopify né importati in WBDASH). Si scorrono quindi tutte le
+// pagine finché non si è raccolto l'intero total_count, con un tetto di
+// sicurezza per non restare bloccati all'infinito se l'API si comportasse
+// in modo inatteso (es. total_count sbagliato).
+const MAX_ORDER_PAGES = 50; // 50 * 10 = 500 ordini aperti, ben oltre il volume reale attuale
+
+async function fetchAllOrders(orderStateCodes: string): Promise<RawMiraklOrder[]> {
+  const all: RawMiraklOrder[] = [];
+  let offset = 0;
+  for (let page = 0; page < MAX_ORDER_PAGES; page++) {
+    const data = await miraklRequest<MiraklOrdersResponse>(
+      `/orders?order_state_codes=${orderStateCodes}&offset=${offset}`
+    );
+    all.push(...data.orders);
+    offset += data.orders.length;
+    if (data.orders.length === 0 || offset >= data.total_count) break;
+  }
+  return all;
+}
+
 export async function fetchNewOrders(): Promise<MiraklOrder[]> {
-  const data = await miraklRequest<MiraklOrdersResponse>(
-    "/orders?order_state_codes=WAITING_ACCEPTANCE,RECEIVED"
-  );
-  return data.orders.map(mapOrder);
+  const orders = await fetchAllOrders("WAITING_ACCEPTANCE,RECEIVED,SHIPPED");
+  return orders.map(mapOrder);
 }
 
 // ─── OR11 — fetch already-shipped orders (one-off historical import) ──────────
 export async function fetchShippedOrders(): Promise<MiraklOrder[]> {
-  const data = await miraklRequest<MiraklOrdersResponse>(
-    "/orders?order_state_codes=SHIPPED"
-  );
-  return data.orders.map(mapOrder);
+  const orders = await fetchAllOrders("SHIPPED");
+  return orders.map(mapOrder);
 }
 
 // ─── OR21 — accept an order (all lines) ────────────────────────────────────────
