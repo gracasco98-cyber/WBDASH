@@ -81,6 +81,20 @@ describe("Mirakl client", () => {
     });
   });
 
+  it("fetchNewOrders queries WAITING_ACCEPTANCE, RECEIVED and SHIPPED — un ordine può passare a SHIPPED tra un poll e l'altro e non deve sparire dalla vista del job", async () => {
+    let requestedUrl: string | null = null;
+    server.use(
+      http.get(/mirakl\.net\/api\/orders/, async ({ request }) => {
+        requestedUrl = request.url;
+        return HttpResponse.json({ orders: [], total_count: 0 });
+      }),
+    );
+
+    await fetchNewOrders();
+
+    expect(requestedUrl).toContain("order_state_codes=WAITING_ACCEPTANCE,RECEIVED,SHIPPED");
+  });
+
   it("fetchShippedOrders queries order_state_codes=SHIPPED and maps tracking fields", async () => {
     server.use(
       miraklMocks.newOrders([
