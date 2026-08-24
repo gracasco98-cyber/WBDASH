@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeDueDate, computePaymentSchedule } from "../../src/purchasing/payment-schedule";
+import { computeDueDate, computePaymentSchedule, type PaymentTermInstallmentForSchedule } from "../../src/purchasing/payment-schedule";
 
 describe("computeDueDate", () => {
   it("plain offsetDays, no end-of-month, no fixed day", () => {
@@ -61,8 +61,37 @@ describe("computePaymentSchedule", () => {
       ] },
       100
     );
-    const sum = schedule.reduce((s, i) => s + i.amount, 0);
-    expect(Math.round(sum * 100) / 100).toBe(100);
+    const sumCents = schedule.reduce((s, i) => s + Math.round(i.amount * 100), 0);
+    expect(sumCents).toBe(10000); // exact cents, not a re-rounded float sum
+  });
+
+  it("the rounding invariant holds exactly (in cents, no re-rounding) across several awkward totals/splits", () => {
+    const cases: { total: number; installments: PaymentTermInstallmentForSchedule[] }[] = [
+      { total: 1000.03, installments: [
+        { installmentNumber: 1, offsetDays: 30, percentage: 33.33 },
+        { installmentNumber: 2, offsetDays: 60, percentage: 33.33 },
+        { installmentNumber: 3, offsetDays: 90, percentage: 33.34 },
+      ] },
+      { total: 999.99, installments: [
+        { installmentNumber: 1, offsetDays: 15, percentage: 16.67 },
+        { installmentNumber: 2, offsetDays: 45, percentage: 16.67 },
+        { installmentNumber: 3, offsetDays: 75, percentage: 16.67 },
+        { installmentNumber: 4, offsetDays: 105, percentage: 16.67 },
+        { installmentNumber: 5, offsetDays: 135, percentage: 16.66 },
+        { installmentNumber: 6, offsetDays: 165, percentage: 16.66 },
+      ] },
+      { total: 0.07, installments: [
+        { installmentNumber: 1, offsetDays: 10, percentage: 50 },
+        { installmentNumber: 2, offsetDays: 20, percentage: 50 },
+      ] },
+      { total: 61, installments: [{ installmentNumber: 1, offsetDays: 30, percentage: 100 }] },
+    ];
+
+    for (const { total, installments } of cases) {
+      const schedule = computePaymentSchedule(new Date("2026-03-05T00:00:00.000Z"), { endOfMonth: false, fixedDay: null, installments }, total);
+      const sumCents = schedule.reduce((s, i) => s + Math.round(i.amount * 100), 0);
+      expect(sumCents).toBe(Math.round(total * 100));
+    }
   });
 
   it("a single 100% installment gets the full amount on the computed due date", () => {
