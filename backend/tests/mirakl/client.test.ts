@@ -4,6 +4,31 @@ import { miraklMocks, http, HttpResponse } from "../helpers/msw-server";
 
 const server = setupServer();
 
+function miraklRawOrder(orderId: string) {
+  return {
+    order_id: orderId,
+    order_state: "RECEIVED",
+    created_date: "2026-08-01T10:00:00Z",
+    currency_iso_code: "EUR",
+    total_price: 11.9,
+    shipping_price: 0,
+    shipping_tracking: null,
+    shipping_tracking_url: null,
+    shipping_company: null,
+    channel: { code: "IT", label: "Canale IT" },
+    customer_notification_email: "cliente@example.com",
+    customer: {
+      shipping_address: {
+        firstname: "Mario", lastname: "Rossi", street_1: "Via Roma 1", street_2: null,
+        zip_code: "00100", city: "Roma", country: "Italy", country_iso_code: "ITA", phone: null,
+      },
+    },
+    order_lines: [
+      { order_line_id: "L1", offer_sku: "SKU-001", product_title: "Prodotto A", quantity: 1, price_unit: 11.9, price: 11.9, total_price: 11.9 },
+    ],
+  };
+}
+
 describe("Mirakl client", () => {
   let fetchNewOrders: typeof import("../../src/mirakl/client").fetchNewOrders;
   let fetchShippedOrders: typeof import("../../src/mirakl/client").fetchShippedOrders;
@@ -93,6 +118,35 @@ describe("Mirakl client", () => {
     await fetchNewOrders();
 
     expect(requestedUrl).toContain("order_state_codes=WAITING_ACCEPTANCE,RECEIVED,SHIPPED");
+  });
+
+  it("fetchNewOrders scorre tutte le pagine quando total_count supera la dimensione di una pagina", async () => {
+    // OR11 pagina di default a 10 per pagina — total_count=15 con 2 pagine
+    // (10 + 5) verifica che venga raccolto l'intero risultato, non solo la
+    // prima pagina (bug reale confermato in produzione: total_count=27,
+    // solo i primi 10 venivano sincronizzati).
+    const page1 = Array.from({ length: 10 }, (_, i) => miraklRawOrder(`MK-P1-${i}`));
+    const page2 = Array.from({ length: 5 }, (_, i) => miraklRawOrder(`MK-P2-${i}`));
+    const requestedOffsets: number[] = [];
+
+    server.use(
+      http.get(/mirakl\.net\/api\/orders/, async ({ request }) => {
+        const url = new URL(request.url);
+        const offset = Number(url.searchParams.get("offset") ?? "0");
+        requestedOffsets.push(offset);
+        const orders = offset === 0 ? page1 : offset === 10 ? page2 : [];
+        return HttpResponse.json({ orders, total_count: 15 });
+      }),
+    );
+
+    const orders = await fetchNewOrders();
+
+    expect(requestedOffsets).toEqual([0, 10]);
+    expect(orders).toHaveLength(15);
+    expect(orders.map((o) => o.orderId)).toEqual([
+      ...page1.map((o) => o.order_id),
+      ...page2.map((o) => o.order_id),
+    ]);
   });
 
   it("fetchShippedOrders queries order_state_codes=SHIPPED and maps tracking fields", async () => {
