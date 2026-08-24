@@ -18,6 +18,7 @@ import {
   findOrdersForReclassification,
   upsertShopifyOrder,
   updateOrderMarketplace,
+  correctOrderDate,
 } from "../../../src/repositories/shopify/orders.repo";
 
 let db: TestDb;
@@ -344,5 +345,74 @@ describe("updateOrderMarketplace", () => {
     );
     expect(updated?.marketplaceDetected).toBe("REDCARE_IT");
     expect(updated?.marketplaceDetectionReason).toBe("test-override");
+  });
+});
+
+// ─── correctOrderDate ──────────────────────────────────────────────────────────
+
+describe("correctOrderDate", () => {
+  it("corrects createdAt and cascades to all line items' orderDate, returning the previous value", async () => {
+    const order = await db.prisma.shopifyOrder.create({
+      data: {
+        ...sampleShopifyOrders[0],
+        shopifyOrderId: "gid://shopify/Order/CORR1",
+        createdAt: new Date("2026-08-24T07:41:00Z"), // giorno del sync (sbagliato)
+        lineItems: {
+          create: [
+            {
+              shopifyLineItemId: "li-corr1-a",
+              shopifyProductId: "p1",
+              productTitle: "Prodotto A",
+              quantity: 1,
+              unitPrice: 10,
+              originalUnitPrice: 10,
+              lineTotal: 10,
+              orderDate: new Date("2026-08-24T07:41:00Z"),
+            },
+            {
+              shopifyLineItemId: "li-corr1-b",
+              shopifyProductId: "p2",
+              productTitle: "Prodotto B",
+              quantity: 1,
+              unitPrice: 5,
+              originalUnitPrice: 5,
+              lineTotal: 5,
+              orderDate: new Date("2026-08-24T07:41:00Z"),
+            },
+          ],
+        },
+      },
+    });
+
+    const realDate = new Date("2026-08-18T18:14:50Z");
+    const result = await correctOrderDate(db.prisma, "gid://shopify/Order/CORR1", realDate);
+
+    expect(result).toEqual({ previousCreatedAt: new Date("2026-08-24T07:41:00Z") });
+
+    const updatedOrder = await db.prisma.shopifyOrder.findUnique({
+      where: { id: order.id },
+      include: { lineItems: true },
+    });
+    expect(updatedOrder!.createdAt).toEqual(realDate);
+    expect(updatedOrder!.lineItems).toHaveLength(2);
+    for (const li of updatedOrder!.lineItems) {
+      expect(li.orderDate).toEqual(realDate);
+    }
+  });
+
+  it("is a no-op (returns null) when the order already has the given date", async () => {
+    const realDate = new Date("2026-08-18T18:14:50Z");
+    await db.prisma.shopifyOrder.create({
+      data: { ...sampleShopifyOrders[0], shopifyOrderId: "gid://shopify/Order/CORR2", createdAt: realDate },
+    });
+
+    const result = await correctOrderDate(db.prisma, "gid://shopify/Order/CORR2", realDate);
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null for an unknown shopifyOrderId instead of throwing", async () => {
+    const result = await correctOrderDate(db.prisma, "gid://shopify/Order/DOES-NOT-EXIST", new Date());
+    expect(result).toBeNull();
   });
 });
