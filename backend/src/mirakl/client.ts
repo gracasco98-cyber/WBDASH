@@ -196,15 +196,38 @@ async function fetchAllOrders(orderStateCodes: string): Promise<RawMiraklOrder[]
   return all;
 }
 
+// Un ordine appena arrivato può avere ancora l'indirizzo di spedizione (o
+// altri campi) non popolato da Mirakl per qualche minuto — mappandolo con
+// .map(mapOrder) diretto, un solo ordine così malformato faceva fallire
+// l'intera chiamata e bloccava TUTTO il batch (nessun ordine sincronizzato
+// per l'intero ciclo di poll, anche quelli perfettamente validi). Confermato
+// in produzione il 2026-08-24: il job live è rimasto fermo quasi un'ora per
+// un singolo ordine con customer.shipping_address nullo. Si scarta solo
+// l'ordine malformato — verrà ripreso automaticamente al prossimo poll,
+// quando Mirakl avrà finito di popolarlo.
+function mapOrdersSkippingMalformed(raw: RawMiraklOrder[]): MiraklOrder[] {
+  const mapped: MiraklOrder[] = [];
+  for (const o of raw) {
+    try {
+      mapped.push(mapOrder(o));
+    } catch (err) {
+      console.warn(
+        `[Mirakl] Ordine ${o.order_id} scartato dal batch (dati ancora incompleti su Mirakl): ${err instanceof Error ? err.message : err}`
+      );
+    }
+  }
+  return mapped;
+}
+
 export async function fetchNewOrders(): Promise<MiraklOrder[]> {
   const orders = await fetchAllOrders("WAITING_ACCEPTANCE,RECEIVED,SHIPPED");
-  return orders.map(mapOrder);
+  return mapOrdersSkippingMalformed(orders);
 }
 
 // ─── OR11 — fetch already-shipped orders (one-off historical import) ──────────
 export async function fetchShippedOrders(): Promise<MiraklOrder[]> {
   const orders = await fetchAllOrders("SHIPPED");
-  return orders.map(mapOrder);
+  return mapOrdersSkippingMalformed(orders);
 }
 
 // ─── OR21 — accept an order (all lines) ────────────────────────────────────────
