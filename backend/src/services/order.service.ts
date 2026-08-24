@@ -36,12 +36,23 @@ export async function upsertOrder(raw: ShopifyRawOrder): Promise<string | null> 
   );
   const netAmount = totalAmount - refundedAmount;
 
+  // Data economica reale dell'ordine: processedAt (quando è stato piazzato/
+  // pagato) se presente, altrimenti createdAt di Shopify. Per un checkout
+  // normale i due coincidono quasi sempre, ma per ordini creati via API con
+  // un ritardo rispetto alla vendita reale (es. sync Mirakl/Redcare, che
+  // valorizza processedAt con la vera data dell'ordine) createdAt sarebbe il
+  // momento del sync, non il giorno di vendita — sfalsando il fatturato per
+  // data in tutta la dashboard (bug reale confermato in produzione, 2026-08-24:
+  // 27 ordini Redcare finiti tutti sul giorno del sync invece che sparsi sui
+  // loro giorni reali).
+  const effectiveOrderDate = raw.processedAt ? new Date(raw.processedAt) : new Date(raw.createdAt);
+
   const order = await upsertShopifyOrder(
     prisma,
     {
       shopifyOrderId: raw.id,
       orderName: raw.name,
-      createdAt: new Date(raw.createdAt),
+      createdAt: effectiveOrderDate,
       updatedAt: new Date(raw.updatedAt),
       processedAt: raw.processedAt ? new Date(raw.processedAt) : null,
       cancelledAt: raw.cancelledAt ? new Date(raw.cancelledAt) : null,
@@ -94,7 +105,7 @@ export async function upsertOrder(raw: ShopifyRawOrder): Promise<string | null> 
       raw.lineItems.edges,
       order.id,
       detection.marketplace,
-      new Date(raw.createdAt),
+      effectiveOrderDate,
       raw.currentTotalPriceSet?.shopMoney?.currencyCode ?? "EUR"
     );
   }

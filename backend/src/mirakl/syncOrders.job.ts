@@ -88,6 +88,11 @@ export async function runMiraklSync(): Promise<{ created: number; accepted: numb
             currency: mapped.currency,
             totalAmount: mapped.totalAmount,
             shippingAmount: mapped.shippingAmount,
+            // Data reale dell'ordine su Mirakl, non il momento del sync — senza
+            // questo il fatturato per data in WBDASH finisce sempre sul giorno
+            // in cui il job ha girato invece che sul vero giorno di vendita
+            // (bug reale confermato in produzione il 2026-08-24).
+            processedAt: new Date(order.createdDate),
             shippingAddress: mapped.shippingAddress,
             lineItems,
           });
