@@ -1,8 +1,11 @@
 // repositories/purchasing/warehouses.repo.ts — Company-wide, no amazonAccountId.
 import type { PrismaClient, Warehouse } from "@prisma/client";
 
-export async function findAllWarehouses(prisma: PrismaClient): Promise<Warehouse[]> {
-  return prisma.warehouse.findMany({ orderBy: { name: "asc" } });
+export async function findAllWarehouses(prisma: PrismaClient) {
+  return prisma.warehouse.findMany({
+    orderBy: { name: "asc" },
+    include: { _count: { select: { purchaseOrders: true } } },
+  });
 }
 
 export async function createWarehouse(

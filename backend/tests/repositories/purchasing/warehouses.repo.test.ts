@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { setupTestDb, truncateAll, type TestDb } from "../../helpers/db";
 import { findAllWarehouses, createWarehouse, updateWarehouse, deactivateWarehouse } from "../../../src/repositories/purchasing/warehouses.repo";
+import { createPurchaseOrder } from "../../../src/repositories/purchasing/purchase-orders.repo";
 
 let db: TestDb;
 
@@ -36,5 +37,29 @@ describe("warehouses.repo", () => {
     const row = await db.prisma.warehouse.findUnique({ where: { id: w.id } });
     expect(row).not.toBeNull();
     expect(row!.isActive).toBe(false);
+  });
+
+  it("includes a _count of purchase orders referencing each warehouse", async () => {
+    const used = await createWarehouse(db.prisma, { name: "Used Warehouse", code: "MAG-USED" });
+    const unused = await createWarehouse(db.prisma, { name: "Unused Warehouse", code: "MAG-UNUSED" });
+
+    const supplierId = (await db.prisma.supplier.create({
+      data: { legalName: "Acme Supply Srl", internalCode: "FORN-001", supplierType: "Produttore", country: "IT" },
+    })).id;
+    const paymentTermId = (await db.prisma.paymentTerm.create({
+      data: { name: "30gg", type: "STANDARD", paymentMethod: "BONIFICO" },
+    })).id;
+    const productId = (await db.prisma.product.create({ data: { name: "Widget Test" } })).id;
+    const userId = (await db.prisma.user.create({ data: { email: "buyer@example.com", passwordHash: "x", role: "user" } })).id;
+
+    await createPurchaseOrder(db.prisma, {
+      supplierId, orderDate: new Date("2026-08-08"), currency: "EUR", buyerId: userId,
+      warehouseId: used.id, paymentTermId,
+      lines: [{ productId, description: "Widget Test", orderedQty: 1, unitOfMeasure: "PZ", unitPrice: 1, taxableAmount: 1, vatAmount: 0, totalAmount: 1 }],
+    });
+
+    const all = await findAllWarehouses(db.prisma);
+    expect(all.find(w => w.id === used.id)!._count.purchaseOrders).toBe(1);
+    expect(all.find(w => w.id === unused.id)!._count.purchaseOrders).toBe(0);
   });
 });
