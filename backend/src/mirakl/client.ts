@@ -219,8 +219,17 @@ function mapOrdersSkippingMalformed(raw: RawMiraklOrder[]): MiraklOrder[] {
   return mapped;
 }
 
+// Include anche SHIPPING (stato intermedio Mirakl distinto da SHIPPED, mai
+// visto prima): confermato in produzione il 2026-08-25, 2 ordini reali dello
+// stesso giorno sono rimasti invisibili al job perché in quello stato — è la
+// stessa classe di bug del gap SHIPPED del 22/08, solo con un valore diverso.
+// Nota: NON passare a una query priva di filtro di stato (es. per data) senza
+// prima mappare esplicitamente gli stati terminali negativi di Mirakl
+// (CANCELED/REFUSED) — un ordine in quello stato non va mai creato come
+// ordine pagato su Shopify, e la lista esplicita qui sotto li esclude di
+// proposito.
 export async function fetchNewOrders(): Promise<MiraklOrder[]> {
-  const orders = await fetchAllOrders("WAITING_ACCEPTANCE,RECEIVED,SHIPPED");
+  const orders = await fetchAllOrders("WAITING_ACCEPTANCE,RECEIVED,SHIPPING,SHIPPED");
   return mapOrdersSkippingMalformed(orders);
 }
 
