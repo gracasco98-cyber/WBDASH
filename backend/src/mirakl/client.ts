@@ -163,15 +163,8 @@ async function miraklRequest<T>(path: string, init?: RequestInit): Promise<T> {
 // mai ordini in WAITING_ACCEPTANCE — arrivano già in RECEIVED (con
 // order_line_state_reason_code "AUTO_RECEIVED"), quindi si interrogano
 // entrambi gli stati per restare corretti anche se la configurazione cambia.
-// Include anche SHIPPED: per questo account il fulfillment center spedisce
-// spesso l'ordine entro pochi minuti dalla ricezione — più veloce del poll a
-// 5 minuti — quindi un ordine può saltare direttamente da WAITING_ACCEPTANCE/
-// RECEIVED a SHIPPED tra un giro e l'altro. Prima di questa modifica un
-// ordine del genere spariva per sempre dalla vista del job live (mai creato
-// su Shopify): confermato in produzione il 2026-08-22, 9 ordini reali persi
-// così tra il 18 e il 21/08. runMiraklSync() già gestisce un ordine con
-// tracking già presente (crea + evade subito), quindi qui basta allargare
-// la query.
+// Per quali altri stati vengono interrogati e perché, vedi il commento su
+// MIRAKL_SAFE_ORDER_STATES più sotto.
 // OR11 pagina i risultati (10 per pagina di default) e ignorarlo lascia
 // silenziosamente fuori tutto oltre la prima pagina — confermato in
 // produzione il 2026-08-24: total_count=27 ordini aperti, la sola prima
@@ -182,12 +175,12 @@ async function miraklRequest<T>(path: string, init?: RequestInit): Promise<T> {
 // in modo inatteso (es. total_count sbagliato).
 const MAX_ORDER_PAGES = 50; // 50 * 10 = 500 ordini aperti, ben oltre il volume reale attuale
 
-async function fetchAllOrders(orderStateCodes: string): Promise<RawMiraklOrder[]> {
+async function fetchAllOrders(extraQuery: string): Promise<RawMiraklOrder[]> {
   const all: RawMiraklOrder[] = [];
   let offset = 0;
   for (let page = 0; page < MAX_ORDER_PAGES; page++) {
     const data = await miraklRequest<MiraklOrdersResponse>(
-      `/orders?order_state_codes=${orderStateCodes}&offset=${offset}`
+      `/orders?${extraQuery}&offset=${offset}`
     );
     all.push(...data.orders);
     offset += data.orders.length;
@@ -195,6 +188,35 @@ async function fetchAllOrders(orderStateCodes: string): Promise<RawMiraklOrder[]
   }
   return all;
 }
+
+// ─── Vocabolario completo degli stati ordine Mirakl (OR11) ────────────────────
+// Fonte: documentazione ufficiale developer.mirakl.com + client Java Mirakl
+// (com.mirakl.client.mmp.domain.order.state), verificato 2026-08-25 dopo aver
+// scoperto SHIPPING in produzione senza averlo mai mappato. Elencato qui per
+// intero una volta per tutte, così un futuro stato non ancora visto non va
+// più scoperto "a sorpresa" in produzione: MIRAKL_SAFE_ORDER_STATES e
+// MIRAKL_IGNORED_ORDER_STATES sono usati anche da health.ts per la
+// riconciliazione — qualunque stato non presente in nessuno dei due elenchi
+// (es. un futuro stato aggiunto da Mirakl) emerge automaticamente come
+// "sconosciuto" invece di sparire silenziosamente.
+//
+// Sicuri da sincronizzare come ordine Shopify pagato — l'ordine è confermato/
+// pagato lato Mirakl a questo punto della sua vita:
+export const MIRAKL_SAFE_ORDER_STATES = ["WAITING_ACCEPTANCE", "RECEIVED", "SHIPPING", "SHIPPED", "TO_COLLECT"] as const;
+// Da ignorare sempre e comunque — mai creare un ordine Shopify pagato per
+// questi: STAGING/WAITING_DEBIT/WAITING_DEBIT_PAYMENT sono precedenti alla
+// cattura del pagamento, REFUSED/CANCELED/PARTIALLY_REFUSED sono esiti
+// negativi, CLOSED è un terminale successivo a SHIPPED/RECEIVED che questo
+// job non deve mai processare da capo:
+export const MIRAKL_IGNORED_ORDER_STATES = [
+  "STAGING", "WAITING_DEBIT", "WAITING_DEBIT_PAYMENT",
+  "REFUSED", "CANCELED", "PARTIALLY_REFUSED", "CLOSED",
+] as const;
+// Deliberatamente NÉ sicuro né ignorato: PARTIALLY_ACCEPTED (l'ordine ha
+// righe accettate e righe rifiutate — creare un ordine Shopify per l'intero
+// importo sarebbe sbagliato, va rivisto a mano) e qualunque stato futuro non
+// ancora documentato qui. Questi ricadono nel "non riconosciuto" di
+// findStuckMiraklOrders() in health.ts.
 
 // Un ordine appena arrivato può avere ancora l'indirizzo di spedizione (o
 // altri campi) non popolato da Mirakl per qualche minuto — mappandolo con
@@ -219,24 +241,40 @@ function mapOrdersSkippingMalformed(raw: RawMiraklOrder[]): MiraklOrder[] {
   return mapped;
 }
 
-// Include anche SHIPPING (stato intermedio Mirakl distinto da SHIPPED, mai
-// visto prima): confermato in produzione il 2026-08-25, 2 ordini reali dello
-// stesso giorno sono rimasti invisibili al job perché in quello stato — è la
-// stessa classe di bug del gap SHIPPED del 22/08, solo con un valore diverso.
-// Nota: NON passare a una query priva di filtro di stato (es. per data) senza
-// prima mappare esplicitamente gli stati terminali negativi di Mirakl
-// (CANCELED/REFUSED) — un ordine in quello stato non va mai creato come
-// ordine pagato su Shopify, e la lista esplicita qui sotto li esclude di
-// proposito.
+// Interroga tutti gli stati "sicuri" elencati sopra (MIRAKL_SAFE_ORDER_STATES)
+// — vedi il commento su quella costante per la cronologia dei gap scoperti in
+// produzione (SHIPPED il 22/08, SHIPPING il 25/08) e perché non si passa a
+// una query priva di filtro di stato senza prima gestire esplicitamente gli
+// stati terminali negativi.
 export async function fetchNewOrders(): Promise<MiraklOrder[]> {
-  const orders = await fetchAllOrders("WAITING_ACCEPTANCE,RECEIVED,SHIPPING,SHIPPED");
+  const orders = await fetchAllOrders(`order_state_codes=${MIRAKL_SAFE_ORDER_STATES.join(",")}`);
   return mapOrdersSkippingMalformed(orders);
 }
 
 // ─── OR11 — fetch already-shipped orders (one-off historical import) ──────────
 export async function fetchShippedOrders(): Promise<MiraklOrder[]> {
-  const orders = await fetchAllOrders("SHIPPED");
+  const orders = await fetchAllOrders("order_state_codes=SHIPPED");
   return mapOrdersSkippingMalformed(orders);
+}
+
+// ─── OR11 — fetch minimal order summaries for reconciliation (health.ts) ──────
+// Interroga per data (nessun filtro di stato) così un ordine in QUALUNQUE
+// stato — anche uno non ancora mai visto — viene comunque restituito. A
+// differenza di fetchNewOrders()/fetchShippedOrders(), non passa per
+// mapOrder() (che richiede indirizzo di spedizione ecc. e lancerebbe su un
+// ordine ancora malformato, esattamente il tipo di ordine che questa
+// riconciliazione deve poter segnalare): mappa solo i tre campi che servono
+// per decidere se un ordine è bloccato.
+export interface MiraklOrderSummary {
+  orderId: string;
+  orderState: string;
+  createdDate: string;
+}
+
+export async function fetchOrderSummariesSince(days: number): Promise<MiraklOrderSummary[]> {
+  const startDate = new Date(Date.now() - days * 86_400_000).toISOString();
+  const orders = await fetchAllOrders(`start_date=${encodeURIComponent(startDate)}`);
+  return orders.map((o) => ({ orderId: o.order_id, orderState: o.order_state, createdDate: o.created_date }));
 }
 
 // ─── OR21 — accept an order (all lines) ────────────────────────────────────────
