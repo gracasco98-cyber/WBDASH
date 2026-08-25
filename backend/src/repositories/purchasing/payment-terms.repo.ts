@@ -3,9 +3,12 @@ import type { PrismaClient, PaymentTerm, PaymentTermInstallmentRule, PurchasePay
 
 type PaymentTermWithInstallments = PaymentTerm & { installments: PaymentTermInstallmentRule[] };
 
-export async function findAllPaymentTerms(prisma: PrismaClient): Promise<PaymentTermWithInstallments[]> {
+export async function findAllPaymentTerms(prisma: PrismaClient) {
   return prisma.paymentTerm.findMany({
-    include: { installments: { orderBy: { installmentNumber: "asc" } } },
+    include: {
+      installments: { orderBy: { installmentNumber: "asc" } },
+      _count: { select: { suppliers: true, purchaseOrders: true } },
+    },
     orderBy: { name: "asc" },
   });
 }
