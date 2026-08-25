@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { setupTestDb, truncateAll, type TestDb } from "../../helpers/db";
-import { findAllPaymentTerms, createPaymentTerm, deactivatePaymentTerm } from "../../../src/repositories/purchasing/payment-terms.repo";
+import { findAllPaymentTerms, createPaymentTerm, updatePaymentTerm, deactivatePaymentTerm } from "../../../src/repositories/purchasing/payment-terms.repo";
 
 let db: TestDb;
 
@@ -43,5 +43,46 @@ describe("payment-terms.repo", () => {
     const row = await db.prisma.paymentTerm.findUnique({ where: { id: term.id }, include: { installments: true } });
     expect(row!.isActive).toBe(false);
     expect(row!.installments).toHaveLength(1);
+  });
+
+  it("updates a payment term's fields and replaces all installments", async () => {
+    const term = await createPaymentTerm(db.prisma, {
+      name: "Old Name", type: "BONIFICO", endOfMonth: false, paymentMethod: "BONIFICO",
+      installments: [{ installmentNumber: 1, offsetDays: 30, percentage: 100 }],
+    });
+
+    const updated = await updatePaymentTerm(db.prisma, term.id, {
+      name: "New Name", type: "RIBA", endOfMonth: true, fixedDay: 10, paymentMethod: "RIBA",
+      installments: [
+        { installmentNumber: 1, offsetDays: 30, percentage: 50 },
+        { installmentNumber: 2, offsetDays: 60, percentage: 50 },
+      ],
+    });
+
+    expect(updated.name).toBe("New Name");
+    expect(updated.type).toBe("RIBA");
+    expect(updated.endOfMonth).toBe(true);
+    expect(updated.fixedDay).toBe(10);
+    expect(updated.installments).toHaveLength(2);
+    expect(updated.installments.map(i => i.offsetDays)).toEqual([30, 60]);
+
+    const row = await db.prisma.paymentTerm.findUnique({ where: { id: term.id }, include: { installments: true } });
+    expect(row!.installments).toHaveLength(2); // the old single installment is gone, not left dangling
+  });
+
+  it("rejects installment percentages that don't sum to 100 on update, leaving existing installments untouched", async () => {
+    const term = await createPaymentTerm(db.prisma, {
+      name: "Term", type: "BONIFICO", endOfMonth: false, paymentMethod: "BONIFICO",
+      installments: [{ installmentNumber: 1, offsetDays: 30, percentage: 100 }],
+    });
+
+    await expect(updatePaymentTerm(db.prisma, term.id, {
+      name: "Term", type: "BONIFICO", endOfMonth: false, paymentMethod: "BONIFICO",
+      installments: [{ installmentNumber: 1, offsetDays: 30, percentage: 50 }],
+    })).rejects.toThrow(/100/);
+
+    const row = await db.prisma.paymentTerm.findUnique({ where: { id: term.id }, include: { installments: true } });
+    expect(row!.installments).toHaveLength(1);
+    expect(Number(row!.installments[0].percentage)).toBe(100);
   });
 });
