@@ -678,6 +678,10 @@ export interface ProductPerformanceRow {
   roi: number;
   avgSellingPrice: number;
   bsr: number | null;
+  /** Only set for Shopify/Redcare rows (ProductsPerformanceTable's
+   *  buildShopifyMarketplaceRows) — Amazon rows are imageless here and rely
+   *  on the separate ASIN-keyed catalogImages lookup instead. */
+  imageUrl?: string | null;
 }
 
 export interface ProductPerformanceGroup {
