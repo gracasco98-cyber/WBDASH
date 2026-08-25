@@ -117,7 +117,7 @@ describe("Mirakl client", () => {
 
     await fetchNewOrders();
 
-    expect(requestedUrl).toContain("order_state_codes=WAITING_ACCEPTANCE,RECEIVED,SHIPPED");
+    expect(requestedUrl).toContain("order_state_codes=WAITING_ACCEPTANCE,RECEIVED,SHIPPING,SHIPPED");
   });
 
   it("fetchNewOrders scorre tutte le pagine quando total_count supera la dimensione di una pagina", async () => {
