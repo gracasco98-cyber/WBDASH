@@ -57,6 +57,7 @@ export type {
   ProductPerformanceGroup,
   ProductPerformanceResponse,
 } from "./types";
+export type { StuckMiraklOrder, StuckMiraklOrdersResponse } from "./mirakl";
 
 // Import domain modules
 import { shopify } from "./shopify";
@@ -67,6 +68,7 @@ import { suppliers } from "./suppliers";
 import { purchaseOrders } from "./purchase-orders";
 import { paymentDues } from "./payment-dues";
 import { acquistiDashboard } from "./acquisti-dashboard";
+import { mirakl } from "./mirakl";
 
 // Compose the `api` object that all callers use via `import { api } from "@/lib/api"`
 export const api = {
@@ -99,4 +101,7 @@ export const api = {
   suppliers,
   purchaseOrders,
   paymentDues,
+
+  // ── Mirakl (Redcare) reconciliation ──────────────────────────────────────
+  mirakl,
 };

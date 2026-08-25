@@ -13,6 +13,7 @@ import ProductsPerformanceTable, { GroupBy, RowEntry, buildShopifyMarketplaceRow
 import OrderToastContainer, { LiveOrder } from "@/components/dashboard/OrderToast";
 import HourChannelModal from "@/components/dashboard/HourChannelModal";
 import ShopifyBIOverview from "@/components/dashboard/ShopifyBIOverview";
+import StuckOrdersBanner from "@/components/dashboard/StuckOrdersBanner";
 import OverviewViewTabs, { DashboardView } from "@/components/dashboard/OverviewViewTabs";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import ProductBIOverview, { SelectedProduct } from "@/components/dashboard/ProductBIOverview";
@@ -406,6 +407,8 @@ export default function DashboardPage() {
         <div className="flex-1 min-w-0">
 
       <main className="max-w-[1600px] px-4 md:px-6 py-4 md:py-6 space-y-4 md:space-y-6 overflow-x-hidden">
+
+        <StuckOrdersBanner />
 
         {/* ── Filter Bar ─────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3 w-full">

@@ -66,6 +66,9 @@ vi.mock("@/lib/api", () => ({
       rename: vi.fn(),
       moveIdentifier: vi.fn(),
     },
+    mirakl: {
+      stuckOrders: vi.fn(async () => ({ stuckOrders: [] })),
+    },
   },
 }));
 
