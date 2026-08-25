@@ -85,6 +85,7 @@ export function buildShopifyMarketplaceRows(products: ProductPerformance[]): Row
           refundsAmount: p.refundedAmount,
           refundPct: p.grossRevenue > 0 ? p.refundedAmount / p.grossRevenue : 0,
           avgSellingPrice: p.avgUnitPrice,
+          imageUrl: p.imageUrl,
         },
       })),
     };
@@ -216,11 +217,16 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
     </>
   );
 
-  const childLabel = (child: { key: string; label: string; metrics: ProductPerformanceRow }) => (
+  const childLabel = (child: { key: string; label: string; metrics: ProductPerformanceRow }) => {
+    // Righe Amazon: cercate per ASIN nella mappa caricata da catalogImages().
+    // Righe Shopify/Redcare (asin sempre "", niente lookup ASIN possibile):
+    // il backend restituisce già l'imageUrl del prodotto su metrics.imageUrl.
+    const thumb = images[child.metrics.asin] ?? child.metrics.imageUrl ?? null;
+    return (
     <>
       <div className="ml-5 flex items-center gap-2">
-        {images[child.metrics.asin] ? (
-          <img src={images[child.metrics.asin]!} alt="" className="w-[22px] h-[22px] rounded-[5px] object-cover shrink-0" />
+        {thumb ? (
+          <img src={thumb} alt="" className="w-[22px] h-[22px] rounded-[5px] object-cover shrink-0" />
         ) : (
           <div className="w-[22px] h-[22px] rounded-[5px] bg-bg-hover shrink-0" />
         )}
@@ -244,7 +250,8 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
         </span>
       )}
     </>
-  );
+    );
+  };
 
   return (
     <div className="bg-bg-card rounded-[10px] border border-bg-border text-zinc-300">

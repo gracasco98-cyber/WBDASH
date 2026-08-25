@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ProductsPerformanceTable from "./ProductsPerformanceTable";
-import type { ProductPerformanceGroup } from "@/lib/api";
+import ProductsPerformanceTable, { buildShopifyMarketplaceRows } from "./ProductsPerformanceTable";
+import type { ProductPerformanceGroup, ProductPerformance } from "@/lib/api";
 
 const mockCatalogImages = vi.fn(async (_asins: string[]) => ({}) as Record<string, string | null>);
 const mockRename = vi.fn(async (_productId: string, _name: string) => undefined);
@@ -128,6 +128,48 @@ describe("ProductsPerformanceTable", () => {
     // query the DOM node directly rather than by role.
     await vi.waitFor(() => expect(container.querySelector("img")).toBeInTheDocument());
     expect(container.querySelector("img")).toHaveAttribute("src", "https://example.com/img.jpg");
+  });
+
+  it("renders the product's own imageUrl on a Shopify/Redcare child row (no ASIN to look up in catalogImages)", async () => {
+    // LOCK-IN: confirmed missing in production 2026-08-24 — Redcare rows have
+    // asin: "" (EMPTY_COST_ROW), so images[child.metrics.asin] is always
+    // undefined for them regardless of catalogImages(); the thumbnail must
+    // fall back to the product's own imageUrl (already returned by the
+    // backend) instead of staying permanently blank.
+    const redcareProduct: ProductPerformance = {
+      shopifyProductId: "gid://shopify/Product/1",
+      productTitle: "Naturplan VENAVIL",
+      sku: "VENAVIL",
+      imageUrl: "https://cdn.shopify.com/venavil.jpg",
+      marketplace: "REDCARE_IT",
+      unitsSold: 4,
+      grossRevenue: 45.22,
+      refundedAmount: 0,
+      netRevenue: 45.22,
+      orderCount: 4,
+      avgUnitPrice: 11.3,
+      totalDiscount: 0,
+    };
+    const shopifyMarketplaceRows = buildShopifyMarketplaceRows([redcareProduct]);
+
+    const user = userEvent.setup();
+    const { container } = render(
+      <ProductsPerformanceTable
+        groups={[]}
+        groupBy="marketplace"
+        onGroupByChange={vi.fn()}
+        onRenamed={vi.fn()}
+        onMoved={vi.fn()}
+        shopifyMarketplaceRows={shopifyMarketplaceRows}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /espandi redcare it/i }));
+
+    expect(container.querySelector("img")).toHaveAttribute("src", "https://cdn.shopify.com/venavil.jpg");
+    // catalogImages is Amazon-only (fetched from `groups`, empty here) — a
+    // Redcare-only render must not call it with a bogus/empty ASIN list.
+    expect(mockCatalogImages).not.toHaveBeenCalled();
   });
 
   it("shows an alert and does not crash when rename fails", async () => {
