@@ -12,6 +12,8 @@ export interface Supplier {
   defaultPaymentMethod: string | null; defaultPaymentTermId: string | null;
   paymentDays: number | null; bankName: string | null; iban: string | null;
   bic: string | null; ribaEnabled: boolean; fixedPaymentDays: number[];
+  defaultPaymentTerm: { name: string } | null;
+  _count: { products: number };
 }
 
 export interface SupplierContact {
