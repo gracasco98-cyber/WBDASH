@@ -870,6 +870,28 @@ model BankAccount {
   @@index([isActive])
 }
 
+// ─── Purchasing module — Anagrafiche: Clienti/Agenti (Fase 2) ──────────────────
+// See docs/superpowers/specs/2026-08-26-anagrafiche-clienti-agenti-design.md.
+// A single lightweight shared table for simple contact registries (Clienti,
+// Agenti, future types) — unrelated to SupplierContact (a person-contact that
+// belongs to a specific Supplier, a different concept untouched by this model).
+model BusinessContact {
+  id        String   @id @default(cuid())
+  type      String   // "CLIENTE" | "AGENTE" | free text — same pattern as Supplier.supplierType, no enum
+  name      String
+  referent  String?
+  email     String?
+  phone     String?
+  address   String?
+  notes     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([isActive])
+}
+
 // ─── Purchasing module — FASE C: supplier master data ──────────────────────────
 // See docs/superpowers/specs/2026-08-05-purchasing-erp-architecture.md §2.
 model Supplier {
