@@ -48,6 +48,7 @@ export function getDateRange(filter: string, from?: string, to?: string) {
       return { gte: yStart, lte: yEnd };
     }
     case "last7":  return { gte: new Date(Date.now() - 7  * 86400000 - offsetMs), lte: todayEnd };
+    case "last14": return { gte: new Date(Date.now() - 14 * 86400000 - offsetMs), lte: todayEnd };
     case "last30": return { gte: new Date(Date.now() - 30 * 86400000 - offsetMs), lte: todayEnd };
     case "last90": return { gte: new Date(Date.now() - 90 * 86400000 - offsetMs), lte: todayEnd };
     case "month": {
