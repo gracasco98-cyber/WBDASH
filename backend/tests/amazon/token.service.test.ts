@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../src/db", () => ({ prisma: {} }));
+let currentAccountId = "account-1";
 vi.mock("../../src/context/account-context", () => ({
-  getCurrentAccountId: vi.fn(() => "account-1"),
+  getCurrentAccountId: vi.fn(() => currentAccountId),
 }));
 const getAccountCredentials = vi.fn();
 vi.mock("../../src/repositories/amazon/accounts.repo", () => ({
@@ -13,6 +14,7 @@ import { getAdsClientId, invalidateTokens } from "../../src/amazon/token.service
 
 describe("getAdsClientId", () => {
   beforeEach(() => {
+    currentAccountId = "account-1";
     getAccountCredentials.mockReset();
     invalidateTokens(); // clear cache from any previous test (same mocked account id)
   });
@@ -32,6 +34,21 @@ describe("getAdsClientId", () => {
     await getAdsClientId();
     await getAdsClientId();
     expect(getAccountCredentials).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps client ID cache entries isolated per account", async () => {
+    getAccountCredentials.mockImplementation(async (_prisma: unknown, accountId: string) => ({
+      adsClientId: `ads-client-${accountId}`,
+      lwaClientId: null,
+    }));
+
+    expect(await getAdsClientId()).toBe("ads-client-account-1");
+    currentAccountId = "account-2";
+    expect(await getAdsClientId()).toBe("ads-client-account-2");
+    currentAccountId = "account-1";
+    expect(await getAdsClientId()).toBe("ads-client-account-1");
+
+    expect(getAccountCredentials).toHaveBeenCalledTimes(2);
   });
 
   it("throws when neither adsClientId nor lwaClientId is set", async () => {

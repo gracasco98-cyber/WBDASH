@@ -13,6 +13,7 @@
 
 const http = require("http");
 const https = require("https");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { exec } = require("child_process");
@@ -54,8 +55,18 @@ function shQuote(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
+}
+
 // ─── Costruisci URL di consenso (endpoint EU) ───────────────────────────────────
-const STATE = Math.random().toString(36).substring(2, 10);
+const STATE = crypto.randomBytes(32).toString("hex");
 const AUTH_URL =
   `https://eu.account.amazon.com/ap/oa` +
   `?client_id=${encodeURIComponent(CLIENT_ID)}` +
@@ -100,6 +111,7 @@ function exchangeCode(code) {
     });
 
     req.on("error", reject);
+    req.setTimeout(30_000, () => req.destroy(new Error("LWA token exchange timed out after 30 seconds")));
     req.write(body);
     req.end();
   });
@@ -140,6 +152,7 @@ function listProfiles(accessToken) {
     });
 
     req.on("error", reject);
+    req.setTimeout(30_000, () => req.destroy(new Error("Advertising profiles request timed out after 30 seconds")));
     req.end();
   });
 }
@@ -153,7 +166,7 @@ const server = http.createServer(async (req, res) => {
     return res.end("Not found");
   }
 
-  const { code, error } = parsed.query;
+  const { code, error, state } = parsed.query;
 
   const html = (title, body, isError = false) => `
     <!DOCTYPE html>
@@ -178,10 +191,18 @@ const server = http.createServer(async (req, res) => {
     </html>
   `;
 
+  if (state !== STATE) {
+    console.error("\n❌  OAuth state non valido: callback rifiutato.");
+    res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(html("❌ Callback non valido", "<p>Il parametro di sicurezza OAuth non corrisponde.</p>", true));
+    setTimeout(() => server.close(), 2000);
+    return;
+  }
+
   if (error) {
     console.error(`\n❌  Amazon ha restituito un errore: ${error}`);
     res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(html("❌ Errore autorizzazione", `<p>Amazon ha restituito: <code>${error}</code></p>`, true));
+    res.end(html("❌ Errore autorizzazione", `<p>Amazon ha restituito: <code>${escapeHtml(error)}</code></p>`, true));
     setTimeout(() => server.close(), 2000);
     return;
   }
@@ -216,12 +237,12 @@ const server = http.createServer(async (req, res) => {
     res.end(html(
       "✅ Autorizzazione completata!",
       `<p>Refresh token e profili Ads ottenuti. Il comando da eseguire nel terminale è stato stampato lì (contiene segreti, non viene ripetuto qui).</p>
-       <p>Profili trovati:</p><pre>${JSON.stringify(profileIds, null, 2)}</pre>`
+       <p>Profili trovati:</p><pre>${escapeHtml(JSON.stringify(profileIds, null, 2))}</pre>`
     ));
   } catch (err) {
     console.error("\n❌  Errore:", err.message);
     res.writeHead(500, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(html("❌ Errore", `<pre>${err.message}</pre>`, true));
+    res.end(html("❌ Errore", `<pre>${escapeHtml(err.message)}</pre>`, true));
   }
 
   setTimeout(() => server.close(), 3000);
@@ -246,6 +267,13 @@ server.listen(PORT, () => {
     }
   });
 });
+
+const idleTimer = setTimeout(() => {
+  console.error("\n❌  Nessun callback ricevuto entro 10 minuti. Helper arrestato.\n");
+  server.close();
+}, 10 * 60_000);
+idleTimer.unref();
+server.on("close", () => clearTimeout(idleTimer));
 
 server.on("error", (err) => {
   console.error(`\n❌  Errore server: ${err.message}`);

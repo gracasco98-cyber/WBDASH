@@ -6,7 +6,11 @@
 //   - Profile ID passed as Amazon-Advertising-API-Scope header
 
 import { ADS_ENDPOINT } from "./config";
-import { getAdsApiToken, getAdsClientId, invalidateTokens } from "./token.service";
+import {
+  getAdsApiToken,
+  getAdsClientId,
+  invalidateTokens,
+} from "./token.service";
 import { getAccountCredentials } from "../repositories/amazon/accounts.repo";
 import { prisma } from "../db";
 import { getCurrentAccountId } from "../context/account-context";
@@ -31,7 +35,10 @@ async function adsRequest(
   profileId: string,
   body?: any
 ): Promise<any> {
-  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
+  const [token, clientId] = await Promise.all([
+    getAdsApiToken(),
+    getAdsClientId(),
+  ]);
   const ct = method === "POST" ? spContentType(path) : "application/json";
 
   const headers: Record<string, string> = {
@@ -97,7 +104,10 @@ export async function getConfiguredProfiles(): Promise<AdsProfileInfo[]> {
 
 /** List all profiles from the API (used to verify connection) */
 export async function listProfiles(): Promise<AdsProfileInfo[]> {
-  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
+  const [token, clientId] = await Promise.all([
+    getAdsApiToken(),
+    getAdsClientId(),
+  ]);
   const res = await fetch(`${ADS_ENDPOINT}/v2/profiles`, {
     headers: {
       "Amazon-Advertising-API-ClientId": clientId,
@@ -224,7 +234,10 @@ export async function fetchSPCampaignReport(
   endDate?: string    // YYYY-MM-DD (default = startDate for single-day)
 ): Promise<CampaignReport[]> {
   const end = endDate ?? startDate;
-  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
+  const [token, clientId] = await Promise.all([
+    getAdsApiToken(),
+    getAdsClientId(),
+  ]);
   const reportHeaders: Record<string, string> = {
     "Amazon-Advertising-API-ClientId": clientId,
     "Amazon-Advertising-API-Scope":    profileId,
@@ -302,7 +315,10 @@ export async function fetchSPAdvertisedProductReport(
   endDate?: string
 ): Promise<AdvertisedProductReport[]> {
   const end = endDate ?? startDate;
-  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
+  const [token, clientId] = await Promise.all([
+    getAdsApiToken(),
+    getAdsClientId(),
+  ]);
   const hdrs: Record<string, string> = {
     "Amazon-Advertising-API-ClientId": clientId,
     "Amazon-Advertising-API-Scope":    profileId,
@@ -464,7 +480,10 @@ export async function fetchSPKeywordReport(
 ): Promise<KeywordReport[]> {
   const end = endDate ?? startDate;
   const isRange = startDate !== end;
-  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
+  const [token, clientId] = await Promise.all([
+    getAdsApiToken(),
+    getAdsClientId(),
+  ]);
   const hdrs: Record<string, string> = {
     "Amazon-Advertising-API-ClientId": clientId,
     "Amazon-Advertising-API-Scope":    profileId,
@@ -538,7 +557,10 @@ export async function fetchSPSearchTermReport(
   endDate?:   string
 ): Promise<SearchTermReport[]> {
   const end = endDate ?? startDate;
-  const [token, clientId] = await Promise.all([getAdsApiToken(), getAdsClientId()]);
+  const [token, clientId] = await Promise.all([
+    getAdsApiToken(),
+    getAdsClientId(),
+  ]);
   const hdrs: Record<string, string> = {
     "Amazon-Advertising-API-ClientId": clientId,
     "Amazon-Advertising-API-Scope":    profileId,
