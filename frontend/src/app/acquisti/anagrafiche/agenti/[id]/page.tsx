@@ -14,7 +14,7 @@ export default function ModificaAgentePage({ params }: { params: { id: string } 
 
   const load = useCallback(() => {
     api.purchasing.businessContacts.list()
-      .then(rows => setContact(rows.find(c => c.id === params.id) ?? null))
+      .then(rows => setContact(rows.find(c => c.id === params.id && c.type === "AGENTE") ?? null))
       .finally(() => setLoading(false));
   }, [params.id]);
   useEffect(() => { load(); }, [load]);
