@@ -20,6 +20,7 @@ interface CachedToken {
 const spApiCacheByAccount = new Map<string, CachedToken>();
 const spApiCacheNAByAccount = new Map<string, CachedToken>();
 const adsApiCacheByAccount = new Map<string, CachedToken>();
+const adsClientIdCacheByAccount = new Map<string, string>();
 
 async function fetchToken(clientId: string, clientSecret: string, refreshToken: string): Promise<CachedToken> {
   const params = new URLSearchParams({
@@ -123,10 +124,26 @@ export async function getAdsApiToken(): Promise<string> {
   return token.accessToken;
 }
 
+/** Get the Advertising API Client ID for the current account (cached), same fallback formula getAdsApiToken() uses for the refresh token. */
+export async function getAdsClientId(): Promise<string> {
+  const accountId = getCurrentAccountId();
+  const cached = adsClientIdCacheByAccount.get(accountId);
+  if (cached) return cached;
+
+  const creds = await getAccountCredentials(prisma, accountId);
+  const clientId = creds.adsClientId ?? creds.lwaClientId;
+  if (!clientId) {
+    throw new Error(`[Amazon] AmazonAccount ${accountId} is missing an Advertising API Client ID`);
+  }
+  adsClientIdCacheByAccount.set(accountId, clientId);
+  return clientId;
+}
+
 /** Invalidate cached tokens for the current account (e.g. on 401 response) */
 export function invalidateTokens(): void {
   const accountId = getCurrentAccountId();
   spApiCacheByAccount.delete(accountId);
   spApiCacheNAByAccount.delete(accountId);
   adsApiCacheByAccount.delete(accountId);
+  adsClientIdCacheByAccount.delete(accountId);
 }

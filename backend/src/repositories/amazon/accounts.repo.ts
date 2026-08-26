@@ -98,3 +98,27 @@ export async function createAccount(
     },
   });
 }
+
+export interface UpdateAdsCredentialsParams {
+  adsClientId: string;
+  adsClientSecret: string;
+  adsRefreshToken: string;
+  adsProfileIds: Record<string, string>;
+}
+
+/** Update the Advertising API credentials on an existing account, encrypting the secret and refresh token. Throws if the account does not exist. */
+export async function updateAdsCredentials(
+  prisma: PrismaClient,
+  accountId: string,
+  params: UpdateAdsCredentialsParams
+): Promise<AmazonAccount> {
+  return prisma.amazonAccount.update({
+    where: { id: accountId },
+    data: {
+      adsClientId: params.adsClientId,
+      adsClientSecretEnc: encryptSecret(params.adsClientSecret),
+      adsRefreshTokenEnc: encryptSecret(params.adsRefreshToken),
+      adsProfileIds: params.adsProfileIds,
+    },
+  });
+}
