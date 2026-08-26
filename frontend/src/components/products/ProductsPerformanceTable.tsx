@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect, Fragment } from "react";
-import type { ProductPerformanceGroup, ProductPerformanceRow } from "@/lib/api";
+import type { ProductPerformanceGroup, ProductPerformanceRow, ProductPerformance } from "@/lib/api";
 import { api } from "@/lib/api";
+import { getMeta } from "@/lib/marketplaces";
 import MetricRow from "./MetricRow";
 
 export type GroupBy = "marketplace" | "product";
@@ -12,6 +13,11 @@ interface Props {
   onGroupByChange: (g: GroupBy) => void;
   onRenamed: () => void;
   onMoved: () => void;
+  /** Non-Amazon channels (Shopify: Redcare, Temu, eBay, ...), pre-built via
+   *  buildShopifyMarketplaceRows. Only shown in the "marketplace" grouping —
+   *  Shopify products have no unified identity with Amazon ASINs to group by
+   *  in "product" mode, so that mode stays Amazon-only. */
+  shopifyMarketplaceRows?: RowEntry[];
 }
 
 const MARKETPLACE_LABEL: Record<string, string> = {
@@ -25,11 +31,65 @@ const COLUMNS = [
   "Margine", "ROI", "BSR", "Prezzo medio", "ACOS reale", "Stock",
 ];
 
-interface RowEntry {
+export interface RowEntry {
   key: string;
   label: string;
   metrics: ProductPerformanceRow;
   children?: { key: string; label: string; metrics: ProductPerformanceRow }[];
+}
+
+const EMPTY_COST_ROW: Omit<ProductPerformanceRow, "marketplace" | "sku" | "units" | "sales" | "refundsAmount" | "avgSellingPrice" | "refundPct"> = {
+  identifierId: "", asin: "", bsr: null,
+  hasRealFees: false, hasRealCogs: false, hasStockData: false,
+  costDataAvailable: false,
+  promo: 0, refundsCount: 0, adsSpend: null, realAcos: null,
+  amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0,
+  margin: 0, roi: 0,
+};
+
+/**
+ * Builds marketplace-grouped rows for non-Amazon channels from the plain
+ * per-product Shopify performance list (/api/products), in the same RowEntry
+ * shape ProductsPerformanceTable already renders — so Redcare/Temu/eBay/...
+ * show up alongside Amazon.xx in the "marketplace" grouping. Cost/profit
+ * columns are intentionally blank (costDataAvailable: false): fees and COGS
+ * are not tracked for these channels yet, unlike Amazon's estimated-vs-real
+ * distinction (hasRealFees/hasRealCogs), which assumes SOME cost figure exists.
+ */
+export function buildShopifyMarketplaceRows(products: ProductPerformance[]): RowEntry[] {
+  const byMarketplace = new Map<string, ProductPerformance[]>();
+  for (const p of products) {
+    const list = byMarketplace.get(p.marketplace) ?? [];
+    list.push(p);
+    byMarketplace.set(p.marketplace, list);
+  }
+  return [...byMarketplace.entries()].map(([mp, items]) => {
+    const units = items.reduce((s, p) => s + p.unitsSold, 0);
+    const sales = items.reduce((s, p) => s + p.grossRevenue, 0);
+    const refundsAmount = items.reduce((s, p) => s + p.refundedAmount, 0);
+    return {
+      key: `shopify-${mp}`,
+      label: getMeta(mp).label,
+      metrics: {
+        ...EMPTY_COST_ROW,
+        marketplace: mp, sku: null, units, sales, refundsAmount,
+        refundPct: sales > 0 ? refundsAmount / sales : 0,
+        avgSellingPrice: units > 0 ? sales / units : 0,
+      },
+      children: items.map((p) => ({
+        key: `shopify-${mp}-${p.shopifyProductId}`,
+        label: p.productTitle,
+        metrics: {
+          ...EMPTY_COST_ROW,
+          marketplace: mp, sku: p.sku, units: p.unitsSold, sales: p.grossRevenue,
+          refundsAmount: p.refundedAmount,
+          refundPct: p.grossRevenue > 0 ? p.refundedAmount / p.grossRevenue : 0,
+          avgSellingPrice: p.avgUnitPrice,
+          imageUrl: p.imageUrl,
+        },
+      })),
+    };
+  });
 }
 
 function buildRowsByProduct(groups: ProductPerformanceGroup[]): RowEntry[] {
@@ -91,13 +151,15 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
   });
 }
 
-export default function ProductsPerformanceTable({ groups, groupBy, onGroupByChange, onRenamed, onMoved }: Props) {
+export default function ProductsPerformanceTable({ groups, groupBy, onGroupByChange, onRenamed, onMoved, shopifyMarketplaceRows }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [movingId, setMovingId] = useState<string | null>(null);
   const [targetProductId, setTargetProductId] = useState("");
   const [images, setImages] = useState<Record<string, string | null>>({});
 
-  const rows = groupBy === "product" ? buildRowsByProduct(groups) : buildRowsByMarketplace(groups);
+  const rows = groupBy === "product"
+    ? buildRowsByProduct(groups)
+    : [...buildRowsByMarketplace(groups), ...(shopifyMarketplaceRows ?? [])];
 
   useEffect(() => {
     const asins = [...new Set(groups.flatMap((g) => g.rows.map((r) => r.asin)).filter(Boolean))];
@@ -155,11 +217,16 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
     </>
   );
 
-  const childLabel = (child: { key: string; label: string; metrics: ProductPerformanceRow }) => (
+  const childLabel = (child: { key: string; label: string; metrics: ProductPerformanceRow }) => {
+    // Righe Amazon: cercate per ASIN nella mappa caricata da catalogImages().
+    // Righe Shopify/Redcare (asin sempre "", niente lookup ASIN possibile):
+    // il backend restituisce già l'imageUrl del prodotto su metrics.imageUrl.
+    const thumb = images[child.metrics.asin] ?? child.metrics.imageUrl ?? null;
+    return (
     <>
       <div className="ml-5 flex items-center gap-2">
-        {images[child.metrics.asin] ? (
-          <img src={images[child.metrics.asin]!} alt="" className="w-[22px] h-[22px] rounded-[5px] object-cover shrink-0" />
+        {thumb ? (
+          <img src={thumb} alt="" className="w-[22px] h-[22px] rounded-[5px] object-cover shrink-0" />
         ) : (
           <div className="w-[22px] h-[22px] rounded-[5px] bg-bg-hover shrink-0" />
         )}
@@ -183,7 +250,8 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
         </span>
       )}
     </>
-  );
+    );
+  };
 
   return (
     <div className="bg-bg-card rounded-[10px] border border-bg-border text-zinc-300">

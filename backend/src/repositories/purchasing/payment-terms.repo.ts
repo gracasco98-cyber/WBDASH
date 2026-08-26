@@ -3,9 +3,12 @@ import type { PrismaClient, PaymentTerm, PaymentTermInstallmentRule, PurchasePay
 
 type PaymentTermWithInstallments = PaymentTerm & { installments: PaymentTermInstallmentRule[] };
 
-export async function findAllPaymentTerms(prisma: PrismaClient): Promise<PaymentTermWithInstallments[]> {
+export async function findAllPaymentTerms(prisma: PrismaClient) {
   return prisma.paymentTerm.findMany({
-    include: { installments: { orderBy: { installmentNumber: "asc" } } },
+    include: {
+      installments: { orderBy: { installmentNumber: "asc" } },
+      _count: { select: { suppliers: true, purchaseOrders: true } },
+    },
     orderBy: { name: "asc" },
   });
 }
@@ -37,6 +40,39 @@ export async function createPaymentTerm(
       installments: { create: data.installments },
     },
     include: { installments: { orderBy: { installmentNumber: "asc" } } },
+  });
+}
+
+export interface UpdatePaymentTermInput {
+  name: string;
+  type: string;
+  endOfMonth: boolean;
+  fixedDay?: number | null;
+  paymentMethod: PurchasePaymentMethod;
+  installments: { installmentNumber: number; offsetDays: number; percentage: number }[];
+}
+
+export async function updatePaymentTerm(
+  prisma: PrismaClient,
+  id: string,
+  data: UpdatePaymentTermInput
+): Promise<PaymentTermWithInstallments> {
+  const totalPct = data.installments.reduce((s, i) => s + i.percentage, 0);
+  if (Math.abs(totalPct - 100) > 0.01) {
+    throw new Error(`Installment percentages must sum to 100, got ${totalPct}`);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.paymentTermInstallmentRule.deleteMany({ where: { paymentTermId: id } });
+    return tx.paymentTerm.update({
+      where: { id },
+      data: {
+        name: data.name, type: data.type, endOfMonth: data.endOfMonth,
+        fixedDay: data.fixedDay ?? null, paymentMethod: data.paymentMethod,
+        installments: { create: data.installments },
+      },
+      include: { installments: { orderBy: { installmentNumber: "asc" } } },
+    });
   });
 }
 

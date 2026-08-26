@@ -2,7 +2,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
 import { findAllWarehouses, createWarehouse, updateWarehouse, deactivateWarehouse } from "../../repositories/purchasing/warehouses.repo";
-import { findAllPaymentTerms, createPaymentTerm, deactivatePaymentTerm } from "../../repositories/purchasing/payment-terms.repo";
+import { findAllPaymentTerms, createPaymentTerm, updatePaymentTerm, deactivatePaymentTerm } from "../../repositories/purchasing/payment-terms.repo";
 import { findAllBankAccounts, createBankAccount, updateBankAccount, deactivateBankAccount } from "../../repositories/purchasing/bank-accounts.repo";
 
 export const masterDataRouter = Router();
@@ -59,6 +59,24 @@ masterDataRouter.post("/payment-terms", async (req: Request, res: Response) => {
   } catch (err) {
     // Only the installment-sum validation error from the repo layer maps to 400;
     // anything else (e.g. a DB outage) is a genuine 500.
+    const message = err instanceof Error ? err.message : String(err);
+    if (/sum to 100/.test(message)) return res.status(400).json({ error: message });
+    res.status(500).json({ error: message });
+  }
+});
+
+masterDataRouter.put("/payment-terms/:id", async (req: Request, res: Response) => {
+  try {
+    const { name, type, endOfMonth, fixedDay, paymentMethod, installments } = req.body ?? {};
+    if (!name || !type || !paymentMethod || !Array.isArray(installments) || installments.length === 0) {
+      return res.status(400).json({ error: "name, type, paymentMethod, installments[] required" });
+    }
+    const term = await updatePaymentTerm(prisma, req.params.id, {
+      name, type, endOfMonth: !!endOfMonth, fixedDay: fixedDay ?? null, paymentMethod, installments,
+    });
+    res.json(term);
+  } catch (err) {
+    if ((err as any).code === "P2025") return res.status(404).json({ error: "PaymentTerm not found" });
     const message = err instanceof Error ? err.message : String(err);
     if (/sum to 100/.test(message)) return res.status(400).json({ error: message });
     res.status(500).json({ error: message });

@@ -51,4 +51,35 @@ describe("purchasing master-data routes", () => {
     const row = await db.prisma.warehouse.findUnique({ where: { id: post.body.id } });
     expect(row!.isActive).toBe(false);
   });
+
+  it("PUT /payment-terms/:id replaces installments and rejects a bad percentage sum with 400", async () => {
+    const post = await request(app).post("/api/purchasing/payment-terms").send({
+      name: "Term", type: "BONIFICO", endOfMonth: false, paymentMethod: "BONIFICO",
+      installments: [{ installmentNumber: 1, offsetDays: 30, percentage: 100 }],
+    });
+
+    const put = await request(app).put(`/api/purchasing/payment-terms/${post.body.id}`).send({
+      name: "Term Updated", type: "RIBA", endOfMonth: false, paymentMethod: "RIBA",
+      installments: [
+        { installmentNumber: 1, offsetDays: 30, percentage: 60 },
+        { installmentNumber: 2, offsetDays: 60, percentage: 40 },
+      ],
+    });
+    expect(put.status).toBe(200);
+    expect(put.body.installments).toHaveLength(2);
+
+    const bad = await request(app).put(`/api/purchasing/payment-terms/${post.body.id}`).send({
+      name: "Term Updated", type: "RIBA", endOfMonth: false, paymentMethod: "RIBA",
+      installments: [{ installmentNumber: 1, offsetDays: 30, percentage: 50 }],
+    });
+    expect(bad.status).toBe(400);
+  });
+
+  it("PUT /payment-terms/:id returns 404 for a non-existent id", async () => {
+    const res = await request(app).put("/api/purchasing/payment-terms/does-not-exist").send({
+      name: "X", type: "BONIFICO", endOfMonth: false, paymentMethod: "BONIFICO",
+      installments: [{ installmentNumber: 1, offsetDays: 30, percentage: 100 }],
+    });
+    expect(res.status).toBe(404);
+  });
 });

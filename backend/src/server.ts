@@ -19,6 +19,7 @@ import productsRouter from "./routes/products.routes";
 import { runInitialSync, startPolling, startSnapshotPolling } from "./jobs/sync.job";
 import amazonRouter from "./amazon/routes";
 import { startAmazonPolling, startAmazonSnapshotPolling, forEachActiveAccount } from "./amazon/sync.job";
+import { startMiraklPolling } from "./mirakl/syncOrders.job";
 import { bootstrapCalibration, bootstrapFromExcel, bootstrapComponentModel, runDailyCalibration } from "./amazon/forecast";
 import chatRouter from "./routes/chat.routes";
 import analyticsRouter from "./routes/analytics.routes";
@@ -29,7 +30,11 @@ import { amazonAccountMiddleware } from "./middleware/amazon-account.middleware"
 import { masterDataRouter } from "./purchasing/routes/master-data.routes";
 import { suppliersRouter } from "./purchasing/routes/suppliers.routes";
 import { purchaseOrdersRouter } from "./purchasing/routes/purchase-orders.routes";
+import { goodsReceiptsRouter } from "./purchasing/routes/goods-receipts.routes";
 import { dashboardRouter } from "./purchasing/routes/dashboard.routes";
+import { paymentDuesRouter } from "./purchasing/routes/payment-dues.routes";
+import { businessContactsRouter } from "./purchasing/routes/business-contacts.routes";
+import miraklRouter from "./routes/mirakl.routes";
 import { addSSEClient, sseClientCount } from "./sse/sse";
 
 const app = express();
@@ -46,7 +51,7 @@ if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
 // ─── Session store (PostgreSQL) ───────────────────────────────────────────────
 const PgSessionStore = connectPgSimple(session);
 
-const SESSION_MAX_AGE = parseInt(process.env.SESSION_MAX_AGE_HOURS ?? "8") * 60 * 60 * 1000;
+const SESSION_MAX_AGE = parseInt(process.env.SESSION_MAX_AGE_HOURS ?? "720") * 60 * 60 * 1000;
 
 const sessionMiddleware = session({
   name:   "dash_sid",
@@ -60,6 +65,11 @@ const sessionMiddleware = session({
   }),
   resave:            false,
   saveUninitialized: false,
+  // Rolling: every authenticated request resets the cookie's expiry, so the
+  // session only expires after SESSION_MAX_AGE_HOURS of inactivity, not a
+  // fixed window from login — matches the 30-day trust window already used
+  // for the MFA "trusted device" cookie (TRUSTED_DEVICE_DAYS, auth.routes.ts).
+  rolling: true,
   cookie: {
     httpOnly: true,
     secure:   process.env.NODE_ENV === "production",
@@ -153,8 +163,12 @@ app.use("/api/analytics",  requireAuth, amazonAccountMiddleware, analyticsRouter
 app.use("/api/auth/admin", requireAuth, adminRouter);
 app.use("/api/purchasing", requireAuth, masterDataRouter);
 app.use("/api/purchasing", requireAuth, suppliersRouter);
+app.use("/api/purchasing", requireAuth, businessContactsRouter);
 app.use("/api/purchasing", requireAuth, purchaseOrdersRouter);
+app.use("/api/purchasing", requireAuth, goodsReceiptsRouter);
 app.use("/api/purchasing", requireAuth, dashboardRouter);
+app.use("/api/purchasing", requireAuth, paymentDuesRouter);
+app.use("/api/mirakl",     requireAuth, miraklRouter);
 
 // ─── 404 / error handler ─────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: "Endpoint non trovato." }));
@@ -221,6 +235,13 @@ async function bootstrap() {
     console.log(`[Server] Calibration daily job scheduled (first run in ${Math.round(msUntil2am / 60000)} min)`);
   } else {
     console.log("[Server] Amazon module disabled (AMAZON_EU_REFRESH_TOKEN not set)");
+  }
+
+  // ── Mirakl module (Redcare / Shop-Apotheke) ──
+  if (process.env.MIRAKL_API_KEY) {
+    startMiraklPolling();
+  } else {
+    console.log("[Server] Mirakl module disabled (MIRAKL_API_KEY not set)");
   }
 }
 

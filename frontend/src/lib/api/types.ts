@@ -666,6 +666,11 @@ export interface ProductPerformanceRow {
   /** False when the backend has no AmazonInventory row for this identifier —
    *  `stock: 0` then means "unknown", not "zero units". Rendered as "—". */
   hasStockData: boolean;
+  /** False for non-Amazon channels (Shopify/Redcare/etc.): fee, COGS, gross/net
+   *  profit, margin and ROI are genuinely untracked there, not estimated —
+   *  rendered as "—" rather than a fabricated (fees=0) profit figure. Missing
+   *  (undefined) on rows the Amazon backend doesn't set it for, treated as true. */
+  costDataAvailable?: boolean;
   grossProfit: number;
   netProfit: number;
   estimatedPayout: number;
@@ -673,6 +678,10 @@ export interface ProductPerformanceRow {
   roi: number;
   avgSellingPrice: number;
   bsr: number | null;
+  /** Only set for Shopify/Redcare rows (ProductsPerformanceTable's
+   *  buildShopifyMarketplaceRows) — Amazon rows are imageless here and rely
+   *  on the separate ASIN-keyed catalogImages lookup instead. */
+  imageUrl?: string | null;
 }
 
 export interface ProductPerformanceGroup {

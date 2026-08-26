@@ -49,8 +49,14 @@ interface MetricRowProps {
  * two row variants differ only in their label cell and background, instead of
  * duplicating the whole metric block (and its estimate-badge logic) twice.
  */
+const NO_COST_DATA_TITLE = "Costi non tracciati per questo canale";
+
 export default function MetricRow({ label, metrics: m, isChild = false }: MetricRowProps) {
   const estimated = isEstimated(m);
+  // Distinct from "estimated": for non-Amazon channels there is no fee/COGS
+  // tracking at all yet, so showing a computed profit (fees/cogs=0) would be
+  // a fabricated 100%-margin figure, not a real estimate.
+  const hasCostData = m.costDataAvailable !== false;
   return (
     <tr className={isChild ? "bg-bg-hover/50" : "border-b border-bg-border/60"}>
       <MetricCell>{label}</MetricCell>
@@ -60,19 +66,40 @@ export default function MetricRow({ label, metrics: m, isChild = false }: Metric
       <MetricCell>{fmtEur(m.promo)}</MetricCell>
       <MetricCell>{dash(m.adsSpend, fmtEur)}</MetricCell>
       <MetricCell>{fmtPct(m.refundPct)}</MetricCell>
-      <MetricCell>
-        {fmtEur(m.amazonFees)}
-        {!m.hasRealFees && <EstimateBadge title="Stimato — settlement non ancora disponibile" />}
-      </MetricCell>
-      <MetricCell>
-        {fmtEur(m.cogs)}
-        {!m.hasRealCogs && <EstimateBadge title="Stimato — nessun COGS configurato per questo ASIN" />}
-      </MetricCell>
-      <ProfitCell value={m.grossProfit} fmt={fmtEur} estimated={estimated} />
-      <ProfitCell value={m.netProfit} fmt={fmtEur} estimated={estimated} />
-      <MetricCell>{fmtEur(m.estimatedPayout)}</MetricCell>
-      <ProfitCell value={m.margin} fmt={fmtPct} estimated={estimated} />
-      <ProfitCell value={m.roi} fmt={fmtPct} estimated={estimated} />
+      {hasCostData ? (
+        <>
+          <MetricCell>
+            {fmtEur(m.amazonFees)}
+            {!m.hasRealFees && <EstimateBadge title="Stimato — settlement non ancora disponibile" />}
+          </MetricCell>
+          <MetricCell>
+            {fmtEur(m.cogs)}
+            {!m.hasRealCogs && <EstimateBadge title="Stimato — nessun COGS configurato per questo ASIN" />}
+          </MetricCell>
+          <ProfitCell value={m.grossProfit} fmt={fmtEur} estimated={estimated} />
+          <ProfitCell value={m.netProfit} fmt={fmtEur} estimated={estimated} />
+        </>
+      ) : (
+        <>
+          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
+          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
+          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
+          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
+        </>
+      )}
+      {hasCostData ? (
+        <>
+          <MetricCell>{fmtEur(m.estimatedPayout)}</MetricCell>
+          <ProfitCell value={m.margin} fmt={fmtPct} estimated={estimated} />
+          <ProfitCell value={m.roi} fmt={fmtPct} estimated={estimated} />
+        </>
+      ) : (
+        <>
+          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
+          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
+          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
+        </>
+      )}
       <MetricCell>{dash(m.bsr, (n) => String(n))}</MetricCell>
       <MetricCell>{fmtEur(m.avgSellingPrice)}</MetricCell>
       <MetricCell>{dash(m.realAcos, fmtPct)}</MetricCell>

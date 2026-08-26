@@ -6,6 +6,8 @@ import { fetchOrderById, logError } from "../services/shopify.service";
 import { upsertOrder } from "../services/order.service";
 import { broadcast } from "../sse/sse";
 import { findOrderForBroadcast } from "../repositories/shopify/orders.repo";
+import { findByShopifyOrderId, markShipped } from "../repositories/mirakl/orders.repo";
+import { shipOrder } from "../mirakl/client";
 const WEBHOOK_SECRET = process.env.SHOPIFY_WEBHOOK_SECRET ?? "";
 
 // ─── HMAC verification ────────────────────────────────────────────────────────
@@ -21,7 +23,7 @@ function verifyHmac(rawBody: Buffer, hmacHeader: string): boolean {
 // ─── Main webhook handler ─────────────────────────────────────────────────────
 export async function handleWebhook(req: Request, res: Response): Promise<void> {
   const topic     = req.headers["x-shopify-topic"] as string;
-  const shopifyId = req.headers["x-shopify-order-id"] as string ?? "";
+  const headerOrderId = req.headers["x-shopify-order-id"] as string ?? "";
   const hmac      = req.headers["x-shopify-hmac-sha256"] as string ?? "";
   const rawBody: Buffer = (req as any).rawBody;
 
@@ -38,6 +40,14 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
   // ── Step 3: async processing — does NOT block the HTTP response ───────────
   // req.body is already parsed and held in memory, safe to read after respond.
   const payload = req.body;
+
+  // X-Shopify-Order-Id is reliable for orders/* topics but not guaranteed for
+  // fulfillments/create — fall back to the payload's own order_id for that
+  // topic so the idempotency key (and the WebhookEventLog row) never collapses
+  // to an empty shopifyId shared across unrelated orders.
+  const shopifyId = topic === "fulfillments/create"
+    ? String(payload.order_id ?? headerOrderId)
+    : headerOrderId;
 
   setImmediate(async () => {
     // Idempotency: skip if this event was already processed successfully
@@ -77,6 +87,44 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
               }
             } catch {
               // broadcast failure must never crash the webhook handler
+            }
+          }
+        }
+      } else if (topic === "fulfillments/create") {
+        // Order shipped on Shopify -> push tracking to Mirakl if this order
+        // was created from a Mirakl (Redcare) order and tracking wasn't
+        // already synced (idempotency across duplicate/retried webhooks).
+        const gid = `gid://shopify/Order/${shopifyId}`;
+        const miraklOrder = await findByShopifyOrderId(prisma, gid);
+        if (miraklOrder && !miraklOrder.trackingSyncedAt) {
+          if (miraklOrder.miraklState !== "ACCEPTED") {
+            // Caso realistico: l'ordine è stato accettato a mano nel back-office
+            // Mirakl (pressione SLA), quindi lo stato locale non arriva mai ad
+            // ACCEPTED e il tracking non viene mai spinto. Senza questo log il
+            // fallimento sarebbe completamente silenzioso.
+            await logError(
+              "webhook-fulfillment",
+              new Error(
+                `Tracking non inviato a Mirakl: stato locale "${miraklOrder.miraklState}" invece di ACCEPTED`
+              ),
+              { shopifyOrderId: gid, miraklOrderId: miraklOrder.miraklOrderId, miraklState: miraklOrder.miraklState }
+            );
+          } else {
+            const trackingNumber: string | null =
+              payload.tracking_number ?? payload.tracking_numbers?.[0] ?? null;
+            if (trackingNumber) {
+              await shipOrder(miraklOrder.miraklOrderId, {
+                carrierName: payload.tracking_company ?? "N/D",
+                trackingNumber,
+                carrierUrl: payload.tracking_url ?? payload.tracking_urls?.[0],
+              });
+              await markShipped(prisma, gid, trackingNumber);
+            } else {
+              await logError(
+                "webhook-fulfillment",
+                new Error("Tracking non inviato a Mirakl: fulfillment senza tracking number"),
+                { shopifyOrderId: gid, miraklOrderId: miraklOrder.miraklOrderId }
+              );
             }
           }
         }

@@ -156,6 +156,11 @@ From your **local machine** (in the project root):
   - In Shopify Admin → Settings → Notifications → Webhooks
   - Add webhook: `https://dashboard.example.com/webhooks/shopify`
   - Set `SHOPIFY_WEBHOOK_SECRET` in `.env` and restart backend
+- [ ] **Shopify `fulfillments/create` webhook** — **required** if `MIRAKL_API_KEY` is set (not optional):
+  - Register it as a **separate** webhook subscription, topic `fulfillments/create`,
+    same endpoint `https://dashboard.example.com/webhooks/shopify` (API version 2025-01)
+  - Without it the Shopify → Mirakl tracking sync never fires: shipments are never
+    pushed back to Mirakl (OR23/OR24), so the Redcare shipping SLA is silently missed
 
 ---
 

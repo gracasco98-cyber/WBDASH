@@ -6,8 +6,14 @@ export type SupplierWithRelations = Supplier & {
   products: (SupplierProduct & { priceHistory: SupplierProductPriceHistory[]; product: Product })[];
 };
 
-export async function findAllSuppliers(prisma: PrismaClient): Promise<Supplier[]> {
-  return prisma.supplier.findMany({ orderBy: { legalName: "asc" } });
+export async function findAllSuppliers(prisma: PrismaClient) {
+  return prisma.supplier.findMany({
+    orderBy: { legalName: "asc" },
+    include: {
+      defaultPaymentTerm: { select: { name: true } },
+      _count: { select: { products: true } },
+    },
+  });
 }
 
 export async function findSupplierById(prisma: PrismaClient, id: string): Promise<SupplierWithRelations | null> {

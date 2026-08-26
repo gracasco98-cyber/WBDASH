@@ -2,9 +2,10 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { setupTestDb, truncateAll, type TestDb } from "../../helpers/db";
 import {
   createPurchaseOrder, findAllPurchaseOrders, findPurchaseOrderById,
-  transitionPurchaseOrderStatus, InvalidTransitionError,
+  transitionPurchaseOrderStatus, deletePurchaseOrder, InvalidTransitionError,
   type CreatePurchaseOrderInput,
 } from "../../../src/repositories/purchasing/purchase-orders.repo";
+import { createGoodsReceipt } from "../../../src/repositories/purchasing/goods-receipts.repo";
 
 let db: TestDb;
 let supplierId: string;
@@ -91,5 +92,36 @@ describe("purchase-orders.repo", () => {
     const found = await findPurchaseOrderById(db.prisma, po.id);
     expect(found!.logisticStatus).toBe("DRAFT");
     expect(found!.statusHistory).toHaveLength(0);
+  });
+
+  it("deletePurchaseOrder removes a DRAFT order with no history", async () => {
+    const po = await createPurchaseOrder(db.prisma, baseOrder());
+    await deletePurchaseOrder(db.prisma, po.id);
+    expect(await findPurchaseOrderById(db.prisma, po.id)).toBeNull();
+  });
+
+  it("deletePurchaseOrder removes an order along with its goods receipts and lines", async () => {
+    const po = await createPurchaseOrder(db.prisma, baseOrder());
+    await transitionPurchaseOrderStatus(db.prisma, po.id, "SENT", userId);
+    await transitionPurchaseOrderStatus(db.prisma, po.id, "CONFIRMED", userId);
+    const full = await findPurchaseOrderById(db.prisma, po.id);
+    const lineId = full!.lines[0].id;
+
+    const gr = await createGoodsReceipt(db.prisma, {
+      purchaseOrderId: po.id, receiptDate: new Date("2026-08-14"),
+      supplierDdtNumber: "DDT-1001", supplierDdtDate: new Date("2026-08-13"),
+      receivedById: userId, lines: [{ purchaseOrderLineId: lineId, receivedQty: 40 }],
+    });
+
+    await deletePurchaseOrder(db.prisma, po.id);
+
+    expect(await findPurchaseOrderById(db.prisma, po.id)).toBeNull();
+    expect(await db.prisma.purchaseOrderLine.findUnique({ where: { id: lineId } })).toBeNull();
+    expect(await db.prisma.goodsReceipt.findUnique({ where: { id: gr.id } })).toBeNull();
+    expect(await db.prisma.purchaseOrderStatusHistory.findMany({ where: { purchaseOrderId: po.id } })).toHaveLength(0);
+  });
+
+  it("deletePurchaseOrder throws on an unknown id", async () => {
+    await expect(deletePurchaseOrder(db.prisma, "does-not-exist")).rejects.toThrow();
   });
 });

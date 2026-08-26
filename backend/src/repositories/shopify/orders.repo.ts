@@ -198,6 +198,40 @@ export async function updateOrderMarketplace(
   });
 }
 
+/**
+ * One-off backfill helper: corrects createdAt on an order and orderDate on
+ * all of its line items to the given real date. Used to fix Redcare/Mirakl
+ * orders imported before processedAt was wired into orderCreate() (2026-08-24),
+ * which all landed on their sync date instead of their real order date.
+ * Returns the previous createdAt for audit logging, or null if the order
+ * doesn't exist or already has the correct date (no-op, safe to re-run).
+ */
+export async function correctOrderDate(
+  prisma: PrismaClient,
+  shopifyOrderId: string,
+  realDate: Date
+): Promise<{ previousCreatedAt: Date } | null> {
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.shopifyOrder.findUnique({
+      where: { shopifyOrderId },
+      select: { id: true, createdAt: true },
+    });
+    if (!current) return null;
+    if (current.createdAt.getTime() === realDate.getTime()) return null;
+
+    await tx.shopifyOrder.update({
+      where: { shopifyOrderId },
+      data: { createdAt: realDate },
+    });
+    await tx.orderLineItem.updateMany({
+      where: { orderId: current.id },
+      data: { orderDate: realDate },
+    });
+
+    return { previousCreatedAt: current.createdAt };
+  });
+}
+
 // ─── Private helpers ──────────────────────────────────────────────────────────
 
 function buildWhere(params: FindOrdersParams): Prisma.ShopifyOrderWhereInput {

@@ -9,10 +9,11 @@ import SyncStatus from "@/components/dashboard/SyncStatus";
 import FilterBar, { isAmazonChannel, amazonChannelCode } from "@/components/dashboard/FilterBar";
 import GlobalPeriodSelector from "@/components/dashboard/GlobalPeriodSelector";
 import PeriodTiles from "@/components/products/PeriodTiles";
-import ProductsPerformanceTable, { GroupBy } from "@/components/products/ProductsPerformanceTable";
+import ProductsPerformanceTable, { GroupBy, RowEntry, buildShopifyMarketplaceRows } from "@/components/products/ProductsPerformanceTable";
 import OrderToastContainer, { LiveOrder } from "@/components/dashboard/OrderToast";
 import HourChannelModal from "@/components/dashboard/HourChannelModal";
 import ShopifyBIOverview from "@/components/dashboard/ShopifyBIOverview";
+import StuckOrdersBanner from "@/components/dashboard/StuckOrdersBanner";
 import OverviewViewTabs, { DashboardView } from "@/components/dashboard/OverviewViewTabs";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import ProductBIOverview, { SelectedProduct } from "@/components/dashboard/ProductBIOverview";
@@ -134,6 +135,7 @@ export default function DashboardPage() {
   // Declared after isAmazonMp/amazonMpCode since loadProductGroups depends on them.
   const [productsGroupBy, setProductsGroupBy] = useState<GroupBy>("marketplace");
   const [productGroups, setProductGroups] = useState<ProductPerformanceGroup[]>([]);
+  const [shopifyMarketplaceRows, setShopifyMarketplaceRows] = useState<RowEntry[]>([]);
 
   const { selectedAccountId } = useAmazonAccount();
   // Main dashboard default: aggregate every active Amazon account when the
@@ -179,6 +181,24 @@ export default function DashboardPage() {
     if (!isAmazonMp && marketplace !== "all") p.marketplace = marketplace;
     return p;
   }, [filter, marketplace, status, apiFrom, apiTo, isAmazonMp]);
+
+  // ── Shopify (non-Amazon) marketplace rows for the home "Prodotti" table ──
+  // Hidden when an Amazon-specific channel is selected (matches filterLabel's
+  // "solo canale Amazon" semantics) — otherwise reuses the same /api/products
+  // endpoint and marketplace scoping as the dedicated /products page.
+  const loadShopifyMarketplaceRows = useCallback(async () => {
+    if (isAmazonMp) { setShopifyMarketplaceRows([]); return; }
+    try {
+      const { products } = await api.products(params());
+      setShopifyMarketplaceRows(buildShopifyMarketplaceRows(products));
+    } catch (err) {
+      console.error("[DashboardPage] Failed to load Shopify product performance:", err);
+    }
+  }, [isAmazonMp, params]);
+
+  useEffect(() => {
+    loadShopifyMarketplaceRows();
+  }, [loadShopifyMarketplaceRows]);
 
   const load = useCallback(async () => {
     try {
@@ -234,6 +254,16 @@ export default function DashboardPage() {
   const isFirstLoadRef                = useRef(true);
   const loadRef                       = useRef(load);
   useEffect(() => { loadRef.current = load; }, [load]);
+
+  // Re-baseline the "new order" toast detector whenever the filter/scope
+  // changes: a different filter's top order is not a new sale, just a
+  // different view of existing orders — without this, switching marketplace/
+  // date-range/status re-triggers load() (see the [load] effect above) and
+  // detectNewOrders() below mistakes that different top-of-list order for a
+  // fresh one, toasting a "new order" that never happened.
+  useEffect(() => {
+    isFirstLoadRef.current = true;
+  }, [filter, marketplace, status, apiFrom, apiTo]);
 
   const pushToast = useCallback((order: LiveOrder) => {
     setLiveOrders(prev => [...prev.slice(-4), order]);
@@ -337,6 +367,7 @@ export default function DashboardPage() {
       onGroupByChange={setProductsGroupBy}
       onRenamed={loadProductGroups}
       onMoved={loadProductGroups}
+      shopifyMarketplaceRows={shopifyMarketplaceRows}
     />
   );
   const productsBlock = sections.products && <div className="mt-2">{productsTable}</div>;
@@ -376,6 +407,8 @@ export default function DashboardPage() {
         <div className="flex-1 min-w-0">
 
       <main className="max-w-[1600px] px-4 md:px-6 py-4 md:py-6 space-y-4 md:space-y-6 overflow-x-hidden">
+
+        <StuckOrdersBanner />
 
         {/* ── Filter Bar ─────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3 w-full">

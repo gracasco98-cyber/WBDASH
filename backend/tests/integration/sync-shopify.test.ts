@@ -185,6 +185,43 @@ describe('Shopify Sync — integration (PR 8)', () => {
     expect(count).toBe(5);
   });
 
+  // ── 1b. processedAt, when present, is the order's real date (not createdAt) ─
+  it('upsertOrder uses processedAt (not createdAt) for the order date when both are set and differ', async () => {
+    // LOCK-IN: orders created via the Mirakl/Redcare sync set processedAt to
+    // the real Mirakl order date, while createdAt is whatever moment Shopify's
+    // orderCreate happened to run — using createdAt would bucket all revenue
+    // on the sync day instead of the real sale day (bug confirmed in
+    // production 2026-08-24: 27 Redcare orders all landed on their sync date).
+    const order = makeRawOrder({
+      id: 'gid://shopify/Order/PD1',
+      name: '#PD1',
+      createdAt: '2026-08-24T07:41:00Z', // giorno del sync
+      processedAt: '2026-08-18T18:14:50Z', // vera data dell'ordine
+      lineItems: { edges: [makeLineItemEdge('li-pd1', { quantity: 1, unitPrice: '10.00', productId: '1', title: 'Prodotto' })] },
+    });
+
+    await upsertOrder(order);
+
+    const dbOrder = await db.prisma.shopifyOrder.findUnique({
+      where: { shopifyOrderId: order.id },
+      include: { lineItems: true },
+    });
+    expect(dbOrder!.createdAt.toISOString()).toBe('2026-08-18T18:14:50.000Z');
+    expect(dbOrder!.lineItems[0].orderDate.toISOString()).toBe('2026-08-18T18:14:50.000Z');
+  });
+
+  it('upsertOrder falls back to createdAt when processedAt is absent', async () => {
+    const order: ShopifyRawOrder = {
+      ...makeRawOrder({ id: 'gid://shopify/Order/PD2', name: '#PD2', createdAt: '2026-08-24T07:41:00Z' }),
+      processedAt: null, // makeRawOrder's `??` default can't express an explicit null override
+    };
+
+    await upsertOrder(order);
+
+    const row = await db.prisma.shopifyOrder.findUnique({ where: { shopifyOrderId: order.id } });
+    expect(row!.createdAt.toISOString()).toBe('2026-08-24T07:41:00.000Z');
+  });
+
   // ── 2. Dedup: same orders synced twice → no duplicates ─────────────────────
   it('dedup: syncing the same orders twice does not duplicate rows', async () => {
     // LOCK-IN: upsertOrder uses prisma.shopifyOrder.upsert({ where: { shopifyOrderId } })
@@ -481,11 +518,16 @@ describe('Shopify Sync — integration (PR 8)', () => {
     // LOCK-IN: processOrderBatch wraps each order in try/catch, increments `errors`
     // but continues. The ok count reflects only successful upserts.
     const goodOrder = makeRawOrder({ id: 'gid://shopify/Order/G1', name: '#G1' });
-    // This order has an invalid date string that will cause new Date() to yield NaN
-    // → prisma write fails (timestamp NaN is invalid)
+    // Invalid date strings on BOTH fields force new Date() to yield NaN →
+    // prisma write fails (timestamp NaN is invalid). processedAt must be
+    // invalidated too: upsertOrder() now prefers it over createdAt as the
+    // order's real economic date (Mirakl/Redcare orders set processedAt to
+    // the true order date, not the sync time), so an invalid createdAt alone
+    // would no longer be fatal.
     const badOrder: ShopifyRawOrder = {
       ...makeRawOrder({ id: 'gid://shopify/Order/BAD', name: '#BAD' }),
       createdAt: 'not-a-date', // forces Date constructor to produce Invalid Date
+      processedAt: 'not-a-date',
     };
 
     const result = await processOrderBatch([goodOrder, badOrder]);

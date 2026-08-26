@@ -13,6 +13,8 @@
     "seed:amazon-account": "ts-node src/seed-amazon-account.ts",
     "seed:products": "ts-node src/scripts/seed-products-from-sku.ts",
     "set-ads-credentials": "ts-node src/scripts/set-ads-credentials.ts",
+    "import:mirakl-historical": "ts-node src/scripts/import-mirakl-historical-orders.ts",
+    "backfill:redcare-order-dates": "ts-node src/scripts/backfill-redcare-order-dates.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

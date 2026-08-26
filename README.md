@@ -113,7 +113,7 @@ WBDASH/
 
 I webhook garantiscono aggiornamenti istantanei. Senza di essi il polling ogni 60s è comunque attivo.
 
-In locale con ngrok: `ngrok http 3001`, poi in Shopify Admin → Impostazioni → Notifiche → Webhook, aggiungi `orders/create`, `orders/updated`, `orders/cancelled` puntando a `https://TUO-DOMINIO/webhooks/shopify` (API version 2025-01). Copia il secret in `SHOPIFY_WEBHOOK_SECRET` nel `.env` del backend.
+In locale con ngrok: `ngrok http 3001`, poi in Shopify Admin → Impostazioni → Notifiche → Webhook, aggiungi `orders/create`, `orders/updated`, `orders/cancelled`, `fulfillments/create` puntando a `https://TUO-DOMINIO/webhooks/shopify` (API version 2025-01). Copia il secret in `SHOPIFY_WEBHOOK_SECRET` nel `.env` del backend.
 
 ---
 

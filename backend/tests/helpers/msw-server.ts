@@ -108,6 +108,122 @@ export const shopifyMocks = {
       /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
       async () => HttpResponse.error(),
     ),
+
+  /**
+   * productVariants(query: "sku:...") — usato da findVariantIdBySku.
+   * Discrimina sul testo della query GraphQL (non solo sull'URL, condiviso da
+   * tutte le operazioni Shopify) così può convivere con altri handler (es.
+   * orderCreate) registrati nello stesso test — vedi nota su orderCreate sotto.
+   */
+  variantBySku: (skuToVariantId: Record<string, string>) =>
+    http.post(
+      /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+      async ({ request }) => {
+        const body: any = await request.clone().json();
+        if (!body?.query?.includes("productVariants")) return; // non è mio: passa al prossimo handler
+        const query: string = body.variables?.query ?? "";
+        // La query reale è ora `(sku:X) OR (barcode:X)` — si estrae X con una
+        // regex invece di un replace secco, per restare compatibili col
+        // formato wrappato senza dover aggiornare ogni test esistente.
+        const sku = query.match(/sku:([^\s)]+)/)?.[1] ?? query.replace("sku:", "");
+        const variantId = skuToVariantId[sku];
+        return HttpResponse.json({
+          data: {
+            productVariants: {
+              edges: variantId ? [{ node: { id: variantId } }] : [],
+            },
+          },
+        });
+      },
+    ),
+
+  /**
+   * orderCreate mutation.
+   * Discrimina sul testo della query GraphQL: tutte le operazioni Shopify
+   * passano dallo stesso endpoint REST, quindi senza questo controllo un
+   * handler orderCreate registrato dopo un handler variantBySku (es. mirakl
+   * sync: cerca la variante, poi crea l'ordine) intercetterebbe per priorità
+   * anche la richiesta di lookup variante (MSW dà priorità all'handler
+   * registrato più di recente). Ritornando `undefined` quando la richiesta
+   * non è una orderCreate, MSW passa al prossimo handler compatibile.
+   */
+  orderCreate: (result: { id: string; name: string } | { userErrors: Array<{ field: string[]; message: string }> }) =>
+    http.post(
+      /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+      async ({ request }) => {
+        const body: any = await request.clone().json();
+        if (!body?.query?.includes("orderCreate")) return; // non è mio: passa al prossimo handler
+        return HttpResponse.json({
+          data: {
+            orderCreate:
+              "id" in result
+                ? { order: result, userErrors: [] }
+                : { order: null, userErrors: result.userErrors },
+          },
+        });
+      },
+    ),
+
+  /**
+   * orders(query: "tag:'mirakl:...'") — usato da findOrderByMiraklTag.
+   * Discrimina sul nome dell'operazione GraphQL (FindOrderByTag) per
+   * convivere con altri handler orders/GetOrders registrati nello stesso test.
+   */
+  orderByTag: (result: { id: string; name: string } | null) =>
+    http.post(
+      /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+      async ({ request }) => {
+        const body: any = await request.clone().json();
+        if (!body?.query?.includes("FindOrderByTag")) return;
+        return HttpResponse.json({
+          data: { orders: { edges: result ? [{ node: result }] : [] } },
+        });
+      },
+    ),
+
+  /**
+   * GetFulfillmentOrders + CreateFulfillment — usato da createFulfillment().
+   * Discrimina sul testo della query (stesso motivo di orderCreate/orderByTag
+   * sopra: un solo endpoint REST condiviso da tutte le operazioni Shopify).
+   */
+  fulfillment: (opts: {
+    fulfillmentOrderId?: string | null;
+    result?: { id: string; status: string } | { userErrors: Array<{ field: string[]; message: string }> };
+  }) =>
+    http.post(
+      /myshopify\.com\/admin\/api\/.*\/graphql\.json/,
+      async ({ request }) => {
+        const body: any = await request.clone().json();
+
+        if (body?.query?.includes("GetFulfillmentOrders")) {
+          return HttpResponse.json({
+            data: {
+              order: opts.fulfillmentOrderId === null
+                ? null
+                : {
+                    fulfillmentOrders: {
+                      edges: [{ node: { id: opts.fulfillmentOrderId ?? "gid://shopify/FulfillmentOrder/1" } }],
+                    },
+                  },
+            },
+          });
+        }
+
+        if (body?.query?.includes("CreateFulfillment")) {
+          const result = opts.result ?? { id: "gid://shopify/Fulfillment/1", status: "SUCCESS" };
+          return HttpResponse.json({
+            data: {
+              fulfillmentCreateV2:
+                "id" in result
+                  ? { fulfillment: result, userErrors: [] }
+                  : { fulfillment: null, userErrors: result.userErrors },
+            },
+          });
+        }
+
+        return undefined; // non è mio
+      },
+    ),
 };
 
 // ─── Amazon mock factories ────────────────────────────────────────────────────
@@ -356,6 +472,55 @@ export const amazonMocks = {
     http.all(
       /advertising-api-eu\.amazon\.com/,
       async () => new HttpResponse('Unauthorized', { status: 401 }),
+    ),
+};
+
+// ─── Mirakl mock factories ────────────────────────────────────────────────────
+export const miraklMocks = {
+  /** OR11 — GET /orders?order_state_codes=WAITING_ACCEPTANCE,RECEIVED */
+  newOrders: (orders: Array<Record<string, any>>) =>
+    http.get(
+      /mirakl\.net\/api\/orders/,
+      async () => HttpResponse.json({ orders, total_count: orders.length }),
+    ),
+
+  /** OR21 — PUT /orders/:id/accept (default: 200 + empty JSON, supports 204) */
+  acceptOrder: (statusCode: number = 200) =>
+    http.put(
+      /mirakl\.net\/api\/orders\/[^/]+\/accept/,
+      async () => statusCode === 204
+        ? new HttpResponse(null, { status: 204 })
+        : HttpResponse.json({}),
+    ),
+
+  /** OR23 — PUT /orders/:id/tracking (default: 200 + empty JSON, supports 204) */
+  shipOrder: (statusCode: number = 200) =>
+    http.put(
+      /mirakl\.net\/api\/orders\/[^/]+\/tracking/,
+      async () => statusCode === 204
+        ? new HttpResponse(null, { status: 204 })
+        : HttpResponse.json({}),
+    ),
+
+  /**
+   * OR24 — PUT /orders/:id/ship (default: 200 + empty JSON, supports 204).
+   * shipOrder() nel client chiama SEMPRE questo endpoint dopo OR23: ogni test
+   * che registra un handler tracking deve registrare anche questo, altrimenti
+   * la seconda PUT finisce in onUnhandledRequest:'error'.
+   */
+  shipConfirm: (statusCode: number = 200) =>
+    http.put(
+      /mirakl\.net\/api\/orders\/[^/]+\/ship/,
+      async () => statusCode === 204
+        ? new HttpResponse(null, { status: 204 })
+        : HttpResponse.json({}),
+    ),
+
+  /** Generic non-2xx error for any Mirakl endpoint */
+  httpError: (status: number, body = "Mirakl API Error") =>
+    http.all(
+      /mirakl\.net\/api\//,
+      async () => new HttpResponse(body, { status }),
     ),
 };
 

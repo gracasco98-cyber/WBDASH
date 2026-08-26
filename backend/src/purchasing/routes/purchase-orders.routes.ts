@@ -4,7 +4,7 @@ import type { PurchaseOrderLogisticStatus } from "@prisma/client";
 import { prisma } from "../../db";
 import {
   createPurchaseOrder, findAllPurchaseOrders, findPurchaseOrderById,
-  transitionPurchaseOrderStatus, InvalidTransitionError,
+  transitionPurchaseOrderStatus, deletePurchaseOrder, InvalidTransitionError,
 } from "../../repositories/purchasing/purchase-orders.repo";
 import { listActiveProductsForPicker } from "../../repositories/purchasing/products.repo";
 
@@ -96,6 +96,18 @@ purchaseOrdersRouter.post("/purchase-orders/:id/transition", async (req: Request
     res.json(po);
   } catch (err) {
     if (err instanceof InvalidTransitionError) return res.status(409).json({ error: err.message });
+    if (notFound(err)) return res.status(404).json({ error: "Purchase order not found" });
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Permanent deletion, any status — see deletePurchaseOrder()'s doc comment
+// for why this is a deliberate exception to the usual cancel-don't-delete rule.
+purchaseOrdersRouter.delete("/purchase-orders/:id", async (req: Request, res: Response) => {
+  try {
+    await deletePurchaseOrder(prisma, req.params.id);
+    res.status(204).send();
+  } catch (err) {
     if (notFound(err)) return res.status(404).json({ error: "Purchase order not found" });
     res.status(500).json({ error: String(err) });
   }

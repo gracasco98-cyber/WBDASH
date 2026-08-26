@@ -249,3 +249,209 @@ export async function logError(
     });
   } catch (_) {}
 }
+
+// ─── Find variant by SKU (used by Mirakl order sync) ──────────────────────────
+const VARIANT_BY_SKU_QUERY = `
+  query FindVariantBySku($query: String!) {
+    productVariants(first: 1, query: $query) {
+      edges { node { id } }
+    }
+  }
+`;
+
+// Alcuni canali Mirakl (es. Redcare per la categoria parafarmacia) inviano
+// come offer_sku l'EAN del prodotto, non lo SKU interno usato su Shopify —
+// non è un errore di dato, sono due sistemi con convenzioni diverse per lo
+// stesso codice. Si cerca quindi anche per barcode, non solo per sku.
+export async function findVariantIdBySku(sku: string): Promise<string | null> {
+  const data = await gqlRequest<{
+    productVariants: { edges: Array<{ node: { id: string } }> };
+  }>(VARIANT_BY_SKU_QUERY, { query: `(sku:${sku}) OR (barcode:${sku})` });
+  return data.productVariants.edges[0]?.node.id ?? null;
+}
+
+// ─── Create order (used by Mirakl sync — orders arrive already paid) ─────────
+const ORDER_CREATE_MUTATION = `
+  mutation CreateOrder($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+    orderCreate(order: $order, options: $options) {
+      order { id name }
+      userErrors { field message }
+    }
+  }
+`;
+
+export interface CreateOrderInput {
+  email: string | null;
+  tags: string[];
+  note: string;
+  currency: string;
+  totalAmount: number;    // totale ordine, spedizione inclusa (= importo transazione)
+  shippingAmount: number; // quota spedizione, inviata come shippingLines
+  // Data reale dell'ordine (es. created_date su Mirakl), non il momento in
+  // cui questo job crea l'ordine su Shopify — senza questo, `processedAt`
+  // di Shopify (e di conseguenza il fatturato per data in WBDASH) finisce
+  // sempre sul giorno del sync, non sul vero giorno di vendita. Opzionale:
+  // se assente Shopify usa "adesso" come per un ordine normale.
+  processedAt?: Date;
+  shippingAddress: {
+    firstName: string;
+    lastName: string;
+    address1: string;
+    address2: string | null;
+    zip: string;
+    city: string;
+    country: string;
+    phone: string | null;
+  };
+  lineItems: Array<{ variantId: string; quantity: number; unitPrice: number }>;
+}
+
+export async function createOrder(
+  input: CreateOrderInput
+): Promise<{ id: string; name: string }> {
+  const data = await gqlRequest<{
+    orderCreate: {
+      order: { id: string; name: string } | null;
+      userErrors: Array<{ field: string[]; message: string }>;
+    };
+  }>(ORDER_CREATE_MUTATION, {
+    order: {
+      email: input.email,
+      tags: input.tags,
+      note: input.note,
+      currency: input.currency,
+      processedAt: input.processedAt?.toISOString(),
+      lineItems: input.lineItems.map((li) => ({
+        variantId: li.variantId,
+        quantity: li.quantity,
+        // OrderCreateLineItemInput.requiresShipping default a false nello schema
+        // 2025-01: senza questo flag le righe risulterebbero non spedibili e il
+        // flusso fulfillment/tracking verso Mirakl non partirebbe mai.
+        requiresShipping: true,
+        priceSet: {
+          shopMoney: { amount: li.unitPrice.toFixed(2), currencyCode: input.currency },
+        },
+      })),
+      shippingAddress: input.shippingAddress,
+      // Senza questa riga il totale calcolato da Shopify (somma delle righe)
+      // non riconcilierebbe con l'importo della transazione, che include la
+      // spedizione.
+      shippingLines: input.shippingAmount > 0 ? [{
+        title: "Spedizione",
+        priceSet: {
+          shopMoney: { amount: input.shippingAmount.toFixed(2), currencyCode: input.currency },
+        },
+      }] : undefined,
+      transactions: [
+        {
+          kind: "SALE",
+          status: "SUCCESS",
+          gateway: "Mirakl",
+          amountSet: {
+            shopMoney: { amount: input.totalAmount.toFixed(2), currencyCode: input.currency },
+          },
+        },
+      ],
+    },
+    options: {
+      inventoryBehaviour: "DECREMENT_OBEYING_POLICY",
+    },
+  });
+
+  if (data.orderCreate.userErrors.length > 0) {
+    throw new Error(`Shopify orderCreate errors: ${JSON.stringify(data.orderCreate.userErrors)}`);
+  }
+  if (!data.orderCreate.order) {
+    throw new Error("Shopify orderCreate returned no order and no userErrors");
+  }
+
+  return data.orderCreate.order;
+}
+
+// ─── Find an order previously created by Mirakl sync, by its recovery tag ────
+const ORDER_BY_TAG_QUERY = `
+  query FindOrderByTag($query: String!) {
+    orders(first: 1, query: $query) {
+      edges { node { id name } }
+    }
+  }
+`;
+
+export async function findOrderByMiraklTag(
+  miraklOrderId: string
+): Promise<{ id: string; name: string } | null> {
+  const data = await gqlRequest<{
+    orders: { edges: Array<{ node: { id: string; name: string } }> };
+  }>(ORDER_BY_TAG_QUERY, { query: `tag:'mirakl:${miraklOrderId}'` });
+  return data.orders.edges[0]?.node ?? null;
+}
+
+// ─── Create a fulfillment for an order (used by the historical import script —
+// Mirakl orders that were already shipped before this integration existed) ───
+const FULFILLMENT_ORDERS_QUERY = `
+  query GetFulfillmentOrders($id: ID!) {
+    order(id: $id) {
+      fulfillmentOrders(first: 5) {
+        edges { node { id } }
+      }
+    }
+  }
+`;
+
+const FULFILLMENT_CREATE_MUTATION = `
+  mutation CreateFulfillment($fulfillment: FulfillmentV2Input!) {
+    fulfillmentCreateV2(fulfillment: $fulfillment) {
+      fulfillment { id status }
+      userErrors { field message }
+    }
+  }
+`;
+
+export interface CreateFulfillmentInput {
+  orderId: string; // Shopify order gid
+  trackingNumber: string;
+  trackingUrl?: string;
+  trackingCompany: string;
+}
+
+export async function createFulfillment(
+  input: CreateFulfillmentInput
+): Promise<{ id: string; status: string }> {
+  const orderData = await gqlRequest<{
+    order: { fulfillmentOrders: { edges: Array<{ node: { id: string } }> } } | null;
+  }>(FULFILLMENT_ORDERS_QUERY, { id: input.orderId });
+
+  const fulfillmentOrderId = orderData.order?.fulfillmentOrders.edges[0]?.node.id;
+  if (!fulfillmentOrderId) {
+    throw new Error(`Nessun FulfillmentOrder trovato per l'ordine Shopify ${input.orderId}`);
+  }
+
+  const data = await gqlRequest<{
+    fulfillmentCreateV2: {
+      fulfillment: { id: string; status: string } | null;
+      userErrors: Array<{ field: string[]; message: string }>;
+    };
+  }>(FULFILLMENT_CREATE_MUTATION, {
+    fulfillment: {
+      lineItemsByFulfillmentOrder: [{ fulfillmentOrderId }],
+      trackingInfo: {
+        number: input.trackingNumber,
+        url: input.trackingUrl,
+        company: input.trackingCompany,
+      },
+      // Import storico: l'ordine è già stato spedito (e ricevuto) nella realtà
+      // giorni/settimane fa — non deve partire un'email "il tuo ordine è stato
+      // spedito" per un evento passato.
+      notifyCustomer: false,
+    },
+  });
+
+  if (data.fulfillmentCreateV2.userErrors.length > 0) {
+    throw new Error(`Shopify fulfillmentCreateV2 errors: ${JSON.stringify(data.fulfillmentCreateV2.userErrors)}`);
+  }
+  if (!data.fulfillmentCreateV2.fulfillment) {
+    throw new Error("Shopify fulfillmentCreateV2 returned no fulfillment and no userErrors");
+  }
+
+  return data.fulfillmentCreateV2.fulfillment;
+}
