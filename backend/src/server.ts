@@ -33,6 +33,7 @@ import { purchaseOrdersRouter } from "./purchasing/routes/purchase-orders.routes
 import { goodsReceiptsRouter } from "./purchasing/routes/goods-receipts.routes";
 import { dashboardRouter } from "./purchasing/routes/dashboard.routes";
 import { paymentDuesRouter } from "./purchasing/routes/payment-dues.routes";
+import { businessContactsRouter } from "./purchasing/routes/business-contacts.routes";
 import miraklRouter from "./routes/mirakl.routes";
 import { addSSEClient, sseClientCount } from "./sse/sse";
 
@@ -162,6 +163,7 @@ app.use("/api/analytics",  requireAuth, amazonAccountMiddleware, analyticsRouter
 app.use("/api/auth/admin", requireAuth, adminRouter);
 app.use("/api/purchasing", requireAuth, masterDataRouter);
 app.use("/api/purchasing", requireAuth, suppliersRouter);
+app.use("/api/purchasing", requireAuth, businessContactsRouter);
 app.use("/api/purchasing", requireAuth, purchaseOrdersRouter);
 app.use("/api/purchasing", requireAuth, goodsReceiptsRouter);
 app.use("/api/purchasing", requireAuth, dashboardRouter);
