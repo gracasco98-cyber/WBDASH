@@ -11,48 +11,17 @@ import {
 } from "../services/product.service";
 import { groupLineItemsByProduct, findLineItemSample } from "../repositories/shopify/line-items.repo";
 import { findSnapshotsByProductId } from "../repositories/shopify/product-snapshots.repo";
+// getDateRange qui era una copia locale che calcolava i confini "Oggi/Ieri"
+// nel fuso del server (UTC in produzione), non in quello italiano — un
+// ordine piazzato all'1 di notte in Italia (23:00 UTC del giorno prima)
+// finiva sotto "Ieri" invece che "Oggi" (confermato dall'utente in
+// produzione il 2026-08-26). Si riusa l'helper condiviso già corretto per
+// fuso Italia, usato altrove nel progetto (purchasing/dashboard.repo.ts,
+// amazon/routes/orders.routes.ts) — per la regola in CLAUDE.md di non avere
+// due implementazioni divergenti degli stessi confini data.
+import { getDateRange } from "../amazon/utils/datetime";
 
 const router = Router();
-
-// ─── Helper: date range ────────────────────────────────────────────────────────
-function getDateRange(filter: string, from?: string, to?: string) {
-  const now = new Date();
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date(now);
-  todayEnd.setHours(23, 59, 59, 999);
-
-  switch (filter) {
-    case "today":
-      return { gte: todayStart, lte: todayEnd };
-    case "yesterday": {
-      const yStart = new Date(todayStart);
-      yStart.setDate(yStart.getDate() - 1);
-      const yEnd = new Date(yStart);
-      yEnd.setHours(23, 59, 59, 999);
-      return { gte: yStart, lte: yEnd };
-    }
-    case "last7":
-      return { gte: new Date(Date.now() - 7 * 86400000), lte: todayEnd };
-    case "last14":
-      return { gte: new Date(Date.now() - 14 * 86400000), lte: todayEnd };
-    case "last30":
-      return { gte: new Date(Date.now() - 30 * 86400000), lte: todayEnd };
-    case "last90":
-      return { gte: new Date(Date.now() - 90 * 86400000), lte: todayEnd };
-    case "month": {
-      const mStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      return { gte: mStart, lte: todayEnd };
-    }
-    case "custom":
-      return {
-        gte: from ? new Date(from) : undefined,
-        lte: to ? new Date(to) : undefined,
-      };
-    default:
-      return { gte: new Date(Date.now() - 30 * 86400000), lte: todayEnd };
-  }
-}
 
 // ─── GET /api/products ─────────────────────────────────────────────────────────
 router.get("/", async (req: Request, res: Response) => {
