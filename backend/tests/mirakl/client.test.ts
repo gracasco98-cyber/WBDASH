@@ -32,6 +32,7 @@ function miraklRawOrder(orderId: string) {
 describe("Mirakl client", () => {
   let fetchNewOrders: typeof import("../../src/mirakl/client").fetchNewOrders;
   let fetchShippedOrders: typeof import("../../src/mirakl/client").fetchShippedOrders;
+  let fetchOrderSummariesSince: typeof import("../../src/mirakl/client").fetchOrderSummariesSince;
   let acceptOrder: typeof import("../../src/mirakl/client").acceptOrder;
   let shipOrder: typeof import("../../src/mirakl/client").shipOrder;
 
@@ -42,6 +43,7 @@ describe("Mirakl client", () => {
     const client = await import("../../src/mirakl/client");
     fetchNewOrders = client.fetchNewOrders;
     fetchShippedOrders = client.fetchShippedOrders;
+    fetchOrderSummariesSince = client.fetchOrderSummariesSince;
     acceptOrder = client.acceptOrder;
     shipOrder = client.shipOrder;
 
@@ -117,7 +119,7 @@ describe("Mirakl client", () => {
 
     await fetchNewOrders();
 
-    expect(requestedUrl).toContain("order_state_codes=WAITING_ACCEPTANCE,RECEIVED,SHIPPING,SHIPPED");
+    expect(requestedUrl).toContain("order_state_codes=WAITING_ACCEPTANCE,RECEIVED,SHIPPING,SHIPPED,TO_COLLECT");
   });
 
   it("fetchNewOrders scorre tutte le pagine quando total_count supera la dimensione di una pagina", async () => {
@@ -198,6 +200,36 @@ describe("Mirakl client", () => {
       shippingTrackingUrl: "https://www.poste.it/cerca/index.html#/risultati-spedizioni/1UW1TJV560728",
       shippingCompany: "Poste Italiane",
     });
+  });
+
+  it("fetchOrderSummariesSince queries by start_date (no state filter) and survives a malformed order that would crash mapOrder()", async () => {
+    let requestedUrl: string | null = null;
+    server.use(
+      http.get(/mirakl\.net\/api\/orders/, async ({ request }) => {
+        requestedUrl = request.url;
+        return HttpResponse.json({
+          orders: [
+            miraklRawOrder("MK-OK"),
+            // Uno stato mai mappato prima E un indirizzo nullo: se questa
+            // funzione passasse per mapOrder() come fetchNewOrders(), questo
+            // ordine farebbe fallire l'intera chiamata (vedi
+            // mapOrdersSkippingMalformed) — qui deve solo comparire nel
+            // risultato con orderState così com'è, senza mai leggere
+            // l'indirizzo.
+            { ...miraklRawOrder("MK-WEIRD-STATE"), order_state: "SOME_FUTURE_STATE", customer: { shipping_address: null } },
+          ],
+          total_count: 2,
+        });
+      }),
+    );
+
+    const summaries = await fetchOrderSummariesSince(3);
+
+    expect(requestedUrl).toContain("start_date=");
+    expect(summaries).toEqual([
+      { orderId: "MK-OK", orderState: "RECEIVED", createdDate: "2026-08-01T10:00:00Z" },
+      { orderId: "MK-WEIRD-STATE", orderState: "SOME_FUTURE_STATE", createdDate: "2026-08-01T10:00:00Z" },
+    ]);
   });
 
   it("acceptOrder sends a PUT with accepted:true for each line id", async () => {
