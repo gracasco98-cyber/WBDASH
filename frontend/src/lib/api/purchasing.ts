@@ -38,6 +38,19 @@ export interface UpdateBankAccountInput {
   bankName: string; alias: string; accountHolder: string; bic?: string; accountingCode?: string; notes?: string;
 }
 
+export interface BusinessContact {
+  id: string; type: string; name: string; referent: string | null; email: string | null;
+  phone: string | null; address: string | null; notes: string | null; isActive: boolean;
+}
+
+export interface CreateBusinessContactInput {
+  type: string; name: string; referent?: string; email?: string; phone?: string; address?: string; notes?: string;
+}
+
+export interface UpdateBusinessContactInput {
+  name: string; referent?: string; email?: string; phone?: string; address?: string; notes?: string;
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(apiUrl(path), {
     method: "POST", credentials: "include",
@@ -79,5 +92,11 @@ export const purchasing = {
     create: (data: CreateBankAccountInput) => post<BankAccount>("/api/purchasing/bank-accounts", data),
     update: (id: string, data: UpdateBankAccountInput) => put<BankAccount>(`/api/purchasing/bank-accounts/${id}`, data),
     deactivate: (id: string) => del(`/api/purchasing/bank-accounts/${id}`),
+  },
+  businessContacts: {
+    list: () => get<BusinessContact[]>("/api/purchasing/business-contacts"),
+    create: (data: CreateBusinessContactInput) => post<BusinessContact>("/api/purchasing/business-contacts", data),
+    update: (id: string, data: UpdateBusinessContactInput) => put<BusinessContact>(`/api/purchasing/business-contacts/${id}`, data),
+    deactivate: (id: string) => del(`/api/purchasing/business-contacts/${id}`),
   },
 };
