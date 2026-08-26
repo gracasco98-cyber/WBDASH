@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
-import { Truck, ShoppingCart, Boxes, Landmark, CalendarClock } from "lucide-react";
+import { Users, ShoppingCart, Boxes, Landmark, CalendarClock } from "lucide-react";
 
 const AREAS = [
-  { href: "/acquisti/fornitori", label: "Fornitori", icon: Truck },
+  { href: "/acquisti/anagrafiche", label: "Anagrafiche", icon: Users },
   { href: "/acquisti/ordini", label: "Ordini Fornitore", icon: ShoppingCart },
   { href: "/acquisti/magazzini", label: "Magazzini", icon: Boxes },
   { href: "/acquisti/banche", label: "Banche", icon: Landmark },

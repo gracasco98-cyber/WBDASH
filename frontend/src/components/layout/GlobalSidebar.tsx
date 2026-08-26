@@ -29,7 +29,7 @@ const GROUPS: Group[] = [
     key: "amministrazione", label: "AMMINISTRAZIONE", icon: ShoppingBag,
     items: [
       { href: "/acquisti", label: "Panoramica" },
-      { href: "/acquisti/fornitori", label: "Fornitori" },
+      { href: "/acquisti/anagrafiche", label: "Anagrafiche" },
       { href: "/acquisti/ordini", label: "Ordini Fornitore" },
       { href: "/acquisti/ordini", label: "Ricezioni / DDT" },
       { label: "Fatture Fornitore", comingSoon: true },
