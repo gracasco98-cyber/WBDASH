@@ -3,8 +3,21 @@
 // syncAdvertisedProductDaily), read by the products/performance route.
 // Never call the Amazon Ads API from here — this file only touches Prisma.
 import type { PrismaClient } from "@prisma/client";
+import { italyDateString } from "../../amazon/utils/datetime";
 import { getCurrentAccountId } from "../../context/account-context";
 import { toNum } from "../../utils/decimal";
+
+/**
+ * Convert an instant delimiting an Italy-local reporting period to the UTC
+ * midnight Date Prisma expects for a PostgreSQL DATE column.
+ *
+ * `snapshotDate` has no time zone. Passing Italy midnight as an instant (for
+ * example 2026-08-26T22:00Z for 27 August CEST) makes Prisma truncate it to
+ * 26 August and includes the previous day's spend in the query.
+ */
+export function toItalyDateColumnValue(date: Date): Date {
+  return new Date(`${italyDateString(date)}T00:00:00.000Z`);
+}
 
 export async function upsertAdvertisedProductSnapshot(
   prisma: PrismaClient,
@@ -72,12 +85,14 @@ export async function findAdSpendForAsins(
   params: { asins: string[]; marketplace?: string; dateFrom: Date; dateTo: Date }
 ): Promise<Array<{ asin: string; marketplace: string; spend: number }>> {
   if (params.asins.length === 0) return [];
+  const snapshotDateFrom = toItalyDateColumnValue(params.dateFrom);
+  const snapshotDateTo = toItalyDateColumnValue(params.dateTo);
   const rows = await prisma.amazonAdvertisedProductSnapshot.groupBy({
     by: ["asin", "marketplace"],
     where: {
       amazonAccountId: getCurrentAccountId(),
       asin: { in: params.asins },
-      snapshotDate: { gte: params.dateFrom, lte: params.dateTo },
+      snapshotDate: { gte: snapshotDateFrom, lte: snapshotDateTo },
       ...(params.marketplace && params.marketplace !== "all" ? { marketplace: params.marketplace } : {}),
     },
     _sum: { spend: true },

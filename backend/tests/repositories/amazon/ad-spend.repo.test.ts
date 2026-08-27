@@ -50,6 +50,31 @@ describe("ad-spend.repo", () => {
     });
   });
 
+  it("does not include yesterday when an Italy-local single-day range starts on the previous UTC date", async () => {
+    await runWithAccount(accountId, async () => {
+      await upsertAdvertisedProductSnapshot(db.prisma, {
+        snapshotDate: new Date("2026-08-26T00:00:00.000Z"), marketplace: "IT", asin: "B0ABC123", campaignId: "C1",
+        spend: 91.78, sales: 100, impressions: 500, clicks: 20, orders: 3,
+      });
+      await upsertAdvertisedProductSnapshot(db.prisma, {
+        snapshotDate: new Date("2026-08-27T00:00:00.000Z"), marketplace: "IT", asin: "B0ABC123", campaignId: "C1",
+        spend: 49.96, sales: 50, impressions: 200, clicks: 8, orders: 1,
+      });
+
+      // 27 August in Italy (CEST) is 26 Aug 22:00Z through 27 Aug 21:59Z.
+      // AmazonAdvertisedProductSnapshot.snapshotDate is a SQL DATE, so passing
+      // these instants directly makes Prisma truncate the lower bound to
+      // 2026-08-26 and incorrectly returns 91.78 + 49.96 = 141.74.
+      const rows = await findAdSpendForAsins(db.prisma, {
+        asins: ["B0ABC123"],
+        dateFrom: new Date("2026-08-26T22:00:00.000Z"),
+        dateTo: new Date("2026-08-27T21:59:59.999Z"),
+      });
+
+      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "IT", spend: 49.96 }]);
+    });
+  });
+
   it("filters by marketplace when provided", async () => {
     await runWithAccount(accountId, async () => {
       await upsertAdvertisedProductSnapshot(db.prisma, {
