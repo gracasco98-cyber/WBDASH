@@ -23,7 +23,12 @@ export async function syncAdsIntraday(now = new Date()): Promise<void> {
   console.log(`[Ads Sync] Intraday sync for ${date} — ${profiles.length} marketplaces`);
 
   for (const profile of profiles) {
-    await syncMarketplaceDateRange(profile.profileId, profile.marketplace, date, date);
+    try {
+      await syncMarketplaceDateRange(profile.profileId, profile.marketplace, date, date);
+    } catch (err) {
+      console.error(`[Ads Sync] ${profile.marketplace} campaign intraday failed:`, err);
+      continue;
+    }
 
     try {
       const rows = await fetchSPAdvertisedProductReport(profile.profileId, date, date);

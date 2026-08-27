@@ -64,4 +64,17 @@ describe("syncAdsIntraday", () => {
     expect(campaignSyncMock).not.toHaveBeenCalledWith("p-de", expect.anything(), expect.anything(), expect.anything());
     expect(productReportMock).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps syncing remaining marketplaces when one profile's campaign sync fails", async () => {
+    campaignSyncMock.mockRejectedValueOnce(new Error("Amazon report timed out"));
+
+    await syncAdsIntraday(new Date("2026-08-27T10:00:00Z"));
+
+    expect(campaignSyncMock).toHaveBeenCalledTimes(2);
+    expect(campaignSyncMock).toHaveBeenCalledWith("p-it", "IT", "2026-08-27", "2026-08-27");
+    expect(campaignSyncMock).toHaveBeenCalledWith("p-de", "DE", "2026-08-27", "2026-08-27");
+    // The failed profile's per-ASIN report is skipped, but DE's still runs.
+    expect(productReportMock).toHaveBeenCalledTimes(1);
+    expect(productReportMock).toHaveBeenCalledWith("p-de", "2026-08-27", "2026-08-27");
+  });
 });
