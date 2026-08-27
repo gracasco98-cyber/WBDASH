@@ -7,6 +7,7 @@ import { parseTsv, ingestOrderRows, IngestStats } from "./ingest.service";
 import { runAmazonSnapshotJob, computeAllAmazonHistoricalSnapshots } from "./snapshot.service";
 import { syncSettlementReports } from "./settlement.service";
 import { syncAdsDaily, syncAdsBackfill, refreshLiveCampaignCache, syncKeywordMetrics, syncAdsCatchUp, syncAdvertisedProductDaily } from "./ads-sync.service";
+import { syncAdsIntraday } from "./ads-intraday.service";
 import { reconcileForecastSnapshots, computeAndSaveForecasts } from "./forecast";
 import { broadcast } from "../sse/sse";
 import { createSyncJob, finishSyncJob } from "../repositories/amazon/sync-jobs.repo";
@@ -19,6 +20,26 @@ import { findActiveAccounts } from "../repositories/amazon/accounts.repo";
 import { hasNACredentials } from "./token.service";
 
 export { syncAdsBackfill };
+
+export const ADS_INTRADAY_INTERVAL_MS = 10 * 60_000;
+let adsIntradayCycleRunning = false;
+
+/** Update today's campaign and per-ASIN Ads metrics without overlapping slow reports. */
+export async function runAdsIntradayCycle(): Promise<void> {
+  if (adsIntradayCycleRunning) {
+    console.log("[Amazon Sync] Ads intraday cycle still running — skipping overlapping tick");
+    return;
+  }
+
+  adsIntradayCycleRunning = true;
+  try {
+    await forEachActiveAccount("ads intraday sync", async () => {
+      await syncAdsIntraday();
+    });
+  } finally {
+    adsIntradayCycleRunning = false;
+  }
+}
 
 // ─── Multi-account iteration ───────────────────────────────────────────────────
 // setInterval/setTimeout callbacks run outside any HTTP request, so they don't
@@ -327,28 +348,28 @@ export function startAmazonSnapshotPolling(): void {
     forEachActiveAccount("ads campaign cache pre-warm", refreshLiveCampaignCache).catch(console.error);
   }, 10_000);
 
-  // ── Ads daily metrics sync: every 24h ────────────────────────────────────
+  // ── Ads intraday metrics: every 10 minutes ───────────────────────────────
+  setInterval(() => {
+    console.log("[Amazon Sync] Running scheduled 10-min ads intraday sync...");
+    runAdsIntradayCycle().catch(console.error);
+  }, ADS_INTRADAY_INTERVAL_MS);
+
+  // First intraday refresh 90s after startup.
+  setTimeout(() => {
+    runAdsIntradayCycle().catch(console.error);
+  }, 90_000);
+
+  // ── Previous-day Ads finalization: every 24h ─────────────────────────────
   setInterval(() => {
     console.log("[Amazon Sync] Running scheduled ads daily sync...");
     forEachActiveAccount("ads daily sync", syncAdsDaily).catch(console.error);
   }, 24 * 3_600_000);
 
-  // Ads daily sync: run 90s after startup
-  setTimeout(() => {
-    forEachActiveAccount("ads daily sync", syncAdsDaily).catch(console.error);
-  }, 90_000);
-
-  // ── Advertised-product (per-ASIN ad spend) sync: every 24h ──────────────
+  // ── Previous-day per-ASIN Ads finalization: every 24h ────────────────────
   setInterval(() => {
     console.log("[Amazon Sync] Running scheduled advertised-product sync...");
     forEachActiveAccount("advertised-product sync", syncAdvertisedProductDaily).catch(console.error);
   }, 24 * 3_600_000);
-
-  // Advertised-product sync: run 100s after startup (staggered after the
-  // 90s ads daily sync above, avoiding both hitting the Ads API at once)
-  setTimeout(() => {
-    forEachActiveAccount("advertised-product sync", syncAdvertisedProductDaily).catch(console.error);
-  }, 100_000);
 
   // ── Keyword metrics sync: every 3 hours ──────────────────────────────────
   setInterval(() => {

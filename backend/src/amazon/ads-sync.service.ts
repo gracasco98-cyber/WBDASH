@@ -17,6 +17,7 @@ import {
   SpKeyword,
 } from "./ads-api.service";
 import { upsertAdvertisedProductSnapshot } from "../repositories/amazon/ad-spend.repo";
+import { filterScheduledAdsProfiles } from "./ads-profile-filter";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function dateStr(d: Date): string {
@@ -207,7 +208,7 @@ export async function syncAdsDaily(): Promise<void> {
   yesterday.setDate(yesterday.getDate() - 1);
   const date = dateStr(yesterday);
 
-  const profiles = await getConfiguredProfiles();
+  const profiles = filterScheduledAdsProfiles(await getConfiguredProfiles());
   console.log(`[Ads Sync] Daily sync for ${date} — ${profiles.length} marketplaces`);
 
   for (const profile of profiles) {
@@ -233,7 +234,7 @@ export async function syncAdvertisedProductDaily(): Promise<void> {
   yesterday.setDate(yesterday.getDate() - 1);
   const date = dateStr(yesterday);
 
-  const profiles = await getConfiguredProfiles();
+  const profiles = filterScheduledAdsProfiles(await getConfiguredProfiles());
   console.log(`[Ads Sync] Advertised-product daily sync for ${date} — ${profiles.length} marketplaces`);
 
   for (const profile of profiles) {

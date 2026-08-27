@@ -32,6 +32,18 @@ export function italyDateToUtc(dateStr: string, endOfDay = false): Date {
   }
 }
 
+/** Format an instant as an Italian civil-calendar date (YYYY-MM-DD). */
+export function italyDateString(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
 // ─── Helper: date range ────────────────────────────────────────────────────────
 export function getDateRange(filter: string, from?: string, to?: string) {
   const now = new Date();

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDateRange, italyDayStart } from "../../src/amazon/utils/datetime";
+import { getDateRange, italyDateString, italyDayStart } from "../../src/amazon/utils/datetime";
 
 describe("getDateRange — Italy timezone boundaries", () => {
   beforeEach(() => {
@@ -59,5 +59,12 @@ describe("italyDayStart", () => {
     const evening = italyDayStart(new Date("2026-08-26T20:00:00Z"));
     expect(morning).toEqual(evening);
     expect(morning).toEqual(new Date("2026-08-25T22:00:00.000Z"));
+  });
+});
+
+describe("italyDateString", () => {
+  it("uses the Italian civil date across the UTC midnight boundary", () => {
+    expect(italyDateString(new Date("2026-08-26T21:59:00Z"))).toBe("2026-08-26");
+    expect(italyDateString(new Date("2026-08-26T22:01:00Z"))).toBe("2026-08-27");
   });
 });

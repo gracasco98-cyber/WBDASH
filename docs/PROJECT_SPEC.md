@@ -181,7 +181,8 @@ Differenze principali rispetto al target §5:
 | Settlement | ogni 4 ore |
 | Forecast snapshot | ogni 6 ore |
 | Ads: cache campagne live | ogni 2 minuti |
-| Ads: metriche giornaliere | ogni 24 ore |
+| Ads: metriche campagna e per-ASIN del giorno corrente | ogni 10 minuti, senza sovrapposizione; allow-list marketplace opzionale |
+| Ads: consolidamento metriche del giorno precedente | ogni 24 ore |
 | Ads: keyword metrics | ogni 3 ore |
 | Ads: search term | ogni notte alle 02:00 |
 | Shopify (ordini) | webhook in tempo reale + polling ogni 60s |
