@@ -5,9 +5,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "NODE_OPTIONS=--no-experimental-webstorage vitest run",
-    "test:watch": "NODE_OPTIONS=--no-experimental-webstorage vitest",
-    "test:coverage": "NODE_OPTIONS=--no-experimental-webstorage vitest run --coverage"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "clsx": "^2.1.0",
