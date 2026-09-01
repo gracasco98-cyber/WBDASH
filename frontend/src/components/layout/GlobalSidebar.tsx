@@ -21,10 +21,10 @@ interface Group {
   key: string;
   label: string;
   icon: typeof Wallet;
-  items: GroupItem[];
+  items: readonly GroupItem[];
 }
 
-const GROUPS: Group[] = [
+const GROUPS = [
   {
     key: "amministrazione", label: "AMMINISTRAZIONE", icon: ShoppingBag,
     items: [
@@ -81,9 +81,11 @@ const GROUPS: Group[] = [
       { href: "/account/security", label: "Sicurezza" },
     ],
   },
-];
+] as const satisfies readonly Group[];
 
-const GROUP_ICON_CLASSES: Record<string, string> = {
+type GroupKey = (typeof GROUPS)[number]["key"];
+
+const GROUP_ICON_CLASSES: Record<GroupKey, string> = {
   amministrazione: "text-accent-amber bg-accent-amber/10",
   finance: "text-accent-purple bg-accent-purple/10",
   inventory: "text-accent-primary bg-accent-primary/10",
@@ -120,7 +122,7 @@ export default function GlobalSidebar() {
     px-2.5 py-1.5 rounded-lg text-sm transition-all border block
     ${active
       ? "bg-accent-primary/10 border-accent-primary/20 text-accent-primary font-medium shadow-sm"
-      : "border-transparent text-zinc-500 hover:text-zinc-800 hover:bg-bg-hover"
+      : "border-transparent text-zinc-500 hover:text-white hover:bg-bg-hover"
     }
   `;
 

@@ -1,7 +1,10 @@
 "use client";
 
-import { BarChart3, LayoutGrid, LineChart, TrendingUp } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 
+// "chart" | "pl" | "trends" removed from the tab bar for now (unused/unfinished
+// views) — kept in the union so page.tsx's existing render branches for them
+// don't need to change; they're just unreachable until a tab is added back.
 export type DashboardView = "tiles" | "chart" | "pl" | "trends";
 
 interface Props {
@@ -16,10 +19,7 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { value: "tiles",  label: "Panoramica", Icon: LayoutGrid },
-  { value: "chart",  label: "Grafici", Icon: BarChart3 },
-  { value: "pl",     label: "P&L", Icon: LineChart },
-  { value: "trends", label: "Trend", Icon: TrendingUp },
+  { value: "tiles", label: "Panoramica", Icon: LayoutGrid },
 ];
 
 export default function OverviewViewTabs({ activeView, onChange }: Props) {
@@ -36,7 +36,7 @@ export default function OverviewViewTabs({ activeView, onChange }: Props) {
               "rounded-lg transition-colors duration-150 focus:outline-none select-none whitespace-nowrap",
               isActive
                 ? "text-accent-primary bg-accent-primary/10 border border-accent-primary/20"
-                : "text-zinc-500 hover:text-zinc-800 hover:bg-bg-hover border border-transparent",
+                : "text-zinc-500 hover:text-white hover:bg-bg-hover border border-transparent",
             ].join(" ")}
           >
             <Icon size={13} strokeWidth={isActive ? 2.2 : 1.8} />

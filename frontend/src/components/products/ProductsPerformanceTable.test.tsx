@@ -172,6 +172,27 @@ describe("ProductsPerformanceTable", () => {
     expect(mockCatalogImages).not.toHaveBeenCalled();
   });
 
+  it("groups 'ACOS reale' under the 'Efficienza' header and 'BSR' under 'Inventario' (not the reverse)", () => {
+    const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    const groupHeaderCells = Array.from(container.querySelectorAll("thead tr:first-child th")).slice(1); // drop "Identità"
+    const columnLabels = Array.from(container.querySelectorAll("thead tr:nth-child(2) th")).map((th) => th.textContent);
+
+    // Walk the group header row, consuming `colSpan` column labels per group,
+    // to find which group each of "ACOS reale" and "BSR" falls under.
+    let cursor = 0;
+    const groupOf: Record<string, string | null> = { "ACOS reale": null, BSR: null };
+    for (const th of groupHeaderCells) {
+      const span = Number(th.getAttribute("colSpan") ?? "1");
+      const labelsInGroup = columnLabels.slice(cursor, cursor + span);
+      if (labelsInGroup.includes("ACOS reale")) groupOf["ACOS reale"] = th.textContent;
+      if (labelsInGroup.includes("BSR")) groupOf.BSR = th.textContent;
+      cursor += span;
+    }
+
+    expect(groupOf["ACOS reale"]).toBe("Efficienza");
+    expect(groupOf.BSR).toBe("Inventario");
+  });
+
   it("shows an alert and does not crash when rename fails", async () => {
     const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("New Name");
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});

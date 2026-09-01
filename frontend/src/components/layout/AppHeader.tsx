@@ -43,7 +43,7 @@ export default function AppHeader({
             className="h-8 w-8 rounded-lg object-contain shrink-0"
           />
           <span className="hidden sm:block leading-tight">
-            <span className="font-bold text-zinc-900 tracking-wide text-sm uppercase block">WBDASH</span>
+            <span className="font-bold text-white tracking-wide text-sm uppercase block">WBDASH</span>
             <span className="text-[8px] text-zinc-400 font-semibold tracking-[0.16em] block mt-0.5">COMMERCE OS</span>
           </span>
         </div>

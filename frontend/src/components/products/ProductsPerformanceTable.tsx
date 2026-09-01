@@ -29,7 +29,7 @@ const MARKETPLACE_LABEL: Record<string, string> = {
 const COLUMNS = [
   "Marketplace / Prodotto", "Unità", "Resi", "Ricavi", "Promo", "Ads", "% Resi",
   "Fee Amazon", "COGS", "Profitto lordo", "Profitto netto", "Payout stimato",
-  "Margine", "ROI", "BSR", "Prezzo medio", "ACOS reale", "Stock",
+  "Margine", "ROI", "ACOS reale", "Prezzo medio", "BSR", "Stock",
 ];
 
 export interface RowEntry {

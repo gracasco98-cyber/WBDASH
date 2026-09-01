@@ -100,9 +100,9 @@ export default function MetricRow({ label, metrics: m, isChild = false }: Metric
           <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
         </>
       )}
-      <MetricCell>{dash(m.bsr, (n) => String(n))}</MetricCell>
-      <MetricCell>{fmtEur(m.avgSellingPrice)}</MetricCell>
       <MetricCell>{dash(m.realAcos, fmtPct)}</MetricCell>
+      <MetricCell>{fmtEur(m.avgSellingPrice)}</MetricCell>
+      <MetricCell>{dash(m.bsr, (n) => String(n))}</MetricCell>
       {/* stock 0 with no inventory row means "unknown", not "zero units" */}
       <MetricCell>{m.hasStockData ? m.stock : "—"}</MetricCell>
     </tr>
