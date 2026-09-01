@@ -67,4 +67,9 @@ describe("GlobalSidebar", () => {
     const plLink = screen.getByRole("link", { name: "P&L" });
     expect(plLink.className).toMatch(/text-accent-primary/);
   });
+
+  it("adds the Redcare Keyword BI link to the MARKETING group", () => {
+    render(<GlobalSidebar />);
+    expect(screen.getByRole("link", { name: /redcare keyword bi/i })).toHaveAttribute("href", "/marketing/redcare");
+  });
 });
