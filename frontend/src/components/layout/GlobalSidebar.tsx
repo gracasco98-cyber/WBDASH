@@ -21,10 +21,10 @@ interface Group {
   key: string;
   label: string;
   icon: typeof Wallet;
-  items: GroupItem[];
+  items: readonly GroupItem[];
 }
 
-const GROUPS: Group[] = [
+const GROUPS = [
   {
     key: "amministrazione", label: "AMMINISTRAZIONE", icon: ShoppingBag,
     items: [
@@ -81,7 +81,18 @@ const GROUPS: Group[] = [
       { href: "/account/security", label: "Sicurezza" },
     ],
   },
-];
+] as const satisfies readonly Group[];
+
+type GroupKey = (typeof GROUPS)[number]["key"];
+
+const GROUP_ICON_CLASSES: Record<GroupKey, string> = {
+  amministrazione: "text-accent-amber bg-accent-amber/10",
+  finance: "text-accent-purple bg-accent-purple/10",
+  inventory: "text-accent-primary bg-accent-primary/10",
+  marketing: "text-accent-blue bg-accent-blue/10",
+  supporto: "text-accent-blue bg-accent-blue/10",
+  admin: "text-accent-red bg-accent-red/10",
+};
 
 function isNavItem(item: GroupItem): item is NavItem {
   return "href" in item;
@@ -110,8 +121,8 @@ export default function GlobalSidebar() {
   const linkCls = (active: boolean) => `
     px-2.5 py-1.5 rounded-lg text-sm transition-all border block
     ${active
-      ? "bg-accent-primary/10 border-accent-primary/20 text-accent-primary font-medium"
-      : "border-transparent text-zinc-500 hover:text-white hover:bg-white/5"
+      ? "bg-accent-primary/10 border-accent-primary/20 text-accent-primary font-medium shadow-sm"
+      : "border-transparent text-zinc-500 hover:text-white hover:bg-bg-hover"
     }
   `;
 
@@ -157,12 +168,14 @@ export default function GlobalSidebar() {
             <div key={group.key} className="mt-2">
               <button
                 onClick={() => toggle(group.key)}
-                className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-widest transition-colors ${
-                  groupActive ? "text-accent-primary" : "text-zinc-500 hover:text-zinc-300"
-                }`}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-widest transition-colors ${
+                groupActive ? "text-accent-primary" : "text-zinc-500 hover:text-zinc-300"
+              }`}
               >
                 <span className="flex items-center gap-2">
-                  <Icon size={13} className="shrink-0" />
+                  <span className={`inline-flex h-5 w-5 items-center justify-center rounded-md ${GROUP_ICON_CLASSES[group.key]}`}>
+                    <Icon size={12} className="shrink-0" />
+                  </span>
                   {group.label}
                 </span>
                 <ChevronDown size={12} className={`shrink-0 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
@@ -186,7 +199,7 @@ export default function GlobalSidebar() {
                     }
                     const active = isHrefActive(pathname, item.href);
                     return (
-                      <Link key={item.href} href={item.href} className={linkCls(active)}>
+                      <Link key={`${item.href}-${item.label}`} href={item.href} className={linkCls(active)}>
                         {item.label}
                       </Link>
                     );
