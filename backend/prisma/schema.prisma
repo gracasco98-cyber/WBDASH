@@ -1186,3 +1186,38 @@ model SupplierPaymentDue {
   @@index([status])
   @@index([dueDate])
 }
+
+// ─── Marketing module — Keyword BI: watch and snapshot ──────────────
+model MarketingKeywordWatch {
+  id        String   @id @default(cuid())
+  market    String
+  keyword   String
+  ean       String
+  label     String?
+  isOwn     Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  snapshots MarketingKeywordSnapshot[]
+
+  @@unique([market, keyword, ean])
+  @@index([active])
+}
+
+model MarketingKeywordSnapshot {
+  id                  String   @id @default(cuid())
+  watchId             String
+  watch               MarketingKeywordWatch @relation(fields: [watchId], references: [id])
+  checkedAt           DateTime @default(now())
+  found               Boolean
+  position            Int?
+  nbHits              Int
+  price               Decimal? @db.Decimal(10, 2)
+  sellerName          String?
+  productName         String?
+  promoted            Boolean?
+  promotedByReRanking Boolean?
+
+  @@index([watchId, checkedAt])
+}
