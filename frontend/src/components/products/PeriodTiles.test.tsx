@@ -27,10 +27,19 @@ const mockGet = vi.fn(async (_params: unknown) => ({
     aggregate: { identifierId: "i1", asin: "", marketplace: "ALL", sku: null, units: 5, sales: 100, promo: 0, refundsAmount: 0, refundsCount: 0, refundPct: 0, adsSpend: 5, realAcos: 0.05, amazonFees: 15, hasRealFees: true, hasRealCogs: true, cogs: 20, stock: 10, hasStockData: true, grossProfit: 60, netProfit: 60, estimatedPayout: 80, margin: 0.6, roi: 3, avgSellingPrice: 20, bsr: null },
   }],
 }));
-vi.mock("@/lib/api", () => ({ api: { productPerformance: { get: (params: unknown) => mockGet(params) } } }));
+const mockProducts = vi.fn(async (_params: unknown) => ({
+  products: [{ grossRevenue: 40, unitsSold: 2 }],
+  kpis: { totalNet: 35 },
+}));
+vi.mock("@/lib/api", () => ({
+  api: {
+    productPerformance: { get: (params: unknown) => mockGet(params) },
+    products: (params: unknown) => mockProducts(params),
+  },
+}));
 
 describe("PeriodTiles", () => {
-  beforeEach(() => { mockGet.mockClear(); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; });
+  beforeEach(() => { mockGet.mockClear(); mockProducts.mockClear(); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; });
 
   it("fetches 5 fixed presets independently of the active period", async () => {
     render(<PeriodTiles />);
@@ -80,6 +89,11 @@ describe("PeriodTiles", () => {
     for (const [params] of mockGet.mock.calls as [any][]) {
       expect(params.amazonAccountId).toBe("acc-123");
     }
+  });
+
+  it("includes Shopify/Redcare net revenue in the net profit card", async () => {
+    render(<PeriodTiles />);
+    await vi.waitFor(() => expect(screen.getAllByText("€ 95,00")).toHaveLength(5));
   });
 
   it("falls back to 'all' when the global filter is a Shopify channel, not an Amazon one", async () => {

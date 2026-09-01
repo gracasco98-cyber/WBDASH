@@ -82,10 +82,10 @@ export default function PeriodTiles() {
   // endpoint: only Amazon channels narrow the scope, everything else is "all".
   const productMarketplace = isAmazonChannel(globalMarketplace) ? (amazonChannelCode(globalMarketplace) ?? "all") : "all";
   const [totals, setTotals] = useState<Partial<Record<PeriodPreset, ProductPerformanceRow | null>>>({});
-  // Shopify (Redcare/Temu/eBay/...) contribution to "Ricavi"/"Unità" — kept
-  // separate from `totals` (Amazon-only) rather than merged into it, since
-  // fee/COGS/profit/ads figures genuinely have no Shopify-side data to add.
-  const [shopifyTotals, setShopifyTotals] = useState<Partial<Record<PeriodPreset, { sales: number; units: number }>>>({});
+  // Shopify (Redcare/Temu/eBay/...) contribution to the tiles.  `netProfit`
+  // is the Shopify order net amount (after refunds); no fee/COGS/ads figure is
+  // fabricated because those costs are not tracked in the Shopify schema.
+  const [shopifyTotals, setShopifyTotals] = useState<Partial<Record<PeriodPreset, { sales: number; units: number; netProfit: number }>>>({});
   const { selectedAccountId } = useAmazonAccount();
   // Main dashboard default: when the user hasn't drilled into one specific
   // Amazon account, sum every active account instead of leaving the tiles
@@ -123,13 +123,14 @@ export default function PeriodTiles() {
       try {
         const results = await Promise.all(
           TILES.map(async ({ preset }) => {
-            const { products } = await api.products({
+            const { products, kpis } = await api.products({
               filter: preset,
               ...(shopifyMarketplace ? { marketplace: shopifyMarketplace } : {}),
             });
             return [preset, {
               sales: products.reduce((s, p) => s + p.grossRevenue, 0),
               units: products.reduce((s, p) => s + p.unitsSold, 0),
+              netProfit: kpis.totalNet,
             }] as const;
           })
         );
@@ -149,6 +150,7 @@ export default function PeriodTiles() {
         const hasAny = totalRow != null || shopifyRow != null;
         const combinedSales = (totalRow?.sales ?? 0) + (shopifyRow?.sales ?? 0);
         const combinedUnits = (totalRow?.units ?? 0) + (shopifyRow?.units ?? 0);
+        const combinedNetProfit = (totalRow?.netProfit ?? 0) + (shopifyRow?.netProfit ?? 0);
         const active = state.preset === preset;
         return (
           <button
@@ -192,8 +194,8 @@ export default function PeriodTiles() {
                 </div>
                 <div>
                   <div className="text-zinc-500 text-[10px]">Profitto netto</div>
-                  <div className={`font-semibold tabular-nums ${totalRow && totalRow.netProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}>
-                    {totalRow ? fmtEur(totalRow.netProfit) : "—"}
+                  <div className={`font-semibold tabular-nums ${combinedNetProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}>
+                    {hasAny ? fmtEur(combinedNetProfit) : "—"}
                   </div>
                 </div>
                 <div>
