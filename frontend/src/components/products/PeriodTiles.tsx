@@ -9,13 +9,14 @@ import { api } from "@/lib/api";
 import type { ProductPerformanceRow } from "@/lib/api";
 import { formatDateToIso } from "@/lib/periodUtils";
 import { fmtEur, dash } from "./MetricRow";
+import { CalendarDays, CalendarClock, CalendarRange, Sparkles, History } from "lucide-react";
 
-const TILES: { preset: PeriodPreset; label: string; headerBg: string }[] = [
-  { preset: "today", label: "Oggi", headerBg: "#3b82f6" },
-  { preset: "yesterday", label: "Ieri", headerBg: "#14b8a6" },
-  { preset: "last7", label: "7 giorni", headerBg: "#2dd4bf" },
-  { preset: "last14", label: "14 giorni", headerBg: "#34d399" },
-  { preset: "last30", label: "30 giorni", headerBg: "#6ee7b7" },
+const TILES: { preset: PeriodPreset; label: string; headerBg: string; accent: string; Icon: typeof CalendarDays }[] = [
+  { preset: "today", label: "Oggi", headerBg: "#edf5ff", accent: "#2a78d6", Icon: CalendarDays },
+  { preset: "yesterday", label: "Ieri", headerBg: "#fff7e6", accent: "#d89000", Icon: History },
+  { preset: "last7", label: "7 giorni", headerBg: "#eaf8f2", accent: "#059669", Icon: CalendarRange },
+  { preset: "last14", label: "14 giorni", headerBg: "#f3effe", accent: "#7c3aed", Icon: CalendarClock },
+  { preset: "last30", label: "30 giorni", headerBg: "#edf5ff", accent: "#2a78d6", Icon: Sparkles },
 ];
 
 function presetDateRange(preset: PeriodPreset): { from: string; to: string } {
@@ -142,7 +143,7 @@ export default function PeriodTiles() {
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-      {TILES.map(({ preset, label, headerBg }) => {
+      {TILES.map(({ preset, label, headerBg, accent, Icon }) => {
         const totalRow = totals[preset];
         const shopifyRow = shopifyTotals[preset];
         const hasAny = totalRow != null || shopifyRow != null;
@@ -153,13 +154,19 @@ export default function PeriodTiles() {
           <button
             key={preset}
             aria-label={label}
+            aria-pressed={active}
             onClick={() => setPreset(preset)}
-            className={`text-left rounded-lg overflow-hidden p-0 cursor-pointer border transition-shadow bg-bg-card hover:shadow-md flex flex-col ${
+            className={`group text-left rounded-xl overflow-hidden p-0 cursor-pointer border transition-all bg-bg-card hover:shadow-md hover:-translate-y-0.5 flex flex-col ${
               active ? "border-accent-primary shadow-sm" : "border-bg-border"
             }`}
           >
-            <div className="px-3.5 py-2.5" style={{ backgroundColor: headerBg }}>
-              <div className="font-semibold text-[13px] text-white">{label}</div>
+            <div className="px-3.5 py-2.5 border-t-2" style={{ backgroundColor: headerBg, borderTopColor: accent }}>
+              <div className="flex items-center gap-2 font-semibold text-[13px]" style={{ color: accent }}>
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/70 border border-white/80">
+                  <Icon size={13} strokeWidth={2.2} />
+                </span>
+                {label}
+              </div>
             </div>
             <div className="px-3.5 py-3 flex-1 flex flex-col gap-2.5">
               <div>

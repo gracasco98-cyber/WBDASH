@@ -23,8 +23,8 @@ function EstimateBadge({ title }: { title: string }) {
   return <span title={title} className="text-accent-amber text-[9px] ml-[3px]">≈</span>;
 }
 
-export function MetricCell({ children }: { children: React.ReactNode }) {
-  return <td className="px-2.5 py-2.5">{children}</td>;
+export function MetricCell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <td className={`px-2.5 py-2.5 ${className}`}>{children}</td>;
 }
 
 function ProfitCell({ value, fmt, estimated }: { value: number; fmt: (n: number) => string; estimated: boolean }) {
@@ -59,7 +59,7 @@ export default function MetricRow({ label, metrics: m, isChild = false }: Metric
   const hasCostData = m.costDataAvailable !== false;
   return (
     <tr className={isChild ? "bg-bg-hover/50" : "border-b border-bg-border/60"}>
-      <MetricCell>{label}</MetricCell>
+      <MetricCell className="sticky left-0 z-10 bg-bg-card border-r border-bg-border/70 font-medium">{label}</MetricCell>
       <MetricCell>{m.units}</MetricCell>
       <MetricCell>{fmtEur(m.refundsAmount)}</MetricCell>
       <MetricCell>{fmtEur(m.sales)}</MetricCell>

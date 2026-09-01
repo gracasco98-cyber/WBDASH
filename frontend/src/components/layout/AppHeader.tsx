@@ -29,7 +29,7 @@ export default function AppHeader({
 
   return (
     <>
-      <header className="border-b border-bg-border px-3 md:px-5 flex items-center sticky top-0 z-40 bg-bg-base/95 backdrop-blur-sm h-[57px]">
+      <header className="border-b border-bg-border px-3 md:px-5 flex items-center sticky top-0 z-40 bg-bg-card/95 backdrop-blur-sm h-[57px] shadow-sm">
 
         {/* ── Logo ─────────────────────────────────────────────────────── */}
         <div
@@ -42,8 +42,9 @@ export default function AppHeader({
             alt="WBDASH"
             className="h-8 w-8 rounded-lg object-contain shrink-0"
           />
-          <span className="font-bold text-white tracking-wide text-sm hidden sm:block uppercase">
-            WBDASH
+          <span className="hidden sm:block leading-tight">
+            <span className="font-bold text-zinc-900 tracking-wide text-sm uppercase block">WBDASH</span>
+            <span className="text-[8px] text-zinc-400 font-semibold tracking-[0.16em] block mt-0.5">COMMERCE OS</span>
           </span>
         </div>
 

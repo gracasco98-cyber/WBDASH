@@ -4,6 +4,7 @@ import type { ProductPerformanceGroup, ProductPerformanceRow, ProductPerformance
 import { api } from "@/lib/api";
 import { getMeta } from "@/lib/marketplaces";
 import MetricRow from "./MetricRow";
+import { ChevronDown, ChevronRight, CornerDownRight, Pencil, SlidersHorizontal, Table2 } from "lucide-react";
 
 export type GroupBy = "marketplace" | "product";
 
@@ -205,13 +206,14 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
       <button
         aria-label={`Espandi ${entry.label}`}
         onClick={() => toggle(entry.key)}
-        className="bg-transparent border-none cursor-pointer flex items-center gap-1.5 text-inherit"
+        className="bg-transparent border-none cursor-pointer flex items-center gap-1.5 text-inherit hover:text-accent-primary transition-colors"
       >
-        <span>{isOpen ? "▾" : "›"}</span> {entry.label}
+        {isOpen ? <ChevronDown size={13} className="text-accent-primary" /> : <ChevronRight size={13} className="text-zinc-400" />}
+        {entry.label}
       </button>
       {groupBy === "product" && (
-        <button title="Rinomina" onClick={() => handleRename(entry.key, entry.label)} className="ml-1.5 bg-transparent border-none cursor-pointer text-zinc-500 hover:text-zinc-300 transition-colors">
-          ✎
+        <button title="Rinomina" onClick={() => handleRename(entry.key, entry.label)} className="ml-1.5 bg-transparent border-none cursor-pointer text-zinc-500 hover:text-accent-blue transition-colors">
+          <Pencil size={11} />
         </button>
       )}
     </>
@@ -230,7 +232,7 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
         ) : (
           <div className="w-[22px] h-[22px] rounded-[5px] bg-bg-hover shrink-0" />
         )}
-        <span className="ml-1 text-zinc-500">↳ {child.label} — <span>{child.metrics.asin}</span></span>
+        <span className="ml-1 text-zinc-500"><CornerDownRight size={11} className="inline text-zinc-400 mr-1" />{child.label} — <span>{child.metrics.asin}</span></span>
       </div>
       {groupBy === "product" && (
         <button onClick={() => setMovingId(child.key)} className="ml-2 text-[10px] text-accent-blue bg-transparent border-none cursor-pointer underline">
@@ -254,16 +256,16 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
   };
 
   return (
-    <div className="bg-bg-card rounded-[10px] border border-bg-border text-zinc-300">
-      <div className="flex justify-between items-center px-4 py-3">
-        <span className="text-xs text-zinc-500">▤ Prodotti</span>
+    <div className="bg-bg-card rounded-xl border border-bg-border text-zinc-300 shadow-sm overflow-hidden">
+      <div className="flex justify-between items-center px-4 py-3 border-b border-bg-border/70">
+        <span className="flex items-center gap-2 text-xs font-semibold text-zinc-600"><Table2 size={14} className="text-accent-blue" />Prodotti</span>
         <label className="text-xs text-zinc-400">
-          Raggruppa per{" "}
+          <span className="mr-1.5">Raggruppa per</span>
           <select
             aria-label="Raggruppa per"
             value={groupBy}
             onChange={(e) => onGroupByChange(e.target.value as GroupBy)}
-            className="bg-bg-hover border border-bg-border rounded px-1.5 py-0.5 text-zinc-300"
+            className="bg-bg-card border border-bg-border rounded-lg px-2 py-1 text-zinc-700 shadow-sm focus:outline-none focus:border-accent-primary"
           >
             <option value="marketplace">Marketplace</option>
             <option value="product">Prodotto</option>
@@ -271,11 +273,20 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
         </label>
       </div>
 
-      <div className="overflow-x-auto border-t border-bg-border rounded-b-lg">
-        <table className="w-full border-collapse text-[11.5px]">
+      <div className="overflow-x-auto rounded-b-lg">
+        <table className="w-full min-w-[1540px] border-collapse text-[11.5px]">
           <thead>
+            <tr className="text-[9px] uppercase tracking-wider text-zinc-500 text-left bg-bg-hover/80 border-b border-bg-border">
+              <th className="sticky left-0 z-20 bg-bg-hover/95 px-2.5 py-1.5 font-semibold text-zinc-500" rowSpan={2}>Identità</th>
+              <th className="px-2.5 py-1.5 text-center font-semibold" colSpan={3}>Volume</th>
+              <th className="px-2.5 py-1.5 text-center font-semibold text-accent-blue/80" colSpan={3}>Vendite</th>
+              <th className="px-2.5 py-1.5 text-center font-semibold text-accent-red/80" colSpan={2}>Costi</th>
+              <th className="px-2.5 py-1.5 text-center font-semibold text-accent-primary/90" colSpan={4}>Risultato</th>
+              <th className="px-2.5 py-1.5 text-center font-semibold text-accent-purple/80" colSpan={3}>Efficienza</th>
+              <th className="px-2.5 py-1.5 text-center font-semibold text-accent-amber/90" colSpan={2}>Inventario</th>
+            </tr>
             <tr className="text-zinc-500 text-left bg-bg-hover border-b border-bg-border">
-              {COLUMNS.map((c) => <th key={c} className="px-2.5 py-2.5 font-medium">{c}</th>)}
+              {COLUMNS.slice(1).map((c) => <th key={c} className="px-2.5 py-2.5 font-medium">{c}</th>)}
             </tr>
           </thead>
           <tbody>
