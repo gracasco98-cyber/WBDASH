@@ -6,7 +6,10 @@ import { matchEanInResult } from "../redcareSearch/service";
 import { findActiveWatches, createSnapshot } from "../repositories/marketing/redcareWatch.repo";
 import { logError } from "../services/shopify.service";
 
-export async function runRedcareKeywordTracking(): Promise<{ checked: number; errors: number }> {
+// delayMs paces requests between (market, keyword) groups so the job doesn't
+// burst-hit a public storefront — production default is 1s; tests pass 0 to
+// keep the suite fast (MSW responses are instant, so no delay is needed there).
+export async function runRedcareKeywordTracking(delayMs = 1000): Promise<{ checked: number; errors: number }> {
   let checked = 0;
   let errors = 0;
 
@@ -23,19 +26,33 @@ export async function runRedcareKeywordTracking(): Promise<{ checked: number; er
     byMarketKeyword.set(market, byKeyword);
   }
 
+  // Flatten to a single ordered list of groups so we can tell the last one
+  // apart and skip the trailing delay after it.
+  const groups: { market: RedcareMarket; keyword: string; groupWatches: typeof watches }[] = [];
   for (const [market, byKeyword] of byMarketKeyword) {
     for (const [keyword, groupWatches] of byKeyword) {
-      try {
-        const result = await fetchSearchResults(market, keyword);
-        for (const watch of groupWatches) {
-          const match = matchEanInResult(result, watch.ean);
-          await createSnapshot(prisma, { watchId: watch.id, ...match });
-          checked++;
-        }
-      } catch (err) {
-        errors++;
-        await logError("redcare-keyword-tracking", err, { market, keyword });
+      groups.push({ market, keyword, groupWatches });
+    }
+  }
+
+  for (let i = 0; i < groups.length; i++) {
+    const { market, keyword, groupWatches } = groups[i];
+    try {
+      const result = await fetchSearchResults(market, keyword);
+      for (const watch of groupWatches) {
+        const match = matchEanInResult(result, watch.ean);
+        await createSnapshot(prisma, { watchId: watch.id, ...match });
+        checked++;
       }
+    } catch (err) {
+      errors++;
+      await logError("redcare-keyword-tracking", err, { market, keyword });
+    }
+
+    // Pace between groups regardless of success/failure — but skip the
+    // trailing wait after the last group.
+    if (delayMs > 0 && i < groups.length - 1) {
+      await new Promise((r) => setTimeout(r, delayMs));
     }
   }
 

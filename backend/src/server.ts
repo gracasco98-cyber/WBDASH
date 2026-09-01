@@ -248,7 +248,11 @@ async function bootstrap() {
   }
 
   // ── Marketing / Redcare keyword tracking (public site, no credentials needed) ──
-  startRedcareKeywordTrackingSchedule();
+  if (process.env.REDCARE_KEYWORD_TRACKING_ENABLED === "true") {
+    startRedcareKeywordTrackingSchedule();
+  } else {
+    console.log("[Server] Redcare keyword tracking disabled (REDCARE_KEYWORD_TRACKING_ENABLED not set)");
+  }
 }
 
 bootstrap().catch((err) => {

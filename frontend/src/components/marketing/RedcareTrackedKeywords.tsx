@@ -76,7 +76,7 @@ function KeywordChart({ group }: { group: KeywordGroup }) {
         <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", fontSize: 12 }} />
         <Legend wrapperStyle={{ fontSize: 11 }} formatter={(_value, _entry, index) => watchLabel(group.watches[index as number])} />
         {group.watches.map((w, i) => (
-          <Line key={w.id} dataKey={w.id} name={w.id} stroke={LINE_COLORS[i % LINE_COLORS.length]} dot={{ r: 2 }} connectNulls />
+          <Line key={w.id} dataKey={w.id} name={w.id} stroke={LINE_COLORS[i % LINE_COLORS.length]} dot={{ r: 2 }} />
         ))}
       </LineChart>
     </ResponsiveContainer>

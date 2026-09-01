@@ -68,6 +68,7 @@ export async function fetchSearchResults(market: RedcareMarket, keyword: string)
       "User-Agent": "Mozilla/5.0 (compatible; WBDASH-KeywordTracker/1.0)",
       Accept: "text/html",
     },
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
     throw new Error(`Redcare search HTTP error ${res.status} (market=${market}, keyword="${keyword}")`);

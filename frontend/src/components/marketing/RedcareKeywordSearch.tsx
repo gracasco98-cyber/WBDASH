@@ -16,6 +16,12 @@ export default function RedcareKeywordSearch({ onTracked }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trackingEan, setTrackingEan] = useState<string | null>(null);
+  // The exact { market, keyword } that produced the currently displayed
+  // `hits` — NOT the live `market`/`keyword` input state. If the user edits
+  // the input or flips the market select after searching but before
+  // re-running the search, `track()` and the results caption must still
+  // refer to what was actually searched, not the unverified live values.
+  const [searched, setSearched] = useState<{ market: RedcareMarket; keyword: string } | null>(null);
 
   const runSearch = async () => {
     const q = keyword.trim();
@@ -26,6 +32,7 @@ export default function RedcareKeywordSearch({ onTracked }: Props) {
       const result = await api.marketingRedcare.search(market, q);
       setHits(result.hits);
       setNbHits(result.nbHits);
+      setSearched({ market, keyword: q });
     } catch {
       setError("Impossibile recuperare i risultati da Redcare in questo momento.");
       setHits(null);
@@ -35,12 +42,12 @@ export default function RedcareKeywordSearch({ onTracked }: Props) {
   };
 
   const track = async (hit: RedcareSearchHit, isOwn: boolean) => {
-    if (!hit.ean) return;
+    if (!hit.ean || !searched) return;
     setTrackingEan(hit.ean);
     setError(null);
     try {
       await api.marketingRedcare.createWatch({
-        market, keyword: keyword.trim(), ean: hit.ean,
+        market: searched.market, keyword: searched.keyword, ean: hit.ean,
         label: isOwn ? undefined : (hit.sellerName ?? undefined),
         isOwn,
       });
@@ -84,7 +91,7 @@ export default function RedcareKeywordSearch({ onTracked }: Props) {
 
       {hits && (
         <>
-          <p className="text-xs text-zinc-500 mb-2">{nbHits} risultati per "{keyword}"</p>
+          <p className="text-xs text-zinc-500 mb-2">{nbHits} risultati per "{searched?.keyword ?? keyword}"</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

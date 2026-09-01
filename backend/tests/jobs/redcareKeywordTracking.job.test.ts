@@ -36,7 +36,7 @@ describe("runRedcareKeywordTracking", () => {
       ], 29, () => { requestCount++; }),
     );
 
-    const result = await runRedcareKeywordTracking();
+    const result = await runRedcareKeywordTracking(0); // no inter-group delay in tests
 
     expect(result).toEqual({ checked: 2, errors: 0 });
     expect(requestCount).toBe(1);
@@ -62,10 +62,42 @@ describe("runRedcareKeywordTracking", () => {
       redcareSearchMocks.httpError("DE", 500),
     );
 
-    const result = await runRedcareKeywordTracking();
+    const result = await runRedcareKeywordTracking(0); // no inter-group delay in tests
 
     expect(result).toEqual({ checked: 1, errors: 1 });
     expect(await findLatestSnapshot(db.prisma, notFoundWatch.id)).toMatchObject({ found: false, position: null });
     expect(await findLatestSnapshot(db.prisma, brokenWatch.id)).toBeNull();
+  });
+
+  it("paces requests with a delay between (market, keyword) groups, but not after the last one", async () => {
+    // Two distinct groups (different markets) so exactly one inter-group
+    // delay should be observed, with no trailing delay after the second.
+    await createOrReactivateWatch(db.prisma, {
+      market: "IT", keyword: "keyword a", ean: "111", label: null, isOwn: true,
+    });
+    await createOrReactivateWatch(db.prisma, {
+      market: "DE", keyword: "keyword b", ean: "222", label: null, isOwn: true,
+    });
+
+    const requestTimestamps: number[] = [];
+    server.use(
+      redcareSearchMocks.searchPage("IT", "products_mktplc_prod_IT_it", [
+        { ean: "111", productName: "X", price: 1000, best_offer: { seller: { name: "Y" }, type: "MIRAKL" }, _rankingInfo: {} },
+      ], 1, () => requestTimestamps.push(Date.now())),
+      redcareSearchMocks.searchPage("DE", "products_mktplc_prod_DE_de", [
+        { ean: "222", productName: "X", price: 1000, best_offer: { seller: { name: "Y" }, type: "MIRAKL" }, _rankingInfo: {} },
+      ], 1, () => requestTimestamps.push(Date.now())),
+    );
+
+    const start = Date.now();
+    const result = await runRedcareKeywordTracking(50);
+    const elapsed = Date.now() - start;
+
+    expect(result).toEqual({ checked: 2, errors: 0 });
+    expect(requestTimestamps).toHaveLength(2);
+    // Exactly one 50ms delay between the two groups, none trailing after the
+    // last one — elapsed time reflects ~1 delay, not 2+.
+    expect(elapsed).toBeGreaterThanOrEqual(45);
+    expect(elapsed).toBeLessThan(300);
   });
 });
