@@ -35,6 +35,8 @@ import { dashboardRouter } from "./purchasing/routes/dashboard.routes";
 import { paymentDuesRouter } from "./purchasing/routes/payment-dues.routes";
 import { businessContactsRouter } from "./purchasing/routes/business-contacts.routes";
 import miraklRouter from "./routes/mirakl.routes";
+import marketingRedcareRouter from "./routes/marketingRedcare.routes";
+import { startRedcareKeywordTrackingSchedule } from "./jobs/redcareKeywordTracking.job";
 import { addSSEClient, sseClientCount } from "./sse/sse";
 
 const app = express();
@@ -169,6 +171,7 @@ app.use("/api/purchasing", requireAuth, goodsReceiptsRouter);
 app.use("/api/purchasing", requireAuth, dashboardRouter);
 app.use("/api/purchasing", requireAuth, paymentDuesRouter);
 app.use("/api/mirakl",     requireAuth, miraklRouter);
+app.use("/api/marketing/redcare", requireAuth, marketingRedcareRouter);
 
 // ─── 404 / error handler ─────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: "Endpoint non trovato." }));
@@ -242,6 +245,13 @@ async function bootstrap() {
     startMiraklPolling();
   } else {
     console.log("[Server] Mirakl module disabled (MIRAKL_API_KEY not set)");
+  }
+
+  // ── Marketing / Redcare keyword tracking (public site, no credentials needed) ──
+  if (process.env.REDCARE_KEYWORD_TRACKING_ENABLED === "true") {
+    startRedcareKeywordTrackingSchedule();
+  } else {
+    console.log("[Server] Redcare keyword tracking disabled (REDCARE_KEYWORD_TRACKING_ENABLED not set)");
   }
 }
 

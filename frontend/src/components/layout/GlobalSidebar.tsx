@@ -63,6 +63,7 @@ const GROUPS = [
     items: [
       { href: "/amazon/ppc", label: "Advertising" },
       { href: "/amazon/analytics", label: "Intelligence" },
+      { href: "/marketing/redcare", label: "Redcare Keyword BI" },
       { label: "Content Hub", comingSoon: true },
       { label: "Calendario promo", comingSoon: true },
     ],

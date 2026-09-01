@@ -58,6 +58,10 @@ export type {
   ProductPerformanceResponse,
 } from "./types";
 export type { StuckMiraklOrder, StuckMiraklOrdersResponse } from "./mirakl";
+export type {
+  RedcareMarket, RedcareSearchHit, RedcareSearchResult,
+  MarketingKeywordSnapshot, MarketingKeywordWatch,
+} from "./marketing-redcare";
 
 // Import domain modules
 import { shopify } from "./shopify";
@@ -69,6 +73,7 @@ import { purchaseOrders } from "./purchase-orders";
 import { paymentDues } from "./payment-dues";
 import { acquistiDashboard } from "./acquisti-dashboard";
 import { mirakl } from "./mirakl";
+import { marketingRedcare } from "./marketing-redcare";
 
 // Compose the `api` object that all callers use via `import { api } from "@/lib/api"`
 export const api = {
@@ -104,4 +109,7 @@ export const api = {
 
   // ── Mirakl (Redcare) reconciliation ──────────────────────────────────────
   mirakl,
+
+  // ── Marketing / Redcare keyword BI ───────────────────────────────────────
+  marketingRedcare,
 };

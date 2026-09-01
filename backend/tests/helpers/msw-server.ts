@@ -524,5 +524,54 @@ export const miraklMocks = {
     ),
 };
 
+// ─── Redcare / Shop-Apotheke public search page mock factories ────────────────
+const REDCARE_DOMAIN: Record<"IT" | "DE", string> = {
+  IT: "www\\.redcare\\.it",
+  DE: "www\\.shop-apotheke\\.com",
+};
+
+export const redcareSearchMocks = {
+  /**
+   * Mocks the public search results page by embedding `hits` into the same
+   * `window[Symbol.for("InstantSearchInitialResults")]` blob the real site
+   * serves server-side rendered. `onRequest` (optional) fires once per
+   * matched request — used by job tests to assert request de-duplication.
+   */
+  searchPage: (
+    market: "IT" | "DE",
+    indexName: string,
+    hits: Array<Record<string, any>>,
+    nbHits: number = hits.length,
+    onRequest?: () => void,
+  ) => {
+    const blob = { [indexName]: { results: [{ hits, nbHits, hitsPerPage: 30, page: 0 }] } };
+    const html = `<html><body><script>window[Symbol.for("InstantSearchInitialResults")] = ${JSON.stringify(blob)}</script></body></html>`;
+    return http.get(
+      new RegExp(`${REDCARE_DOMAIN[market]}/search\\.htm`),
+      async () => {
+        onRequest?.();
+        return new HttpResponse(html, { status: 200, headers: { "Content-Type": "text/html" } });
+      },
+    );
+  },
+
+  /** Simulates a page structure change: no InstantSearchInitialResults blob present. */
+  searchPageMissingBlob: (market: "IT" | "DE") =>
+    http.get(
+      new RegExp(`${REDCARE_DOMAIN[market]}/search\\.htm`),
+      async () => new HttpResponse("<html><body>no results here</body></html>", {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      }),
+    ),
+
+  /** Non-2xx response from the search page. */
+  httpError: (market: "IT" | "DE", status: number) =>
+    http.get(
+      new RegExp(`${REDCARE_DOMAIN[market]}/search\\.htm`),
+      async () => new HttpResponse("error", { status }),
+    ),
+};
+
 // Re-export per i test
 export { http, HttpResponse };
