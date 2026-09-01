@@ -36,6 +36,7 @@ import { paymentDuesRouter } from "./purchasing/routes/payment-dues.routes";
 import { businessContactsRouter } from "./purchasing/routes/business-contacts.routes";
 import miraklRouter from "./routes/mirakl.routes";
 import marketingRedcareRouter from "./routes/marketingRedcare.routes";
+import { startRedcareKeywordTrackingSchedule } from "./jobs/redcareKeywordTracking.job";
 import { addSSEClient, sseClientCount } from "./sse/sse";
 
 const app = express();
@@ -245,6 +246,9 @@ async function bootstrap() {
   } else {
     console.log("[Server] Mirakl module disabled (MIRAKL_API_KEY not set)");
   }
+
+  // ── Marketing / Redcare keyword tracking (public site, no credentials needed) ──
+  startRedcareKeywordTrackingSchedule();
 }
 
 bootstrap().catch((err) => {
