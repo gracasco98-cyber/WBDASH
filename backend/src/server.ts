@@ -35,6 +35,7 @@ import { dashboardRouter } from "./purchasing/routes/dashboard.routes";
 import { paymentDuesRouter } from "./purchasing/routes/payment-dues.routes";
 import { businessContactsRouter } from "./purchasing/routes/business-contacts.routes";
 import miraklRouter from "./routes/mirakl.routes";
+import marketingRedcareRouter from "./routes/marketingRedcare.routes";
 import { addSSEClient, sseClientCount } from "./sse/sse";
 
 const app = express();
@@ -169,6 +170,7 @@ app.use("/api/purchasing", requireAuth, goodsReceiptsRouter);
 app.use("/api/purchasing", requireAuth, dashboardRouter);
 app.use("/api/purchasing", requireAuth, paymentDuesRouter);
 app.use("/api/mirakl",     requireAuth, miraklRouter);
+app.use("/api/marketing/redcare", requireAuth, marketingRedcareRouter);
 
 // ─── 404 / error handler ─────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: "Endpoint non trovato." }));
