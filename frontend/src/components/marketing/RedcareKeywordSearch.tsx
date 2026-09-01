@@ -37,6 +37,7 @@ export default function RedcareKeywordSearch({ onTracked }: Props) {
   const track = async (hit: RedcareSearchHit, isOwn: boolean) => {
     if (!hit.ean) return;
     setTrackingEan(hit.ean);
+    setError(null);
     try {
       await api.marketingRedcare.createWatch({
         market, keyword: keyword.trim(), ean: hit.ean,
@@ -44,6 +45,8 @@ export default function RedcareKeywordSearch({ onTracked }: Props) {
         isOwn,
       });
       onTracked();
+    } catch {
+      setError("Impossibile tracciare questo prodotto in questo momento.");
     } finally {
       setTrackingEan(null);
     }

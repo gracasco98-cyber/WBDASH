@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, type MarketingKeywordWatch, type MarketingKeywordSnapshot } from "@/lib/api";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
@@ -34,6 +34,7 @@ const LINE_COLORS = ["#6ee7b7", "#fbbf24", "#f472b6", "#93c5fd", "#c4b5fd"];
 
 function KeywordChart({ group }: { group: KeywordGroup }) {
   const [series, setSeries] = useState<Record<string, MarketingKeywordSnapshot[]> | null>(null);
+  const watchIdsKey = group.watches.map((w) => w.id).join(",");
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +45,11 @@ function KeywordChart({ group }: { group: KeywordGroup }) {
       if (!cancelled) setSeries(Object.fromEntries(entries));
     })();
     return () => { cancelled = true; };
-  }, [group]);
+    // Depend on the stable set of watch ids, not the `group` object identity —
+    // `group` is rebuilt every render (memoized only per watch-list change),
+    // so keying off it directly would refetch on every unrelated re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchIdsKey]);
 
   if (!series) return <div className="h-40 flex items-center justify-center text-zinc-600 text-sm">Caricamento storico…</div>;
 
@@ -81,24 +86,35 @@ function KeywordChart({ group }: { group: KeywordGroup }) {
 export default function RedcareTrackedKeywords({ refreshKey }: Props) {
   const [watches, setWatches] = useState<MarketingKeywordWatch[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
-    const { watches: list } = await api.marketingRedcare.listWatches();
-    setWatches(list);
+    try {
+      const { watches: list } = await api.marketingRedcare.listWatches();
+      setWatches(list);
+      setError(null);
+    } catch {
+      setError("Impossibile caricare le keyword monitorate in questo momento.");
+    }
   };
 
   useEffect(() => { load(); }, [refreshKey]);
 
   const remove = async (id: string) => {
-    await api.marketingRedcare.deleteWatch(id);
-    await load();
+    try {
+      await api.marketingRedcare.deleteWatch(id);
+      await load();
+    } catch {
+      setError("Impossibile rimuovere questa keyword in questo momento.");
+    }
   };
 
-  const groups = groupByKeyword(watches);
+  const groups = useMemo(() => groupByKeyword(watches), [watches]);
 
   return (
     <div className="bg-bg-card border border-bg-border rounded-xl p-5">
       <h3 className="text-sm font-semibold text-white mb-4">Keyword monitorate</h3>
+      {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
       {groups.length === 0 ? (
         <p className="text-sm text-zinc-600">Nessuna keyword monitorata — traccia un risultato dalla ricerca qui sopra.</p>
       ) : (
