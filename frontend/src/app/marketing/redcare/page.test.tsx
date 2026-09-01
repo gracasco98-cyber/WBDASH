@@ -1,0 +1,85 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import RedcareKeywordBiPage from "./page";
+
+const searchMock = vi.fn();
+const createWatchMock = vi.fn();
+const listWatchesMock = vi.fn();
+
+vi.mock("@/lib/api", () => ({
+  api: {
+    marketingRedcare: {
+      search: (...args: unknown[]) => searchMock(...args),
+      createWatch: (...args: unknown[]) => createWatchMock(...args),
+      listWatches: (...args: unknown[]) => listWatchesMock(...args),
+      watchHistory: vi.fn().mockResolvedValue({ snapshots: [] }),
+      deleteWatch: vi.fn().mockResolvedValue(undefined),
+    },
+  },
+}));
+
+describe("RedcareKeywordBiPage", () => {
+  beforeEach(() => {
+    searchMock.mockReset();
+    createWatchMock.mockReset();
+    listWatchesMock.mockReset();
+    listWatchesMock.mockResolvedValue({ watches: [] });
+  });
+
+  it("searches a keyword and shows the ranked results table", async () => {
+    searchMock.mockResolvedValue({
+      market: "IT", keyword: "diosmina esperidina", nbHits: 29,
+      hits: [
+        { position: 1, ean: "8057808520034", productName: "Deiscente VENAVIL", price: 11.9, sellerName: "NATURPLAN", sellerType: "MIRAKL", promoted: null, promotedByReRanking: null },
+      ],
+    });
+
+    render(<RedcareKeywordBiPage />);
+    await userEvent.type(screen.getByPlaceholderText(/cerca una keyword/i), "diosmina esperidina");
+    await userEvent.click(screen.getByRole("button", { name: /cerca/i }));
+
+    await waitFor(() => expect(searchMock).toHaveBeenCalledWith("IT", "diosmina esperidina"));
+    expect(await screen.findByText("Deiscente VENAVIL")).toBeInTheDocument();
+    expect(screen.getByText("NATURPLAN")).toBeInTheDocument();
+  });
+
+  it("tracks a result row as own product and refreshes the tracked list", async () => {
+    searchMock.mockResolvedValue({
+      market: "IT", keyword: "diosmina esperidina", nbHits: 1,
+      hits: [
+        { position: 1, ean: "8057808520034", productName: "Deiscente VENAVIL", price: 11.9, sellerName: "NATURPLAN", sellerType: "MIRAKL", promoted: null, promotedByReRanking: null },
+      ],
+    });
+    createWatchMock.mockResolvedValue({});
+
+    render(<RedcareKeywordBiPage />);
+    await userEvent.type(screen.getByPlaceholderText(/cerca una keyword/i), "diosmina esperidina");
+    await userEvent.click(screen.getByRole("button", { name: /cerca/i }));
+    await screen.findByText("Deiscente VENAVIL");
+
+    // Two track buttons render per row ("mio" / "competitor") — match the
+    // specific one, since a bare /traccia/i would match both ambiguously.
+    await userEvent.click(screen.getByRole("button", { name: /traccia \(mio\)/i }));
+
+    await waitFor(() => expect(createWatchMock).toHaveBeenCalledWith({
+      market: "IT", keyword: "diosmina esperidina", ean: "8057808520034", label: undefined, isOwn: true,
+    }));
+    // listWatches is called once on mount, once again after tracking
+    await waitFor(() => expect(listWatchesMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("renders tracked watches with their latest position", async () => {
+    listWatchesMock.mockResolvedValue({
+      watches: [{
+        id: "w1", market: "IT", keyword: "diosmina esperidina", ean: "8057808520034",
+        label: null, isOwn: true, active: true, createdAt: "2026-08-31T00:00:00Z",
+        latestSnapshot: { id: "s1", watchId: "w1", checkedAt: "2026-08-31T03:00:00Z", found: true, position: 1, nbHits: 29, price: 11.9, sellerName: "NATURPLAN", productName: "Deiscente VENAVIL", promoted: null, promotedByReRanking: null },
+      }],
+    });
+
+    render(<RedcareKeywordBiPage />);
+    expect(await screen.findByText("diosmina esperidina")).toBeInTheDocument();
+    expect(screen.getByText("#1")).toBeInTheDocument();
+  });
+});
