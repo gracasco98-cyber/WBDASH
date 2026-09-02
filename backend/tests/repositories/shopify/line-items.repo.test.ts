@@ -179,6 +179,23 @@ describe("groupLineItemsByProduct", () => {
     expect(productX!._sum.lineTotal).toBe(50);
   });
 
+  it("excludes line items belonging to Shopify test orders", async () => {
+    const orderId = await seedOrder();
+    await db.prisma.shopifyOrder.update({ where: { id: orderId }, data: { isTest: true } });
+    await db.prisma.orderLineItem.create({
+      data: {
+        shopifyLineItemId: "test-001", orderId, shopifyProductId: "prod-test",
+        productTitle: "Test product", quantity: 9, unitPrice: 10, originalUnitPrice: 10,
+        lineTotal: 90, currency: "EUR", marketplace: "REDCARE_IT",
+        orderDate: new Date("2026-04-10T09:00:00Z"),
+      },
+    });
+    const groups = await groupLineItemsByProduct(db.prisma, {
+      from: new Date("2026-04-10T00:00:00Z"), to: new Date("2026-04-10T23:59:59Z"),
+    });
+    expect(groups).toHaveLength(0);
+  });
+
   it("filters by marketplace", async () => {
     const orderId = await seedOrder();
     await db.prisma.orderLineItem.createMany({

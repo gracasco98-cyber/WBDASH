@@ -29,7 +29,7 @@ const mockGet = vi.fn(async (_params: unknown) => ({
 }));
 const mockProducts = vi.fn(async (_params: unknown) => ({
   products: [{ grossRevenue: 40, unitsSold: 2 }],
-  kpis: { totalNet: 35 },
+  kpis: { totalGross: 40, totalNet: 35 },
 }));
 vi.mock("@/lib/api", () => ({
   api: {

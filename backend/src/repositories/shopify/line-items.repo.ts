@@ -80,6 +80,7 @@ export async function groupLineItemsForSnapshot(
     by: ["shopifyProductId", "marketplace"],
     where: {
       orderDate: { gte: params.from, lte: params.to },
+      order: { isTest: false },
     },
     _sum: {
       quantity: true,
@@ -151,6 +152,9 @@ function buildLineItemWhere(
 ): Prisma.OrderLineItemWhereInput {
   const where: Prisma.OrderLineItemWhereInput = {
     orderDate: { gte: params.from, lte: params.to },
+    // Product totals must use the same population as /api/products KPIs:
+    // Shopify test orders are excluded from all business metrics.
+    order: { isTest: false },
   };
 
   if (params.marketplace) where.marketplace = params.marketplace;

@@ -145,7 +145,10 @@ export default function PeriodTiles() {
               ...(shopifyMarketplace ? { marketplace: shopifyMarketplace } : {}),
             });
             return [preset, {
-              sales: products.reduce((s, p) => s + p.grossRevenue, 0),
+              // Use the order-level KPI for revenue so the card includes the
+              // same Shopify/Redcare population as the dashboard summary
+              // (shipping/discount adjustments and test-order exclusion).
+              sales: kpis.totalGross,
               units: products.reduce((s, p) => s + p.unitsSold, 0),
               netProfit: kpis.totalNet,
             }] as const;

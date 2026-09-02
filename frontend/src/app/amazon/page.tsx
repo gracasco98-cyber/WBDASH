@@ -14,6 +14,7 @@ import {
 import { fmtEur, fmtNum } from "@/lib/fmt";
 import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
 import { isAmazonChannel, amazonChannelCode } from "@/components/dashboard/FilterBar";
+import { getDateRangeForPreset } from "@/lib/periodUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -727,6 +728,13 @@ export default function AmazonOverviewPage() {
     if (marketplace !== "all") p.marketplace = marketplace;
     if (period === "custom") {
       p.filter = "custom"; p.from = customFrom; p.to = customTo;
+    } else if (period === "last7" || period === "last30") {
+      // Use the same Italy-calendar day boundaries as the Dashboard period
+      // tiles. The backend's rolling `last7/last30` windows can include a
+      // different partial day, making Amazon totals disagree with Dashboard.
+      const range = getDateRangeForPreset(period);
+      p.filter = "custom";
+      if (range) { p.from = range.from; p.to = range.to; }
     } else {
       p.filter = period;
     }

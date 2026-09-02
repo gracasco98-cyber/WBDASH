@@ -51,8 +51,10 @@ router.get("/", async (req: Request, res: Response) => {
     type DistinctOrderRow = { shopifyProductId: string; marketplace: string; distinctOrders: bigint | number };
     const distinctOrdersRaw = await prisma.$queryRaw<DistinctOrderRow[]>`
       SELECT "shopifyProductId", marketplace, COUNT(DISTINCT "orderId")::INTEGER AS "distinctOrders"
-      FROM "OrderLineItem"
+      FROM "OrderLineItem" oli
+      JOIN "ShopifyOrder" so ON so.id = oli."orderId"
       WHERE "orderDate" >= ${dateFrom}::timestamp AND "orderDate" <= ${dateTo}::timestamp
+        AND so."isTest" = false
       GROUP BY "shopifyProductId", marketplace
     `;
     const distinctMap = new Map<string, number>();
