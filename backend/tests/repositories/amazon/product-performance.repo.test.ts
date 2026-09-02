@@ -57,6 +57,34 @@ describe("resolveProductPerformance", () => {
     });
   });
 
+  it("excludes cancelled Amazon orders from dashboard revenue and units", async () => {
+    await runWithAccount(accountId, async () => {
+      const { product } = await seedOneProductWithSales();
+      await db.prisma.amazonOrder.create({
+        data: {
+          amazonAccountId: accountId, amazonOrderId: "O-CANCELLED",
+          purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"),
+          orderStatus: "Canceled", marketplace: "IT",
+        },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: {
+          amazonAccountId: accountId, amazonOrderId: "O-CANCELLED", orderItemId: "I-CANCELLED",
+          asin: "B0ABC123", sku: "SKU-RSV-01", productTitle: "Resveratrolo 500mg", marketplace: "IT",
+          quantityOrdered: 99, quantityShipped: 0, itemPrice: 9999, itemTax: 0, promotionDiscount: 0,
+          purchaseDate: new Date("2026-08-01"),
+        } as any,
+      });
+
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const group = groups.find((g) => g.product.id === product.id)!;
+      expect(group.aggregate.units).toBe(10);
+      expect(group.aggregate.sales).toBe(200);
+    });
+  });
+
   it("computes units from quantityOrdered, not quantityShipped (report ingestion never populates quantityShipped)", async () => {
     await runWithAccount(accountId, async () => {
       // Real Amazon Orders report ingestion (ingest.service.ts) has no
