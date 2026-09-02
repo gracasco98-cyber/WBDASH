@@ -75,4 +75,6 @@ export const marketingRedcare = {
     get<{ snapshots: MarketingKeywordSnapshot[] }>(`/api/marketing/redcare/watches/${id}/history`, { days: String(days) }),
 
   deleteWatch: (id: string) => del(`/api/marketing/redcare/watches/${id}`),
+
+  runNow: () => post<{ status: string }>("/api/marketing/redcare/run-now", {}),
 };

@@ -7,6 +7,7 @@ import { logError } from "../services/shopify.service";
 import {
   createOrReactivateWatch, findActiveWatches, deactivateWatch, findLatestSnapshot, findSnapshotHistory,
 } from "../repositories/marketing/redcareWatch.repo";
+import { runRedcareKeywordTracking } from "../jobs/redcareKeywordTracking.job";
 
 const router = Router();
 const VALID_MARKETS = ["IT", "DE"];
@@ -81,6 +82,14 @@ router.delete("/watches/:id", async (req: Request, res: Response) => {
     await logError("marketing-redcare-delete-watch", err, { watchId: req.params.id });
     res.status(500).json({ error: "Impossibile rimuovere la keyword monitorata." });
   }
+});
+
+// Manual "run now" trigger for the daily tracking job — same fire-and-forget
+// pattern as POST /api/stats/sync: respond immediately, run in the
+// background, so a slow/large run of the job never ties up the request.
+router.post("/run-now", async (_req: Request, res: Response) => {
+  res.json({ status: "started" });
+  runRedcareKeywordTracking().catch((err) => logError("marketing-redcare-run-now", err));
 });
 
 export default router;

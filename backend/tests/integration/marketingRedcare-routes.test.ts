@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import express, { Express } from "express";
 import request from "supertest";
 import { setupServer } from "msw/node";
@@ -88,5 +88,29 @@ describe("watches CRUD + history", () => {
     const res = await request(app).get(`/api/marketing/redcare/watches/${create.body.id}/history`);
     expect(res.status).toBe(200);
     expect(res.body.snapshots).toEqual([]);
+  });
+});
+
+describe("POST /api/marketing/redcare/run-now", () => {
+  it("responds immediately with status=started and runs the tracking job in the background", async () => {
+    const create = await request(app).post("/api/marketing/redcare/watches")
+      .send({ market: "IT", keyword: "diosmina esperidina", ean: "8057808520034", isOwn: true });
+    const watchId = create.body.id;
+
+    server.use(redcareSearchMocks.searchPage("IT", "products_mktplc_prod_IT_it", [
+      { ean: "8057808520034", productName: "Deiscente VENAVIL", price: 1190, best_offer: { seller: { name: "NATURPLAN" }, type: "MIRAKL" }, _rankingInfo: {} },
+    ], 1));
+
+    const res = await request(app).post("/api/marketing/redcare/run-now");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: "started" });
+
+    // The job runs async (not awaited by the route, same pattern as
+    // POST /api/stats/sync) — poll briefly for the snapshot it writes.
+    await vi.waitFor(async () => {
+      const history = await request(app).get(`/api/marketing/redcare/watches/${watchId}/history`);
+      expect(history.body.snapshots).toHaveLength(1);
+      expect(history.body.snapshots[0]).toMatchObject({ found: true, position: 1 });
+    }, { timeout: 2000 });
   });
 });
