@@ -43,14 +43,14 @@ describe("RedcareKeywordBiPage", () => {
 
     render(<RedcareKeywordBiPage />);
     await userEvent.type(screen.getByPlaceholderText(/cerca una keyword/i), "diosmina esperidina");
-    await userEvent.click(screen.getByRole("button", { name: /cerca/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Cerca" }));
 
     await waitFor(() => expect(searchMock).toHaveBeenCalledWith("IT", "diosmina esperidina"));
     expect(await screen.findByText("Deiscente VENAVIL")).toBeInTheDocument();
     expect(screen.getByText("NATURPLAN")).toBeInTheDocument();
   });
 
-  it("tracks a result row as own product and refreshes the tracked list", async () => {
+  it("tracks a result row as own product from Cerebro, then shows it under Keyword Tracker once that tab is opened", async () => {
     searchMock.mockResolvedValue({
       market: "IT", keyword: "diosmina esperidina", nbHits: 1,
       hits: [
@@ -61,7 +61,7 @@ describe("RedcareKeywordBiPage", () => {
 
     render(<RedcareKeywordBiPage />);
     await userEvent.type(screen.getByPlaceholderText(/cerca una keyword/i), "diosmina esperidina");
-    await userEvent.click(screen.getByRole("button", { name: /cerca/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Cerca" }));
     await screen.findByText("Deiscente VENAVIL");
 
     // Two track buttons render per row ("mio" / "competitor") — match the
@@ -71,11 +71,15 @@ describe("RedcareKeywordBiPage", () => {
     await waitFor(() => expect(createWatchMock).toHaveBeenCalledWith({
       market: "IT", keyword: "diosmina esperidina", ean: "8057808520034", label: undefined, isOwn: true,
     }));
-    // listWatches is called once on mount, once again after tracking
-    await waitFor(() => expect(listWatchesMock).toHaveBeenCalledTimes(2));
+
+    // Keyword Tracker isn't mounted while on Cerebro, so listWatches hasn't
+    // fired yet — switching tabs is what triggers its first load.
+    expect(listWatchesMock).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: /keyword tracker/i }));
+    await waitFor(() => expect(listWatchesMock).toHaveBeenCalledTimes(1));
   });
 
-  it("renders tracked watches with their latest position", async () => {
+  it("renders tracked watches with their latest position under the Keyword Tracker tab", async () => {
     listWatchesMock.mockResolvedValue({
       watches: [{
         id: "w1", market: "IT", keyword: "diosmina esperidina", ean: "8057808520034",
@@ -85,6 +89,8 @@ describe("RedcareKeywordBiPage", () => {
     });
 
     render(<RedcareKeywordBiPage />);
+    await userEvent.click(screen.getByRole("button", { name: /keyword tracker/i }));
+
     expect(await screen.findByText("Deiscente VENAVIL")).toBeInTheDocument();
     // "#1" renders twice for a single-keyword product: the group header's
     // best-position badge, and that one keyword's own row.

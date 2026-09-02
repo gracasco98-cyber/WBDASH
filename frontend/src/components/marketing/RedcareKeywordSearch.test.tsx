@@ -24,6 +24,12 @@ const HIT = {
   sellerType: "MIRAKL",
   promoted: null,
   promotedByReRanking: null,
+  brand: "NATURPLAN",
+  rating: 4.5,
+  ratingCount: 12,
+  inStock: true,
+  category: "Benessere > Sistema Cardiovascolare > Gambe Pesanti",
+  sellerCount: 1,
 };
 
 describe("RedcareKeywordSearch", () => {
@@ -78,5 +84,43 @@ describe("RedcareKeywordSearch", () => {
     render(<RedcareKeywordSearch onTracked={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /traccia/i })).not.toBeInTheDocument();
     expect(mockCreateWatch).not.toHaveBeenCalled();
+  });
+
+  it("shows the real market-opportunity fields returned by the API (category, rating, stock)", async () => {
+    const user = userEvent.setup();
+    mockSearch.mockResolvedValueOnce({ market: "IT", keyword: "diosmina esperidina", nbHits: 1, hits: [HIT] });
+    render(<RedcareKeywordSearch onTracked={vi.fn()} />);
+
+    await user.type(screen.getByPlaceholderText(/cerca una keyword/i), "diosmina esperidina");
+    await user.click(screen.getByRole("button", { name: /cerca/i }));
+
+    expect(await screen.findByText("Benessere > Sistema Cardiovascolare > Gambe Pesanti")).toBeInTheDocument();
+    expect(screen.getByText("4.5")).toBeInTheDocument();
+    expect(screen.getByText("(12)")).toBeInTheDocument();
+    expect(screen.getByText("Disponibile")).toBeInTheDocument();
+  });
+
+  it("re-sorts the results table by price when the Prezzo column header is clicked", async () => {
+    const user = userEvent.setup();
+    const cheap = { ...HIT, position: 3, ean: "111", productName: "Cheap", price: 5 };
+    const expensive = { ...HIT, position: 1, ean: "222", productName: "Expensive", price: 50 };
+    mockSearch.mockResolvedValueOnce({ market: "IT", keyword: "x", nbHits: 2, hits: [expensive, cheap] });
+
+    render(<RedcareKeywordSearch onTracked={vi.fn()} />);
+    await user.type(screen.getByPlaceholderText(/cerca una keyword/i), "x");
+    await user.click(screen.getByRole("button", { name: /cerca/i }));
+    await screen.findByText("Expensive");
+
+    // Default order is by position: Expensive (#1) before Cheap (#3).
+    let rows = screen.getAllByRole("row").slice(1); // drop header row
+    expect(rows[0]).toHaveTextContent("Expensive");
+    expect(rows[1]).toHaveTextContent("Cheap");
+
+    await user.click(screen.getByRole("button", { name: /prezzo/i }));
+
+    // Ascending price: Cheap (€5) before Expensive (€50).
+    rows = screen.getAllByRole("row").slice(1);
+    expect(rows[0]).toHaveTextContent("Cheap");
+    expect(rows[1]).toHaveTextContent("Expensive");
   });
 });

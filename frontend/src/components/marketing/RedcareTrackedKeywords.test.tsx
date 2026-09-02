@@ -105,7 +105,7 @@ describe("RedcareTrackedKeywords", () => {
     });
 
     render(<RedcareTrackedKeywords refreshKey={0} />);
-    await screen.findByText("Prodotti monitorati");
+    await screen.findByTestId("tile-Prodotti monitorati");
 
     expect(screen.getByTestId("tile-Prodotti monitorati")).toHaveTextContent("2"); // distinct EANs: 111, 222
     expect(screen.getByTestId("tile-Keyword monitorate")).toHaveTextContent("3"); // total watches
@@ -117,7 +117,7 @@ describe("RedcareTrackedKeywords", () => {
   it("shows a dash placeholder for average position and last check when nothing has a snapshot yet", async () => {
     listWatchesMock.mockResolvedValue({ watches: [watch({ id: "w1", ean: "111", keyword: "kw1", latestSnapshot: null })] });
     render(<RedcareTrackedKeywords refreshKey={0} />);
-    await screen.findByText("Prodotti monitorati");
+    await screen.findByTestId("tile-Prodotti monitorati");
     expect(screen.getByTestId("tile-Posizione media")).toHaveTextContent("—");
     expect(screen.getByTestId("tile-Ultimo controllo")).toHaveTextContent("—");
   });

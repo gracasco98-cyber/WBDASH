@@ -10,18 +10,24 @@ afterAll(() => server.close());
 afterEach(() => server.resetHandlers());
 
 describe("fetchSearchResults", () => {
-  it("parses hits in position order, converts price from cents to euro, and carries seller/ranking info", async () => {
+  it("parses hits in position order, converts price from cents to euro, and carries seller/ranking/market-opportunity info", async () => {
     server.use(
       redcareSearchMocks.searchPage("IT", "products_mktplc_prod_IT_it", [
         {
           ean: "8057808520034", productName: "Deiscente VENAVIL", price: 1190,
           best_offer: { seller: { name: "NATURPLAN" }, type: "MIRAKL" },
           _rankingInfo: { promoted: null, promotedByReRanking: null },
+          brand: "NATURPLAN", averageRating: 4.5, ratingCount: 12, inStock: true,
+          mainCategory: { lvl0: "redcare.it", lvl1: "Benessere", lvl2: "Sistema Cardiovascolare", lvl3: "Gambe Pesanti" },
+          seller_count: 1,
         },
         {
           ean: "8054346340155", productName: "Diosmina Esperidina VitaminPure", price: 1990,
           best_offer: { seller: { name: "VitaminPure" }, type: "OTHER" },
           _rankingInfo: { promoted: true, promotedByReRanking: true },
+          brand: "VitaminPure", averageRating: 4.8, ratingCount: 8, inStock: false,
+          mainCategory: { lvl0: "redcare.it", lvl1: "Integratori", lvl2: "Integratori Concentrazione e Memoria" },
+          seller_count: 2,
         },
       ], 29),
     );
@@ -35,8 +41,25 @@ describe("fetchSearchResults", () => {
       position: 1, ean: "8057808520034", productName: "Deiscente VENAVIL",
       price: 11.9, sellerName: "NATURPLAN", sellerType: "MIRAKL",
       promoted: null, promotedByReRanking: null,
+      brand: "NATURPLAN", rating: 4.5, ratingCount: 12, inStock: true,
+      category: "Benessere > Sistema Cardiovascolare > Gambe Pesanti", sellerCount: 1,
     });
-    expect(result.hits[1]).toMatchObject({ position: 2, promoted: true, promotedByReRanking: true });
+    expect(result.hits[1]).toMatchObject({
+      position: 2, promoted: true, promotedByReRanking: true,
+      category: "Integratori > Integratori Concentrazione e Memoria", inStock: false, sellerCount: 2,
+    });
+  });
+
+  it("defaults market-opportunity fields to null when the hit doesn't have them, and joins a partial category path", async () => {
+    server.use(
+      redcareSearchMocks.searchPage("IT", "products_mktplc_prod_IT_it", [
+        { ean: "1", productName: "Bare hit", price: 500, mainCategory: { lvl0: "redcare.it", lvl1: "Solo" } },
+      ], 1),
+    );
+    const result = await fetchSearchResults("IT", "x");
+    expect(result.hits[0]).toMatchObject({
+      brand: null, rating: null, ratingCount: null, inStock: null, sellerCount: null, category: "Solo",
+    });
   });
 
   it("uses the DE domain and index when market=DE", async () => {

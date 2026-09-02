@@ -12,6 +12,12 @@ export interface RedcareSearchHit {
   sellerType: string | null;
   promoted: boolean | null;
   promotedByReRanking: boolean | null;
+  brand: string | null;
+  rating: number | null;
+  ratingCount: number | null;
+  inStock: boolean | null;
+  category: string | null;
+  sellerCount: number | null;
 }
 
 export interface RedcareSearchResult {

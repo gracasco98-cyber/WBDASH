@@ -25,6 +25,16 @@ export interface RedcareSearchHit {
   sellerType: string | null; // e.g. "MIRAKL" for offers placed through Mirakl
   promoted: boolean | null; // Algolia AI ReRanking signal — NOT "paid ad"
   promotedByReRanking: boolean | null;
+  // Market-opportunity fields — real, present on the live hit, but only for
+  // the CURRENT keyword search: they are never persisted to a snapshot (the
+  // daily job only stores position/price/seller, see redcareWatch.repo.ts),
+  // so they exist solely for the live "Cerebro" search view, not history.
+  brand: string | null;
+  rating: number | null; // averageRating, 0-5
+  ratingCount: number | null;
+  inStock: boolean | null;
+  category: string | null; // mainCategory lvl1>lvl2>lvl3 joined, lvl0 (site name) dropped
+  sellerCount: number | null; // distinct sellers competing for this exact listing
 }
 
 export interface RedcareSearchResult {
@@ -46,6 +56,15 @@ const MARKET_CONFIG: Record<RedcareMarket, MarketConfig> = {
 
 const BLOB_MARKER = 'window[Symbol.for("InstantSearchInitialResults")] = ';
 
+function joinCategory(mainCategory: any): string | null {
+  if (!mainCategory || typeof mainCategory !== "object") return null;
+  // lvl0 is always the site name (e.g. "redcare.it") — not a real category level.
+  const levels = [mainCategory.lvl1, mainCategory.lvl2, mainCategory.lvl3].filter(
+    (l): l is string => typeof l === "string" && l.length > 0
+  );
+  return levels.length ? levels.join(" > ") : null;
+}
+
 function extractHit(raw: any, position: number): RedcareSearchHit {
   return {
     position,
@@ -56,6 +75,12 @@ function extractHit(raw: any, position: number): RedcareSearchHit {
     sellerType: raw.best_offer?.type ?? null,
     promoted: raw._rankingInfo?.promoted ?? null,
     promotedByReRanking: raw._rankingInfo?.promotedByReRanking ?? null,
+    brand: raw.brand ?? null,
+    rating: typeof raw.averageRating === "number" ? raw.averageRating : null,
+    ratingCount: typeof raw.ratingCount === "number" ? raw.ratingCount : null,
+    inStock: typeof raw.inStock === "boolean" ? raw.inStock : null,
+    category: joinCategory(raw.mainCategory),
+    sellerCount: typeof raw.seller_count === "number" ? raw.seller_count : null,
   };
 }
 

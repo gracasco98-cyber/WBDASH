@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type MarketingKeywordWatch, type MarketingKeywordSnapshot } from "@/lib/api";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { PositionBadge } from "./PositionBadge";
 
 interface Props {
   refreshKey: number;
@@ -191,7 +192,7 @@ export default function RedcareTrackedKeywords({ refreshKey }: Props) {
                     <span className="text-[11px] text-zinc-600">{group.watches.length} keyword</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-zinc-400 tabular-nums text-sm">{best !== null ? `#${best}` : "non in classifica"}</span>
+                    <PositionBadge position={best} />
                     {isOpen ? <ChevronUp size={16} className="text-zinc-500" /> : <ChevronDown size={16} className="text-zinc-500" />}
                   </div>
                 </button>
@@ -200,9 +201,7 @@ export default function RedcareTrackedKeywords({ refreshKey }: Props) {
                     <div key={w.id} className="flex items-center justify-between text-sm">
                       <span className="text-zinc-400">{w.keyword}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-zinc-400 tabular-nums">
-                          {w.latestSnapshot?.found ? `#${w.latestSnapshot.position}` : "non in classifica"}
-                        </span>
+                        <PositionBadge position={foundPosition(w)} />
                         <button
                           onClick={() => remove(w.id)}
                           aria-label={`Rimuovi ${w.keyword}`}
