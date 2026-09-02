@@ -8,31 +8,47 @@ interface Props {
   refreshKey: number;
 }
 
-interface KeywordGroup {
+// Grouped by product (market+ean) rather than by keyword: a product tracked
+// on several keywords is one row that expands to its keyword list, instead
+// of the same product scattered across separate keyword rows — this is the
+// "pick a product, manage its keywords" flow the flat keyword-first layout
+// couldn't support.
+interface ProductGroup {
   market: string;
-  keyword: string;
-  watches: MarketingKeywordWatch[];
+  ean: string;
+  label: string;
+  isOwn: boolean;
+  watches: MarketingKeywordWatch[]; // one per keyword tracked for this product
 }
 
-function groupByKeyword(watches: MarketingKeywordWatch[]): KeywordGroup[] {
-  const map = new Map<string, KeywordGroup>();
+function productLabel(watches: MarketingKeywordWatch[]): string {
+  return watches.find((w) => w.label)?.label ?? watches[0].ean;
+}
+
+function groupByProduct(watches: MarketingKeywordWatch[]): ProductGroup[] {
+  const map = new Map<string, ProductGroup>();
   for (const w of watches) {
-    const key = `${w.market}::${w.keyword}`;
-    const group = map.get(key) ?? { market: w.market, keyword: w.keyword, watches: [] };
+    const key = `${w.market}::${w.ean}`;
+    const group = map.get(key) ?? { market: w.market, ean: w.ean, label: "", isOwn: w.isOwn, watches: [] };
     group.watches.push(w);
     map.set(key, group);
   }
+  for (const group of map.values()) group.label = productLabel(group.watches);
   return Array.from(map.values());
 }
 
-function watchLabel(w: MarketingKeywordWatch): string {
-  if (w.isOwn) return "Il tuo prodotto";
-  return w.label ?? "Competitor";
+function foundPosition(w: MarketingKeywordWatch): number | null {
+  return w.latestSnapshot?.found ? w.latestSnapshot.position : null;
+}
+
+function bestPosition(watches: MarketingKeywordWatch[]): number | null {
+  const positions = watches.map(foundPosition).filter((p): p is number => p !== null);
+  return positions.length ? Math.min(...positions) : null;
 }
 
 const LINE_COLORS = ["#6ee7b7", "#fbbf24", "#f472b6", "#93c5fd", "#c4b5fd"];
 
-function KeywordChart({ group }: { group: KeywordGroup }) {
+function ProductChart({ group }: { group: ProductGroup }) {
   const [series, setSeries] = useState<Record<string, MarketingKeywordSnapshot[]> | null>(null);
   const watchIdsKey = group.watches.map((w) => w.id).join(",");
 
@@ -74,12 +90,49 @@ function KeywordChart({ group }: { group: KeywordGroup }) {
         <XAxis dataKey="date" tick={{ fill: "#71717a", fontSize: 10 }} axisLine={false} tickLine={false} />
         <YAxis reversed tick={{ fill: "#71717a", fontSize: 10 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
         <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", fontSize: 12 }} />
-        <Legend wrapperStyle={{ fontSize: 11 }} formatter={(_value, _entry, index) => watchLabel(group.watches[index as number])} />
+        <Legend wrapperStyle={{ fontSize: 11 }} formatter={(_value, _entry, index) => group.watches[index as number].keyword} />
         {group.watches.map((w, i) => (
           <Line key={w.id} dataKey={w.id} name={w.id} stroke={LINE_COLORS[i % LINE_COLORS.length]} dot={{ r: 2 }} />
         ))}
       </LineChart>
     </ResponsiveContainer>
+  );
+}
+
+function SummaryTiles({ watches }: { watches: MarketingKeywordWatch[] }) {
+  const productCount = new Set(watches.map((w) => `${w.market}::${w.ean}`)).size;
+  const keywordCount = watches.length;
+  const positions = watches.map(foundPosition).filter((p): p is number => p !== null);
+  const avgPosition = positions.length ? positions.reduce((a, b) => a + b, 0) / positions.length : null;
+  const lastChecked = watches
+    .map((w) => w.latestSnapshot?.checkedAt)
+    .filter((d): d is string => !!d)
+    .sort()
+    .at(-1);
+
+  const tiles: { label: string; value: string }[] = [
+    { label: "Prodotti monitorati", value: String(productCount) },
+    { label: "Keyword monitorate", value: String(keywordCount) },
+    { label: "Posizione media", value: avgPosition !== null ? `#${avgPosition.toFixed(1)}` : "—" },
+    {
+      label: "Ultimo controllo",
+      value: lastChecked
+        ? new Date(lastChecked).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+        : "—",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      {tiles.map((t) => (
+        <div key={t.label} className="bg-bg-elevated border border-bg-border rounded-lg p-3">
+          <div className="text-[11px] text-zinc-500 mb-1">{t.label}</div>
+          <div className="text-lg font-semibold text-white tabular-nums" data-testid={`tile-${t.label}`}>
+            {t.value}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -94,7 +147,7 @@ export default function RedcareTrackedKeywords({ refreshKey }: Props) {
       setWatches(list);
       setError(null);
     } catch {
-      setError("Impossibile caricare le keyword monitorate in questo momento.");
+      setError("Impossibile caricare i prodotti monitorati in questo momento.");
     }
   };
 
@@ -109,40 +162,52 @@ export default function RedcareTrackedKeywords({ refreshKey }: Props) {
     }
   };
 
-  const groups = useMemo(() => groupByKeyword(watches), [watches]);
+  const groups = useMemo(() => groupByProduct(watches), [watches]);
 
   return (
     <div className="bg-bg-card border border-bg-border rounded-xl p-5">
-      <h3 className="text-sm font-semibold text-white mb-4">Keyword monitorate</h3>
+      <h3 className="text-sm font-semibold text-white mb-4">Prodotti monitorati</h3>
       {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
+      {watches.length > 0 && <SummaryTiles watches={watches} />}
       {groups.length === 0 ? (
-        <p className="text-sm text-zinc-600">Nessuna keyword monitorata — traccia un risultato dalla ricerca qui sopra.</p>
+        <p className="text-sm text-zinc-600">
+          Nessun prodotto monitorato — traccia un risultato dalla ricerca qui sopra, o aggiungine uno manualmente.
+        </p>
       ) : (
         <div className="space-y-3">
           {groups.map((group) => {
-            const key = `${group.market}::${group.keyword}`;
+            const key = `${group.market}::${group.ean}`;
             const isOpen = expanded === key;
+            const best = bestPosition(group.watches);
             return (
               <div key={key} className="border border-bg-border rounded-lg">
                 <button
                   onClick={() => setExpanded(isOpen ? null : key)}
                   className="w-full flex items-center justify-between px-3 py-2.5 text-left"
                 >
-                  <div>
-                    <span className="text-sm text-white">{group.keyword}</span>
-                    <span className="text-[11px] text-zinc-500 ml-2">{group.market}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm ${group.isOwn ? "text-accent-primary" : "text-zinc-300"}`}>{group.label}</span>
+                    <span className="text-[11px] text-zinc-500">{group.market}</span>
+                    <span className="text-[11px] text-zinc-600">{group.watches.length} keyword</span>
                   </div>
-                  {isOpen ? <ChevronUp size={16} className="text-zinc-500" /> : <ChevronDown size={16} className="text-zinc-500" />}
+                  <div className="flex items-center gap-3">
+                    <span className="text-zinc-400 tabular-nums text-sm">{best !== null ? `#${best}` : "non in classifica"}</span>
+                    {isOpen ? <ChevronUp size={16} className="text-zinc-500" /> : <ChevronDown size={16} className="text-zinc-500" />}
+                  </div>
                 </button>
                 <div className="px-3 pb-2.5 space-y-1">
                   {group.watches.map((w) => (
                     <div key={w.id} className="flex items-center justify-between text-sm">
-                      <span className={w.isOwn ? "text-accent-primary" : "text-zinc-400"}>{watchLabel(w)}</span>
+                      <span className="text-zinc-400">{w.keyword}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-zinc-400 tabular-nums">
                           {w.latestSnapshot?.found ? `#${w.latestSnapshot.position}` : "non in classifica"}
                         </span>
-                        <button onClick={() => remove(w.id)} className="text-zinc-600 hover:text-red-400">
+                        <button
+                          onClick={() => remove(w.id)}
+                          aria-label={`Rimuovi ${w.keyword}`}
+                          className="text-zinc-600 hover:text-red-400"
+                        >
                           <Trash2 size={13} />
                         </button>
                       </div>
@@ -151,7 +216,7 @@ export default function RedcareTrackedKeywords({ refreshKey }: Props) {
                 </div>
                 {isOpen && (
                   <div className="border-t border-bg-border px-3 py-3">
-                    <KeywordChart group={group} />
+                    <ProductChart group={group} />
                   </div>
                 )}
               </div>
