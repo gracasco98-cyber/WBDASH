@@ -32,6 +32,14 @@ function presetDateRange(preset: PeriodPreset): { from: string; to: string } {
   }
 }
 
+function tileDateLabel(preset: PeriodPreset): string {
+  const { from, to } = presetDateRange(preset);
+  const format = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+  if (preset === "today") return `Oggi · ${format(to)}`;
+  if (preset === "yesterday") return `Ieri · ${format(to)}`;
+  return `${format(from)} – ${format(to)}`;
+}
+
 /** Exported for direct unit testing: the hasRealFees / hasRealCogs / hasStockData
  *  flags it computes are not surfaced in this component's UI, so they are
  *  otherwise unobservable. */
@@ -171,18 +179,30 @@ export default function PeriodTiles() {
               active ? "border-accent-primary shadow-sm" : "border-bg-border"
             }`}
           >
-            <div className="px-3.5 py-2.5 border-t-2" style={{ backgroundColor: headerBg, borderTopColor: accent }}>
-              <div className="flex items-center gap-2 font-semibold text-[13px]" style={{ color: accent }}>
+            <div className="px-3.5 py-2.5 border-t-2 border-b border-bg-border/70" style={{ backgroundColor: headerBg, borderTopColor: accent }}>
+              <div className="flex items-center gap-2 font-semibold text-[11px] uppercase tracking-[0.08em]" style={{ color: accent }}>
                 <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/70 border border-white/80">
                   <Icon size={13} strokeWidth={2.2} />
                 </span>
-                {label}
+                <span className="truncate">{tileDateLabel(preset)}</span>
               </div>
             </div>
             <div className="px-3.5 py-3 flex-1 flex flex-col gap-2.5">
-              <div>
-                <div className="text-zinc-500 text-[10px]">Ricavi</div>
-                <div className="text-[19px] font-bold text-white tabular-nums">{hasAny ? fmtEur(combinedSales) : "—"}</div>
+              <div className="rounded-lg border border-bg-border/70 bg-bg-hover/40 px-3 py-2.5">
+                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: accent }}>
+                  <span>Ricavi netti</span>
+                  <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-medium tracking-normal text-zinc-500">—</span>
+                </div>
+                <div className="text-[22px] leading-tight font-bold text-white tabular-nums mt-1">{hasAny ? fmtEur(combinedSales) : "—"}</div>
+                <div className="flex justify-between mt-1 text-[10px] text-zinc-500"><span>{hasAny ? `${totalRow?.refundsCount ?? 0} resi` : "—"}</span><span>{hasAny ? `${combinedUnits} unità` : "—"}</span></div>
+              </div>
+              <div className="px-1">
+                <div className="flex items-center justify-between text-zinc-500 text-[10px] uppercase tracking-[0.08em]"><span>Profitto netto</span><span className="rounded-full bg-bg-hover px-1.5 py-0.5 normal-case tracking-normal">—</span></div>
+                <div className={`text-[16px] font-bold tabular-nums mt-1 ${combinedNetProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}>{hasAny ? fmtEur(combinedNetProfit) : "—"}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 border-t border-bg-border/70 pt-2">
+                <div className="rounded-md border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5"><div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">Costi</div><div className="text-[11px] font-semibold tabular-nums text-zinc-300">{totalRow ? fmtEur(totalRow.amazonFees + totalRow.cogs + (totalRow.adsSpend ?? 0)) : "—"}</div></div>
+                <div className="rounded-md border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5"><div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">VAT</div><div className="text-[11px] font-semibold tabular-nums text-zinc-300">—</div></div>
               </div>
               <div className="grid grid-cols-2 gap-x-2 gap-y-2 text-[11px]">
                 <div>
@@ -200,12 +220,6 @@ export default function PeriodTiles() {
                 <div className="pt-2 border-t border-bg-border">
                   <div className="text-zinc-500 text-[10px]">Payout stimato</div>
                   <div className="text-zinc-300 tabular-nums">{totalRow ? fmtEur(totalRow.estimatedPayout) : "—"}</div>
-                </div>
-                <div>
-                  <div className="text-zinc-500 text-[10px]">Profitto netto</div>
-                  <div className={`font-semibold tabular-nums ${combinedNetProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}>
-                    {hasAny ? fmtEur(combinedNetProfit) : "—"}
-                  </div>
                 </div>
                 <div>
                   <div className="text-zinc-500 text-[10px]">Fee Amazon</div>

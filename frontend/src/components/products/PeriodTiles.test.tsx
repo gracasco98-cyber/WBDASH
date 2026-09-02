@@ -115,10 +115,8 @@ describe("PeriodTiles", () => {
     expect(screen.getByRole("button", { name: /7 giorni/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /14 giorni/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /30 giorni/i })).toBeInTheDocument();
-    // Verify component stays usable with "—" placeholder for all tiles — each
-    // tile now renders 7 fields (Ricavi, Unità, Resi, Ads, Payout stimato,
-    // Profitto netto, Fee Amazon), all falling back to "—" when totalRow is null.
-    expect(screen.getAllByText("—")).toHaveLength(35);
+    // Verify component stays usable with placeholders when one channel fails.
+    expect(screen.getAllByText("—")).toHaveLength(65);
     // Verify error was logged
     await vi.waitFor(() => expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[PeriodTiles] Failed to load period tiles:"), expect.any(Error)));
     consoleErrorSpy.mockRestore();

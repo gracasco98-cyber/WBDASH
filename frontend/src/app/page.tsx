@@ -456,7 +456,18 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-2">
               <SectionBar label="Business Intelligence" visible={sections.bi_overview} onToggle={() => toggleSection("bi_overview")} />
-              {sections.bi_overview && <PeriodTiles />}
+              {sections.bi_overview && (
+                <>
+                  <div className="flex items-end justify-between gap-4 px-1 pb-1">
+                    <div>
+                      <h1 className="text-sm font-semibold tracking-tight text-zinc-100">Confronto periodi</h1>
+                      <p className="mt-0.5 text-[10px] text-zinc-500">Performance commerciale e marginalità a colpo d’occhio</p>
+                    </div>
+                    <div className="hidden sm:block rounded-full border border-bg-border bg-bg-card px-2.5 py-1 text-[10px] text-zinc-500">Dati aggiornati in tempo reale</div>
+                  </div>
+                  <PeriodTiles />
+                </>
+              )}
               {productsBlock}
             </div>
           )
