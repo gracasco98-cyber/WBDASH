@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, ShoppingCart, ShoppingBag, Wallet, Boxes, Megaphone, LifeBuoy, Shield,
+  FileText, ClipboardList, Warehouse, Landmark, CalendarClock, PackageSearch, ReceiptText, Sparkles, LockKeyhole,
   ChevronDown,
 } from "lucide-react";
 
@@ -99,6 +100,28 @@ function isNavItem(item: GroupItem): item is NavItem {
   return "href" in item;
 }
 
+const ITEM_ICONS: Record<string, typeof Wallet> = {
+  "Panoramica": LayoutDashboard,
+  "Overview": LayoutDashboard,
+  "Anagrafiche": FileText,
+  "Ordini Fornitore": ClipboardList,
+  "Ricezioni / DDT": PackageSearch,
+  "Magazzini": Warehouse,
+  "Banche": Landmark,
+  "Condizioni pagamento": ReceiptText,
+  "Scadenzario": CalendarClock,
+  "P&L": Sparkles,
+  "Pagamenti": Wallet,
+  "COGS": ReceiptText,
+  "Magazzino": Boxes,
+  "Advertising": Megaphone,
+  "Intelligence": Sparkles,
+  "Redcare Keyword BI": Sparkles,
+  "Gestione utenti": Shield,
+  "Sync Center": PackageSearch,
+  "Sicurezza": LockKeyhole,
+};
+
 /**
  * "/amazon" (Overview) is a literal string-prefix of every other /amazon/*
  * route across every group (P&L, COGS, PPC, ...), which now live as
@@ -120,7 +143,7 @@ export default function GlobalSidebar() {
   const toggle = (key: string) => setOpenGroups(g => ({ ...g, [key]: !g[key] }));
 
   const linkCls = (active: boolean) => `
-    px-2.5 py-1.5 rounded-lg text-sm transition-all border block
+    flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] transition-all border
     ${active
       ? "bg-accent-primary/10 border-accent-primary/20 text-accent-primary font-medium shadow-sm"
       : "border-transparent text-zinc-500 hover:text-white hover:bg-bg-hover"
@@ -199,8 +222,12 @@ export default function GlobalSidebar() {
                       );
                     }
                     const active = isHrefActive(pathname, item.href);
+                    const ItemIcon = ITEM_ICONS[item.label] ?? FileText;
                     return (
                       <Link key={`${item.href}-${item.label}`} href={item.href} className={linkCls(active)}>
+                        <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${active ? "bg-accent-primary/15 text-accent-primary" : "bg-bg-hover text-zinc-500"}`}>
+                          <ItemIcon size={11} />
+                        </span>
                         {item.label}
                       </Link>
                     );
