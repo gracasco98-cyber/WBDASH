@@ -123,8 +123,17 @@ export default function PeriodTiles() {
       try {
         const results = await Promise.all(
           TILES.map(async ({ preset }) => {
+            // Reuse the exact same browser-resolved from/to the Amazon fetch
+            // above uses (presetDateRange), instead of sending just the
+            // preset name and letting the server resolve "today" on its own
+            // clock — two independently-resolved "today"s can disagree right
+            // at a day boundary, attributing this card's combined profit
+            // figure to the wrong calendar day (see PeriodTiles.test.tsx).
+            const { from, to } = presetDateRange(preset);
             const { products, kpis } = await api.products({
-              filter: preset,
+              filter: "custom",
+              from,
+              to,
               ...(shopifyMarketplace ? { marketplace: shopifyMarketplace } : {}),
             });
             return [preset, {

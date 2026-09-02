@@ -130,6 +130,34 @@ describe("PeriodTiles", () => {
   // date by a day depending on the local timezone offset. It now uses
   // formatDateToIso (local getFullYear/getMonth/getDate), matching the
   // same date math as periodUtils.ts's getDateRangeForPreset.
+  // Root-cause regression for the "profit tiles show data on the wrong day"
+  // report: the Amazon fetch (mockGet) resolves "today"/"yesterday"/etc. in
+  // the BROWSER's local clock via presetDateRange(), then sends explicit
+  // from/to dates. The Shopify/Redcare fetch (mockProducts) used to send only
+  // `filter: preset` and let the SERVER resolve "today" independently at
+  // request time — two separate clocks for the nominally same day, which can
+  // disagree right around a day boundary (or if the browser's system
+  // timezone differs from the server's Italy-offset assumption). Both calls
+  // must be pinned to the exact same from/to for a given preset.
+  it("sends the same explicit from/to to both the Amazon and Shopify/Redcare fetches for every preset", async () => {
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+    await vi.waitFor(() => expect(mockProducts).toHaveBeenCalledTimes(5));
+
+    for (const [params] of mockProducts.mock.calls as [any][]) {
+      expect(params.from).toBeTruthy();
+      expect(params.to).toBeTruthy();
+    }
+    // Every from/to pair the Shopify fetch used must appear, unchanged, among
+    // the Amazon fetch's from/to pairs — proving both sides share one clock.
+    const amazonPairs = new Set(
+      (mockGet.mock.calls as [any][]).map(([p]) => `${p.from}|${p.to}`)
+    );
+    for (const [params] of mockProducts.mock.calls as [any][]) {
+      expect(amazonPairs.has(`${params.from}|${params.to}`)).toBe(true);
+    }
+  });
+
   it("resolves the 'last30' tile's range using local-timezone date math, not UTC", async () => {
     render(<PeriodTiles />);
     await screen.findAllByText(/€/);
