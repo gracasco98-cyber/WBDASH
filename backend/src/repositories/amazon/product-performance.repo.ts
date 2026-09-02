@@ -91,22 +91,19 @@ export async function resolveProductPerformance(
   if (asins.length === 0) return [];
 
   const [orderItemRows, transactions, cogsRows, inventoryRows] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (prisma.amazonOrderItem.groupBy as any)({
-      by: ["asin", "marketplace"],
+    // Keep this source aligned with /amazon/summary: cancelled orders are not
+    // sales and must not contribute revenue or units to the dashboard cards.
+    // Prisma groupBy cannot filter on the related AmazonOrder status, so read
+    // the matching items and aggregate them here.
+    (prisma.amazonOrderItem.findMany as any)({
       where: {
         amazonAccountId: { in: getCurrentAccountIds() },
         asin: { in: asins },
         purchaseDate: { gte: params.dateFrom, lte: params.dateTo },
+        order: { orderStatus: { notIn: ["Canceled", "Cancelled"] } },
       },
-      _sum: { itemPrice: true, promotionDiscount: true, quantityOrdered: true },
-    }) as Promise<
-      Array<{
-        asin: string;
-        marketplace: string;
-        _sum: { itemPrice: unknown; promotionDiscount: unknown; quantityOrdered: number | null };
-      }>
-    >,
+      select: { asin: true, marketplace: true, itemPrice: true, promotionDiscount: true, quantityOrdered: true },
+    }) as Promise<Array<{ asin: string; marketplace: string; itemPrice: unknown; promotionDiscount: unknown; quantityOrdered: number | null }>>,
     findTransactionsForAsins(prisma, { asins, dateFrom: params.dateFrom, dateTo: params.dateTo }),
     findCogsForAsins(prisma, { asins, marketplace: params.marketplace }),
     findInventoryForAsins(prisma, { asins, marketplace: params.marketplace }),
@@ -115,10 +112,11 @@ export async function resolveProductPerformance(
   const salesByKey = new Map<string, { units: number; sales: number; promo: number }>();
   for (const r of orderItemRows) {
     const key = `${r.marketplace}::${r.asin}`;
+    const current = salesByKey.get(key) ?? { units: 0, sales: 0, promo: 0 };
     salesByKey.set(key, {
-      units: Number(r._sum.quantityOrdered ?? 0),
-      sales: Number(r._sum.itemPrice ?? 0),
-      promo: Number(r._sum.promotionDiscount ?? 0),
+      units: current.units + Number(r.quantityOrdered ?? 0),
+      sales: current.sales + Number(r.itemPrice ?? 0),
+      promo: current.promo + Number(r.promotionDiscount ?? 0),
     });
   }
 
