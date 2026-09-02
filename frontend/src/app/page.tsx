@@ -175,8 +175,13 @@ export default function DashboardPage() {
   }, [fetchProductGroups]);
 
   const params = useCallback(() => {
-    const p: Record<string, string> = { filter, status };
-    if (filter === "custom") { p.from = apiFrom; p.to = apiTo; }
+    const p: Record<string, string> = { filter: "custom", status };
+    if (filter === "custom") {
+      p.from = apiFrom; p.to = apiTo;
+    } else {
+      const range = getDateRangeForPreset(filter);
+      if (range) { p.from = range.from; p.to = range.to; }
+    }
     // Only pass Shopify marketplace filter for Shopify channels
     if (!isAmazonMp && marketplace !== "all") p.marketplace = marketplace;
     return p;
@@ -205,8 +210,13 @@ export default function DashboardPage() {
       const p = params();
 
       // Amazon params: same date filter + optional Amazon-specific marketplace code
-      const amazonParams: Record<string, string> = { filter };
-      if (filter === "custom") { amazonParams.from = apiFrom; amazonParams.to = apiTo; }
+      const amazonParams: Record<string, string> = { filter: "custom" };
+      if (filter === "custom") {
+        amazonParams.from = apiFrom; amazonParams.to = apiTo;
+      } else {
+        const range = getDateRangeForPreset(filter);
+        if (range) { amazonParams.from = range.from; amazonParams.to = range.to; }
+      }
       if (isAmazonMp && amazonMpCode) amazonParams.marketplace = amazonMpCode;
 
       const [s, ts, o, az, azTs] = await Promise.all([
