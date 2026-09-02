@@ -20,7 +20,11 @@ export default defineConfig({
     // runner. (Vitest 4 moved this out of the old `poolOptions.forks.*`
     // nesting to a top-level option — see the deprecation notice if you
     // ever see one for `poolOptions` again.)
-    execArgv: ['--no-experimental-webstorage'],
+    // Node 20 (used by CI) does not recognize this flag; only pass it on
+    // Node 25+, where native web storage would otherwise shadow jsdom.
+    execArgv: Number(process.versions.node.split('.')[0]) >= 25
+      ? ['--no-experimental-webstorage']
+      : [],
   },
   resolve: {
     alias: {
