@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import RedcareKeywordSearch from "@/components/marketing/RedcareKeywordSearch";
+import RedcareAddKeywordForm from "@/components/marketing/RedcareAddKeywordForm";
 import RedcareTrackedKeywords from "@/components/marketing/RedcareTrackedKeywords";
 
 export default function RedcareKeywordBiPage() {
@@ -15,6 +16,7 @@ export default function RedcareKeywordBiPage() {
         </p>
       </div>
       <RedcareKeywordSearch onTracked={() => setRefreshKey((k) => k + 1)} />
+      <RedcareAddKeywordForm onAdded={() => setRefreshKey((k) => k + 1)} />
       <RedcareTrackedKeywords refreshKey={refreshKey} />
     </div>
   );
