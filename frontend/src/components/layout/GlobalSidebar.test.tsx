@@ -23,13 +23,19 @@ describe("GlobalSidebar", () => {
     expect(screen.getByRole("link", { name: "Ordini" })).toHaveAttribute("href", "/ordini");
   });
 
-  it("renders the FINANCE, INVENTORY, MARKETING, SUPPORTO, ADMIN group headers", () => {
+  it("renders the FINANCE, INVENTORY, MARKETING, ADMIN group headers", () => {
     render(<GlobalSidebar />);
     expect(screen.getByText("FINANCE")).toBeInTheDocument();
     expect(screen.getByText("INVENTORY")).toBeInTheDocument();
     expect(screen.getByText("MARKETING")).toBeInTheDocument();
-    expect(screen.getByText("SUPPORTO")).toBeInTheDocument();
     expect(screen.getByText("ADMIN")).toBeInTheDocument();
+  });
+
+  it("does not render removed placeholder areas", () => {
+    render(<GlobalSidebar />);
+    for (const label of ["I miei ticket", "Calendario promo", "Content Hub", "Regole fees/IVA/spedizioni", "Reportistica"]) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
   });
 
   it("renders the AMMINISTRAZIONE group with a Panoramica link to /acquisti", () => {
