@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, ShoppingCart, ShoppingBag, Wallet, Boxes, Megaphone, LifeBuoy, Shield,
+  LayoutDashboard, ShoppingCart, ShoppingBag, Wallet, Boxes, Megaphone, Shield,
   FileText, ClipboardList, Warehouse, Landmark, CalendarClock, PackageSearch, ReceiptText, Sparkles, LockKeyhole,
   ChevronDown,
 } from "lucide-react";
@@ -48,8 +48,6 @@ const GROUPS = [
       { href: "/amazon/pl", label: "P&L" },
       { href: "/amazon/payments", label: "Pagamenti" },
       { label: "Fisco", comingSoon: true },
-      { label: "Regole fees/IVA/spedizioni", comingSoon: true },
-      { label: "Reportistica", comingSoon: true },
     ],
   },
   {
@@ -65,14 +63,6 @@ const GROUPS = [
       { href: "/amazon/ppc", label: "Advertising" },
       { href: "/amazon/analytics", label: "Intelligence" },
       { href: "/marketing/redcare", label: "Redcare Keyword BI" },
-      { label: "Content Hub", comingSoon: true },
-      { label: "Calendario promo", comingSoon: true },
-    ],
-  },
-  {
-    key: "supporto", label: "SUPPORTO", icon: LifeBuoy,
-    items: [
-      { label: "I miei ticket", comingSoon: true },
     ],
   },
   {
@@ -92,7 +82,6 @@ const GROUP_ICON_CLASSES: Record<GroupKey, string> = {
   finance: "text-accent-purple bg-accent-purple/10",
   inventory: "text-accent-primary bg-accent-primary/10",
   marketing: "text-accent-blue bg-accent-blue/10",
-  supporto: "text-accent-blue bg-accent-blue/10",
   admin: "text-accent-red bg-accent-red/10",
 };
 
