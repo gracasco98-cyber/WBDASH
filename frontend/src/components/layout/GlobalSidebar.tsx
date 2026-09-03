@@ -38,7 +38,7 @@ const GROUPS = [
       { href: "/acquisti/banche", label: "Banche" },
       { href: "/acquisti/condizioni-pagamento", label: "Condizioni pagamento" },
       { href: "/acquisti/scadenzario", label: "Scadenzario" },
-      { label: "Prima Nota", comingSoon: true },
+      { href: "/acquisti/prima-nota", label: "Prima Nota" },
     ],
   },
   {
@@ -110,6 +110,7 @@ const ITEM_ICONS: Record<string, typeof Wallet> = {
   "Banche": Landmark,
   "Condizioni pagamento": ReceiptText,
   "Scadenzario": CalendarClock,
+  "Prima Nota": Wallet,
   "P&L": Sparkles,
   "Pagamenti": Wallet,
   "COGS": ReceiptText,

@@ -38,6 +38,26 @@ export interface UpdateBankAccountInput {
   bankName: string; alias: string; accountHolder: string; bic?: string; accountingCode?: string; notes?: string;
 }
 
+export interface BankMovementAttachment {
+  id: string; fileName: string; mimeType: string; fileSize: number; storageKey: string; createdAt: string;
+}
+
+export interface BankMovement {
+  id: string; bankAccountId: string; movementDate: string; description: string;
+  counterparty: string | null; category: string | null; documentNumber: string | null;
+  dare: number; avere: number; balanceAfter: number; status: string;
+  vatRate: number | null; accountingCode: string | null; notes: string | null;
+  isRecurring: boolean; recurrenceRule: string | null; attachments: BankMovementAttachment[];
+  bankAccount: BankAccount;
+}
+
+export interface BankMovementSummary {
+  totalDare: number; totalAvere: number; net: number; closingBalance: number; unreconciled: number;
+  daily: Array<{ date: string; dare: number; avere: number; net: number; closingBalance: number }>;
+}
+
+export interface BankMovementListResponse { movements: BankMovement[]; summary: BankMovementSummary; }
+
 export interface BusinessContact {
   id: string; type: string; name: string; referent: string | null; email: string | null;
   phone: string | null; address: string | null; notes: string | null; isActive: boolean;
@@ -92,6 +112,10 @@ export const purchasing = {
     create: (data: CreateBankAccountInput) => post<BankAccount>("/api/purchasing/bank-accounts", data),
     update: (id: string, data: UpdateBankAccountInput) => put<BankAccount>(`/api/purchasing/bank-accounts/${id}`, data),
     deactivate: (id: string) => del(`/api/purchasing/bank-accounts/${id}`),
+  },
+  bankMovements: {
+    list: (params?: Record<string, string>) => get<BankMovementListResponse>(`/api/purchasing/bank-movements${params ? `?${new URLSearchParams(params).toString()}` : ""}`),
+    create: (data: Partial<BankMovement> & { bankAccountId: string; movementDate: string; description: string; dare?: number; avere?: number }) => post<BankMovement>("/api/purchasing/bank-movements", data),
   },
   businessContacts: {
     list: () => get<BusinessContact[]>("/api/purchasing/business-contacts"),

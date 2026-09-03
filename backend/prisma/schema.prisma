@@ -852,22 +852,66 @@ model PaymentTermInstallmentRule {
 }
 
 model BankAccount {
-  id                 String   @id @default(cuid())
+  id                 String         @id @default(cuid())
   bankName           String
   alias              String
   accountHolder      String
-  iban               String   @unique
+  iban               String         @unique
   bic                String?
-  currency           String   @default("EUR")
-  openingBalance     Decimal  @default(0) @db.Decimal(14, 4)
+  currency           String         @default("EUR")
+  openingBalance     Decimal        @default(0) @db.Decimal(14, 4)
   openingBalanceDate DateTime
-  isActive           Boolean  @default(true)
+  isActive           Boolean        @default(true)
   accountingCode     String?
   notes              String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  movements          BankMovement[]
 
   @@index([isActive])
+}
+
+// Prima Nota bancaria — ogni movimento conserva Dare/Avere separati so the
+// daily running balance is auditable and never inferred from presentation data.
+model BankMovement {
+  id             String                   @id @default(cuid())
+  bankAccountId  String
+  bankAccount    BankAccount              @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  movementDate   DateTime
+  description    String
+  counterparty   String?
+  category       String?
+  documentNumber String?
+  dare           Decimal                  @default(0) @db.Decimal(14, 4)
+  avere          Decimal                  @default(0) @db.Decimal(14, 4)
+  balanceAfter   Decimal?                 @db.Decimal(14, 4)
+  status         String                   @default("BOZZA") // BOZZA | DA_VERIFICARE | RICONCILIATO
+  vatRate        Decimal?                 @db.Decimal(5, 2)
+  accountingCode String?
+  notes          String?
+  isRecurring    Boolean                  @default(false)
+  recurrenceRule String?
+  createdBy      String?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  attachments    BankMovementAttachment[]
+
+  @@index([bankAccountId, movementDate])
+  @@index([status])
+  @@index([category])
+}
+
+model BankMovementAttachment {
+  id         String       @id @default(cuid())
+  movementId String
+  movement   BankMovement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  fileName   String
+  mimeType   String
+  fileSize   Int
+  storageKey String
+  createdAt  DateTime     @default(now())
+
+  @@index([movementId])
 }
 
 // ─── Purchasing module — Anagrafiche: Clienti/Agenti (Fase 2) ──────────────────
@@ -877,7 +921,7 @@ model BankAccount {
 // belongs to a specific Supplier, a different concept untouched by this model).
 model BusinessContact {
   id        String   @id @default(cuid())
-  type      String   // "CLIENTE" | "AGENTE" | free text — same pattern as Supplier.supplierType, no enum
+  type      String // "CLIENTE" | "AGENTE" | free text — same pattern as Supplier.supplierType, no enum
   name      String
   referent  String?
   email     String?
@@ -1206,14 +1250,14 @@ model MarketingKeywordWatch {
 }
 
 model MarketingKeywordSnapshot {
-  id                  String   @id @default(cuid())
+  id                  String                @id @default(cuid())
   watchId             String
   watch               MarketingKeywordWatch @relation(fields: [watchId], references: [id])
-  checkedAt           DateTime @default(now())
+  checkedAt           DateTime              @default(now())
   found               Boolean
   position            Int?
   nbHits              Int
-  price               Decimal? @db.Decimal(10, 2)
+  price               Decimal?              @db.Decimal(10, 2)
   sellerName          String?
   productName         String?
   promoted            Boolean?
