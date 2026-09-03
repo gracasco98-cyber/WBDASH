@@ -71,7 +71,7 @@ describe("RedcareKeywordSearch", () => {
       market: "IT",
       keyword: "diosmina esperidina",
       ean: HIT.ean,
-      label: undefined,
+      label: HIT.productName,
       isOwn: true,
     });
     expect(onTracked).toHaveBeenCalledTimes(1);

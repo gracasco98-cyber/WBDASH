@@ -89,7 +89,7 @@ export default function RedcareKeywordSearch({ onTracked }: Props) {
     try {
       await api.marketingRedcare.createWatch({
         market: searched.market, keyword: searched.keyword, ean: hit.ean,
-        label: isOwn ? undefined : (hit.sellerName ?? undefined),
+        label: isOwn ? (hit.productName ?? undefined) : (hit.sellerName ?? undefined),
         isOwn,
       });
       onTracked();

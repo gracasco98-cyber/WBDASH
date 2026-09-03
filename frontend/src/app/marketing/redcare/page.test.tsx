@@ -69,7 +69,7 @@ describe("RedcareKeywordBiPage", () => {
     await userEvent.click(screen.getByRole("button", { name: /traccia \(mio\)/i }));
 
     await waitFor(() => expect(createWatchMock).toHaveBeenCalledWith({
-      market: "IT", keyword: "diosmina esperidina", ean: "8057808520034", label: undefined, isOwn: true,
+      market: "IT", keyword: "diosmina esperidina", ean: "8057808520034", label: "Deiscente VENAVIL", isOwn: true,
     }));
 
     // Keyword Tracker isn't mounted while on Cerebro, so listWatches hasn't
