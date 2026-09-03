@@ -16,7 +16,7 @@ describe("GlobalSidebar", () => {
   it("renders the Dashboard and Ordini top-level links", () => {
     render(<GlobalSidebar />);
     expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", "/");
-    // Exact match (not /ordini/i) — the AMMINISTRAZIONE group's "Ordini
+    // Exact match (not /ordini/i) — the GESTIONALE group's "Ordini
     // Fornitore" link also contains "Ordini" as a substring, so a
     // case-insensitive substring regex matches both this top-level link and
     // that one.
@@ -32,9 +32,9 @@ describe("GlobalSidebar", () => {
     expect(screen.getByText("ADMIN")).toBeInTheDocument();
   });
 
-  it("renders the AMMINISTRAZIONE group with a Panoramica link to /acquisti", () => {
+  it("renders the GESTIONALE group with a Panoramica link to /acquisti", () => {
     render(<GlobalSidebar />);
-    expect(screen.getByText("AMMINISTRAZIONE")).toBeInTheDocument();
+    expect(screen.getByText("GESTIONALE")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Panoramica" })).toHaveAttribute("href", "/acquisti");
   });
 
@@ -54,6 +54,8 @@ describe("GlobalSidebar", () => {
 
   it("renders 'Prossimamente' items as disabled, non-navigating", () => {
     render(<GlobalSidebar />);
+    expect(screen.queryByText("Content Hub")).not.toBeInTheDocument();
+    expect(screen.queryByText("Calendario promo")).not.toBeInTheDocument();
     const supplierInvoices = screen.getByText("Fatture Fornitore").closest("button, a");
     expect(supplierInvoices?.tagName).toBe("BUTTON");
     expect(supplierInvoices).toBeDisabled();

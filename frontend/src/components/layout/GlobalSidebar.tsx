@@ -27,7 +27,7 @@ interface Group {
 
 const GROUPS = [
   {
-    key: "amministrazione", label: "AMMINISTRAZIONE", icon: ShoppingBag,
+    key: "amministrazione", label: "GESTIONALE", icon: ShoppingBag,
     items: [
       { href: "/acquisti", label: "Panoramica" },
       { href: "/acquisti/anagrafiche", label: "Anagrafiche" },
@@ -54,8 +54,6 @@ const GROUPS = [
       { href: "/amazon/ppc", label: "Advertising" },
       { href: "/amazon/analytics", label: "Intelligence" },
       { href: "/marketing/redcare", label: "Redcare Keyword BI" },
-      { label: "Content Hub", comingSoon: true },
-      { label: "Calendario promo", comingSoon: true },
     ],
   },
   {
