@@ -18,12 +18,16 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 const listWatchesMock = vi.fn();
 const watchHistoryMock = vi.fn();
 const deleteWatchMock = vi.fn();
+const createWatchMock = vi.fn();
+const checkNowMock = vi.fn();
 vi.mock("@/lib/api", () => ({
   api: {
     marketingRedcare: {
       listWatches: (...args: unknown[]) => listWatchesMock(...args),
       watchHistory: (...args: unknown[]) => watchHistoryMock(...args),
       deleteWatch: (...args: unknown[]) => deleteWatchMock(...args),
+      createWatch: (...args: unknown[]) => createWatchMock(...args),
+      checkNow: (...args: unknown[]) => checkNowMock(...args),
     },
   },
 }));
@@ -41,8 +45,12 @@ describe("RedcareTrackedKeywords", () => {
     listWatchesMock.mockReset();
     watchHistoryMock.mockReset();
     deleteWatchMock.mockReset();
+    createWatchMock.mockReset();
+    checkNowMock.mockReset();
     watchHistoryMock.mockResolvedValue({ snapshots: [] });
     deleteWatchMock.mockResolvedValue(undefined);
+    createWatchMock.mockResolvedValue({});
+    checkNowMock.mockResolvedValue({ checked: 1, errors: 0 });
   });
 
   it("groups multiple tracked keywords for the same product under one row, showing the best position and keyword count", async () => {
@@ -187,5 +195,57 @@ describe("RedcareTrackedKeywords", () => {
     await waitFor(() => expect(screen.getByText("1 keyword")).toBeInTheDocument());
     expect(screen.queryByText("diosmina esperidina")).not.toBeInTheDocument();
     expect(screen.getByText("vene varicose")).toBeInTheDocument();
+  });
+
+  it("lets the user add a new keyword to an already-tracked product from its expanded panel", async () => {
+    listWatchesMock
+      .mockResolvedValueOnce({
+        watches: [watch({ id: "w1", ean: "111", keyword: "diosmina esperidina", label: "Prodotto X", isOwn: true })],
+      })
+      .mockResolvedValueOnce({
+        watches: [
+          watch({ id: "w1", ean: "111", keyword: "diosmina esperidina", label: "Prodotto X", isOwn: true }),
+          watch({ id: "w2", ean: "111", keyword: "vene varicose", label: "Prodotto X", isOwn: true }),
+        ],
+      });
+
+    render(<RedcareTrackedKeywords refreshKey={0} />);
+    await userEvent.click(await screen.findByText("Prodotto X"));
+
+    const input = screen.getByPlaceholderText("Nuova parola chiave");
+    await userEvent.type(input, "vene varicose");
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi keyword" }));
+
+    expect(createWatchMock).toHaveBeenCalledWith({
+      market: "IT", ean: "111", keyword: "vene varicose", label: "Prodotto X", isOwn: true,
+    });
+    await waitFor(() => expect(screen.getByText("vene varicose")).toBeInTheDocument());
+    expect(screen.getByPlaceholderText("Nuova parola chiave")).toHaveValue("");
+  });
+
+  it("lets the user manually refresh a product's position without expanding it, then reloads the list", async () => {
+    listWatchesMock
+      .mockResolvedValueOnce({
+        watches: [watch({ id: "w1", ean: "111", keyword: "kw1", label: "Prodotto X", latestSnapshot: null })],
+      })
+      .mockResolvedValueOnce({
+        watches: [watch({
+          id: "w1", ean: "111", keyword: "kw1", label: "Prodotto X",
+          latestSnapshot: { id: "s1", watchId: "w1", checkedAt: "2026-09-02T03:00:00Z", found: true, position: 3, nbHits: 10, price: null, sellerName: null, productName: null, promoted: null, promotedByReRanking: null },
+        })],
+      });
+
+    render(<RedcareTrackedKeywords refreshKey={0} />);
+    await screen.findByText("Prodotto X");
+
+    await userEvent.click(screen.getByRole("button", { name: "Aggiorna posizione Prodotto X" }));
+
+    expect(checkNowMock).toHaveBeenCalledWith({ market: "IT", ean: "111" });
+    // "#3" appears twice once the reload lands: the group header's
+    // best-position badge and the single keyword row's own badge.
+    await waitFor(() => expect(screen.getAllByText("#3")).toHaveLength(2));
+    // Refreshing must not have expanded the product row (the click didn't
+    // toggle the header), so the chart's history fetch never fires.
+    expect(watchHistoryMock).not.toHaveBeenCalled();
   });
 });

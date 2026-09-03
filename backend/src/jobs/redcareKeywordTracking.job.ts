@@ -9,11 +9,14 @@ import { logError } from "../services/shopify.service";
 // delayMs paces requests between (market, keyword) groups so the job doesn't
 // burst-hit a public storefront — production default is 1s; tests pass 0 to
 // keep the suite fast (MSW responses are instant, so no delay is needed there).
-export async function runRedcareKeywordTracking(delayMs = 1000): Promise<{ checked: number; errors: number }> {
+export async function runRedcareKeywordTracking(
+  delayMs = 1000,
+  watchIds?: string[]
+): Promise<{ checked: number; errors: number }> {
   let checked = 0;
   let errors = 0;
 
-  const watches = await findActiveWatches(prisma);
+  const watches = await findActiveWatches(prisma, watchIds ? { ids: watchIds } : undefined);
 
   // Group by market+keyword so a keyword shared by our product and any
   // pinned competitors triggers exactly one HTTP request to the public

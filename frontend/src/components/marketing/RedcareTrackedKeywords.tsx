@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { api, type MarketingKeywordWatch, type MarketingKeywordSnapshot } from "@/lib/api";
+import { api, type MarketingKeywordWatch, type MarketingKeywordSnapshot, type RedcareMarket } from "@/lib/api";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Trash2, RefreshCw, Plus } from "lucide-react";
 import { PositionBadge } from "./PositionBadge";
 
 interface Props {
@@ -141,6 +141,9 @@ export default function RedcareTrackedKeywords({ refreshKey }: Props) {
   const [watches, setWatches] = useState<MarketingKeywordWatch[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [checkingKey, setCheckingKey] = useState<string | null>(null);
+  const [addingKey, setAddingKey] = useState<string | null>(null);
+  const [newKeywordByGroup, setNewKeywordByGroup] = useState<Record<string, string>>({});
 
   const load = async () => {
     try {
@@ -163,6 +166,45 @@ export default function RedcareTrackedKeywords({ refreshKey }: Props) {
     }
   };
 
+  // Refresh a single product's position on demand — scoped server-side to
+  // just this product's watches (POST /watches/check-now), unlike the
+  // global daily job. Stops the click from bubbling to the header's
+  // expand/collapse toggle.
+  const checkNow = async (group: ProductGroup, key: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCheckingKey(key);
+    setError(null);
+    try {
+      await api.marketingRedcare.checkNow({ market: group.market as RedcareMarket, ean: group.ean });
+      await load();
+    } catch {
+      setError("Impossibile aggiornare la posizione in questo momento.");
+    } finally {
+      setCheckingKey(null);
+    }
+  };
+
+  // Add another keyword to an already-tracked product without going back to
+  // Cerebro search — same POST /watches the search results' "Traccia"
+  // buttons use, just scoped to this product's market/ean/isOwn.
+  const addKeyword = async (group: ProductGroup, key: string) => {
+    const keyword = (newKeywordByGroup[key] ?? "").trim();
+    if (!keyword) return;
+    setAddingKey(key);
+    setError(null);
+    try {
+      await api.marketingRedcare.createWatch({
+        market: group.market as RedcareMarket, ean: group.ean, keyword, label: group.label, isOwn: group.isOwn,
+      });
+      setNewKeywordByGroup((prev) => ({ ...prev, [key]: "" }));
+      await load();
+    } catch {
+      setError("Impossibile aggiungere la keyword in questo momento.");
+    } finally {
+      setAddingKey(null);
+    }
+  };
+
   const groups = useMemo(() => groupByProduct(watches), [watches]);
 
   return (
@@ -182,9 +224,12 @@ export default function RedcareTrackedKeywords({ refreshKey }: Props) {
             const best = bestPosition(group.watches);
             return (
               <div key={key} className="border border-bg-border rounded-lg">
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setExpanded(isOpen ? null : key)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 text-left"
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpanded(isOpen ? null : key); }}
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-left cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
                     <span className={`text-sm ${group.isOwn ? "text-accent-primary" : "text-zinc-300"}`}>{group.label}</span>
@@ -192,10 +237,18 @@ export default function RedcareTrackedKeywords({ refreshKey }: Props) {
                     <span className="text-[11px] text-zinc-600">{group.watches.length} keyword</span>
                   </div>
                   <div className="flex items-center gap-3">
+                    <button
+                      onClick={(e) => checkNow(group, key, e)}
+                      disabled={checkingKey === key}
+                      aria-label={`Aggiorna posizione ${group.label}`}
+                      className="text-zinc-500 hover:text-accent-primary disabled:opacity-50"
+                    >
+                      <RefreshCw size={14} className={checkingKey === key ? "animate-spin" : ""} />
+                    </button>
                     <PositionBadge position={best} />
                     {isOpen ? <ChevronUp size={16} className="text-zinc-500" /> : <ChevronDown size={16} className="text-zinc-500" />}
                   </div>
-                </button>
+                </div>
                 <div className="px-3 pb-2.5 space-y-1">
                   {group.watches.map((w) => (
                     <div key={w.id} className="flex items-center justify-between text-sm">
@@ -212,6 +265,22 @@ export default function RedcareTrackedKeywords({ refreshKey }: Props) {
                       </div>
                     </div>
                   ))}
+                  <div className="flex items-center gap-2 pt-2 mt-1 border-t border-bg-border">
+                    <input
+                      value={newKeywordByGroup[key] ?? ""}
+                      onChange={(e) => setNewKeywordByGroup((prev) => ({ ...prev, [key]: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && addKeyword(group, key)}
+                      placeholder="Nuova parola chiave"
+                      className="flex-1 bg-bg-elevated border border-bg-border rounded-lg px-2 py-1 text-xs text-white placeholder:text-zinc-600"
+                    />
+                    <button
+                      onClick={() => addKeyword(group, key)}
+                      disabled={addingKey === key || !(newKeywordByGroup[key] ?? "").trim()}
+                      className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-accent-primary/10 text-accent-primary border border-accent-primary/20 disabled:opacity-50 whitespace-nowrap"
+                    >
+                      <Plus size={11} /> Aggiungi keyword
+                    </button>
+                  </div>
                 </div>
                 {isOpen && (
                   <div className="border-t border-bg-border px-3 py-3">

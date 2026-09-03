@@ -114,3 +114,38 @@ describe("POST /api/marketing/redcare/run-now", () => {
     }, { timeout: 2000 });
   });
 });
+
+describe("POST /api/marketing/redcare/watches/check-now", () => {
+  it("checks only the watches for the given market+ean and returns the result synchronously", async () => {
+    const create = await request(app).post("/api/marketing/redcare/watches")
+      .send({ market: "IT", keyword: "diosmina esperidina", ean: "8057808520034", isOwn: true });
+    const watchId = create.body.id;
+    await request(app).post("/api/marketing/redcare/watches")
+      .send({ market: "IT", keyword: "altra keyword", ean: "999", isOwn: true });
+
+    server.use(redcareSearchMocks.searchPage("IT", "products_mktplc_prod_IT_it", [
+      { ean: "8057808520034", productName: "Deiscente VENAVIL", price: 1190, best_offer: { seller: { name: "NATURPLAN" }, type: "MIRAKL" }, _rankingInfo: {} },
+    ], 1));
+
+    const res = await request(app).post("/api/marketing/redcare/watches/check-now")
+      .send({ market: "IT", ean: "8057808520034" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ checked: 1, errors: 0 });
+
+    const history = await request(app).get(`/api/marketing/redcare/watches/${watchId}/history`);
+    expect(history.body.snapshots).toHaveLength(1);
+    expect(history.body.snapshots[0]).toMatchObject({ found: true, position: 1 });
+  });
+
+  it("returns 400 when market or ean is missing", async () => {
+    const res = await request(app).post("/api/marketing/redcare/watches/check-now").send({ market: "IT" });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 when no active watch exists for the given market+ean", async () => {
+    const res = await request(app).post("/api/marketing/redcare/watches/check-now")
+      .send({ market: "IT", ean: "nonexistent" });
+    expect(res.status).toBe(404);
+  });
+});

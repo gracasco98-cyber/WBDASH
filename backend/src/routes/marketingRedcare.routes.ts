@@ -92,4 +92,26 @@ router.post("/run-now", async (_req: Request, res: Response) => {
   runRedcareKeywordTracking().catch((err) => logError("marketing-redcare-run-now", err));
 });
 
+// Scoped, synchronous refresh for a single tracked product — unlike /run-now
+// (which fires the whole daily job in the background), this checks only the
+// given product's own watches and awaits the result, so the UI can reload
+// immediately after the response instead of polling.
+router.post("/watches/check-now", async (req: Request, res: Response) => {
+  const { market, ean } = req.body ?? {};
+  if (!VALID_MARKETS.includes(market) || !ean) {
+    return res.status(400).json({ error: "market ed ean sono obbligatori." });
+  }
+  try {
+    const watches = await findActiveWatches(prisma, { market, ean });
+    if (watches.length === 0) {
+      return res.status(404).json({ error: "Nessuna keyword monitorata per questo prodotto." });
+    }
+    const result = await runRedcareKeywordTracking(300, watches.map((w) => w.id));
+    res.json(result);
+  } catch (err) {
+    await logError("marketing-redcare-check-now", err, { market, ean });
+    res.status(500).json({ error: "Impossibile aggiornare la posizione in questo momento." });
+  }
+});
+
 export default router;

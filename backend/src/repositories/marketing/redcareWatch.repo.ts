@@ -24,13 +24,15 @@ export async function createOrReactivateWatch(
 
 export async function findActiveWatches(
   prisma: PrismaClient,
-  filter?: { market?: string; keyword?: string }
+  filter?: { market?: string; keyword?: string; ean?: string; ids?: string[] }
 ): Promise<MarketingKeywordWatch[]> {
   return prisma.marketingKeywordWatch.findMany({
     where: {
       active: true,
       ...(filter?.market ? { market: filter.market } : {}),
       ...(filter?.keyword ? { keyword: filter.keyword } : {}),
+      ...(filter?.ean ? { ean: filter.ean } : {}),
+      ...(filter?.ids ? { id: { in: filter.ids } } : {}),
     },
     orderBy: { createdAt: "asc" },
   });

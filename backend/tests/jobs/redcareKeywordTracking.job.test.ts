@@ -100,4 +100,27 @@ describe("runRedcareKeywordTracking", () => {
     expect(elapsed).toBeGreaterThanOrEqual(45);
     expect(elapsed).toBeLessThan(300);
   });
+
+  it("when given watchIds, checks only those watches and ignores other active ones", async () => {
+    const targetWatch = await createOrReactivateWatch(db.prisma, {
+      market: "IT", keyword: "diosmina esperidina", ean: "8057808520034", label: null, isOwn: true,
+    });
+    const otherWatch = await createOrReactivateWatch(db.prisma, {
+      market: "IT", keyword: "altra keyword", ean: "111", label: null, isOwn: true,
+    });
+
+    let requestCount = 0;
+    server.use(
+      redcareSearchMocks.searchPage("IT", "products_mktplc_prod_IT_it", [
+        { ean: "8057808520034", productName: "Deiscente VENAVIL", price: 1190, best_offer: { seller: { name: "NATURPLAN" }, type: "MIRAKL" }, _rankingInfo: {} },
+      ], 1, () => { requestCount++; }),
+    );
+
+    const result = await runRedcareKeywordTracking(0, [targetWatch.id]);
+
+    expect(result).toEqual({ checked: 1, errors: 0 });
+    expect(requestCount).toBe(1);
+    expect(await findLatestSnapshot(db.prisma, targetWatch.id)).toMatchObject({ found: true, position: 1 });
+    expect(await findLatestSnapshot(db.prisma, otherWatch.id)).toBeNull();
+  });
 });

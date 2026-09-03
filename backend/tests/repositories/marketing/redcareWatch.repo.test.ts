@@ -47,6 +47,23 @@ describe("findActiveWatches", () => {
     const itOnly = await findActiveWatches(db.prisma, { market: "IT" });
     expect(itOnly.map((w) => w.id)).toEqual([it1.id]);
   });
+
+  it("filters by ean", async () => {
+    const a = await createOrReactivateWatch(db.prisma, { market: "IT", keyword: "diosmina", ean: "111", label: null, isOwn: true });
+    await createOrReactivateWatch(db.prisma, { market: "IT", keyword: "diosmina", ean: "222", label: null, isOwn: true });
+
+    const filtered = await findActiveWatches(db.prisma, { ean: "111" });
+    expect(filtered.map((w) => w.id)).toEqual([a.id]);
+  });
+
+  it("filters by an explicit set of ids", async () => {
+    const a = await createOrReactivateWatch(db.prisma, { market: "IT", keyword: "diosmina", ean: "111", label: null, isOwn: true });
+    const b = await createOrReactivateWatch(db.prisma, { market: "IT", keyword: "esperidina", ean: "111", label: null, isOwn: true });
+    await createOrReactivateWatch(db.prisma, { market: "IT", keyword: "altro", ean: "111", label: null, isOwn: true });
+
+    const filtered = await findActiveWatches(db.prisma, { ids: [a.id, b.id] });
+    expect(filtered.map((w) => w.id).sort()).toEqual([a.id, b.id].sort());
+  });
 });
 
 describe("snapshots", () => {

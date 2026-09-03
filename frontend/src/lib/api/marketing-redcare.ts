@@ -83,4 +83,7 @@ export const marketingRedcare = {
   deleteWatch: (id: string) => del(`/api/marketing/redcare/watches/${id}`),
 
   runNow: () => post<{ status: string }>("/api/marketing/redcare/run-now", {}),
+
+  checkNow: (data: { market: RedcareMarket; ean: string }) =>
+    post<{ checked: number; errors: number }>("/api/marketing/redcare/watches/check-now", data),
 };
