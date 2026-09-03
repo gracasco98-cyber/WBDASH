@@ -35,17 +35,17 @@ export default function ModificaCondizionePage({ params }: { params: { id: strin
     router.push("/acquisti/condizioni-pagamento");
   };
 
-  if (loading) return <div className="min-h-screen bg-bg-base flex items-center justify-center text-zinc-500 text-sm">Caricamento…</div>;
-  if (!term) return <div className="min-h-screen bg-bg-base flex items-center justify-center text-zinc-500 text-sm">Condizione non trovata</div>;
+  if (loading) return <div className="min-h-screen bg-[#f5f6fa] flex items-center justify-center text-slate-500 text-sm">Caricamento…</div>;
+  if (!term) return <div className="min-h-screen bg-[#f5f6fa] flex items-center justify-center text-slate-500 text-sm">Condizione non trovata</div>;
 
   return (
-    <div className="min-h-screen bg-bg-base">
+    <div className="min-h-screen bg-[#f5f6fa] text-slate-900">
       <AppHeader accentColor="primary" />
       <div className="flex">
         <GlobalSidebar />
         <div className="flex-1 min-w-0">
-          <main className="max-w-3xl px-4 md:px-6 py-4 md:py-6 space-y-4">
-            <h1 className="text-lg sm:text-xl font-bold text-white">{term.name}</h1>
+          <main className="max-w-3xl mx-auto px-4 md:px-6 py-5 space-y-4">
+            <h1 className="text-2xl font-bold tracking-tight">{term.name}</h1>
             <PaymentTermForm
               initial={{
                 name: term.name, type: term.type, endOfMonth: term.endOfMonth,
