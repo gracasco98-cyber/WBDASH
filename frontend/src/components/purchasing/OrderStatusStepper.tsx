@@ -25,7 +25,7 @@ const PARTIAL_STATUSES: LogisticStatus[] = ["PARTIALLY_SHIPPED", "PARTIALLY_RECE
 export default function OrderStatusStepper({ logisticStatus }: { logisticStatus: LogisticStatus }) {
   if (logisticStatus === "CANCELLED") {
     return (
-      <div className="text-xs px-3 py-2 rounded-lg bg-accent-red/10 border border-accent-red/20 text-accent-red inline-block">
+      <div className="text-xs px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 inline-block">
         Ordine annullato
       </div>
     );
@@ -44,16 +44,16 @@ export default function OrderStatusStepper({ logisticStatus }: { logisticStatus:
               className={
                 "border-b-2 pb-1.5 text-[9px] sm:text-[10px] font-semibold truncate transition-colors " +
                 (state === "done"
-                  ? "border-accent-primary text-accent-primary"
+                  ? "border-emerald-600 text-emerald-700"
                   : state === "active"
-                    ? "border-accent-blue text-accent-blue"
-                    : "border-bg-border text-zinc-600")
+                    ? "border-blue-500 text-blue-700"
+                    : "border-slate-200 text-slate-400")
               }
             >
               {step.label}
             </div>
             {state === "active" && isPartial && (
-              <div className="text-[8px] font-normal text-accent-blue/70 mt-0.5">parziale</div>
+              <div className="text-[8px] font-normal text-blue-600/70 mt-0.5">parziale</div>
             )}
           </div>
         );

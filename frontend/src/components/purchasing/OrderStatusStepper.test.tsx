@@ -18,28 +18,28 @@ describe("OrderStatusStepper", () => {
 
   it("marks PARTIALLY_SHIPPED as the active 'Spedito' step with a 'parziale' badge", () => {
     render(<OrderStatusStepper logisticStatus="PARTIALLY_SHIPPED" />);
-    expect(screen.getByText("Spedito").className).toMatch(/text-accent-blue/);
+    expect(screen.getByText("Spedito").className).toMatch(/text-blue-700/);
     expect(screen.getByText("parziale")).toBeInTheDocument();
   });
 
   it("marks steps before the active one as done (green) and after as future (grey)", () => {
     render(<OrderStatusStepper logisticStatus="CONFIRMED" />);
-    expect(screen.getByText("Bozza").className).toMatch(/text-accent-primary/);
-    expect(screen.getByText("Inviato").className).toMatch(/text-accent-primary/);
-    expect(screen.getByText("Confermato").className).toMatch(/text-accent-blue/);
-    expect(screen.getByText("In produzione").className).toMatch(/text-zinc-600/);
+    expect(screen.getByText("Bozza").className).toMatch(/text-emerald-700/);
+    expect(screen.getByText("Inviato").className).toMatch(/text-emerald-700/);
+    expect(screen.getByText("Confermato").className).toMatch(/text-blue-700/);
+    expect(screen.getByText("In produzione").className).toMatch(/text-slate-400/);
   });
 
   it("does not show a 'parziale' badge for a full (non-partial) status", () => {
     render(<OrderStatusStepper logisticStatus="RECEIVED" />);
     expect(screen.queryByText("parziale")).not.toBeInTheDocument();
-    expect(screen.getByText("Ricevuto").className).toMatch(/text-accent-blue/);
+    expect(screen.getByText("Ricevuto").className).toMatch(/text-blue-700/);
   });
 
   it("maps PARTIALLY_RECEIVED and COMPLETED onto the same 'Ricevuto' step as RECEIVED", () => {
     const { rerender } = render(<OrderStatusStepper logisticStatus="PARTIALLY_RECEIVED" />);
-    expect(screen.getByText("Ricevuto").className).toMatch(/text-accent-blue/);
+    expect(screen.getByText("Ricevuto").className).toMatch(/text-blue-700/);
     rerender(<OrderStatusStepper logisticStatus="COMPLETED" />);
-    expect(screen.getByText("Ricevuto").className).toMatch(/text-accent-blue/);
+    expect(screen.getByText("Ricevuto").className).toMatch(/text-blue-700/);
   });
 });

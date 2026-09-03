@@ -45,61 +45,61 @@ export default function GoodsReceiptForm({ purchaseOrderId, lines, onDone, onCan
   };
 
   return (
-    <div className="rounded-xl border border-bg-border bg-bg-card p-5 space-y-4">
-      <h2 className="text-sm font-semibold text-white">Registra DDT</h2>
+    <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4 shadow-sm">
+      <h2 className="text-sm font-bold text-slate-900">Registra DDT</h2>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
         <label className="space-y-1">
-          <span className="text-zinc-500">Numero DDT fornitore</span>
+          <span className="text-slate-500">Numero DDT fornitore</span>
           <input value={supplierDdtNumber} onChange={(e) => setSupplierDdtNumber(e.target.value)}
-            className="w-full rounded-lg bg-bg-hover border border-bg-border px-2.5 py-1.5 text-zinc-200" />
+            className="w-full rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-emerald-400" />
         </label>
         <label className="space-y-1">
-          <span className="text-zinc-500">Data DDT fornitore</span>
+          <span className="text-slate-500">Data DDT fornitore</span>
           <input type="date" value={supplierDdtDate} onChange={(e) => setSupplierDdtDate(e.target.value)}
-            className="w-full rounded-lg bg-bg-hover border border-bg-border px-2.5 py-1.5 text-zinc-200" />
+            className="w-full rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-emerald-400" />
         </label>
         <label className="space-y-1">
-          <span className="text-zinc-500">Data ricezione</span>
+          <span className="text-slate-500">Data ricezione</span>
           <input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)}
-            className="w-full rounded-lg bg-bg-hover border border-bg-border px-2.5 py-1.5 text-zinc-200" />
+            className="w-full rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-emerald-400" />
         </label>
         <label className="space-y-1 sm:col-span-3">
-          <span className="text-zinc-500">Corriere/vettore (opzionale)</span>
+          <span className="text-slate-500">Corriere/vettore (opzionale)</span>
           <input value={carrier} onChange={(e) => setCarrier(e.target.value)}
-            className="w-full rounded-lg bg-bg-hover border border-bg-border px-2.5 py-1.5 text-zinc-200" />
+            className="w-full rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-emerald-400" />
         </label>
       </div>
 
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-zinc-500 text-left border-b border-bg-border">
+          <tr className="text-slate-500 text-left border-b border-slate-200">
             <th className="py-2">Riga</th><th className="py-2">Residua</th><th className="py-2">Ricevuta ora</th>
           </tr>
         </thead>
         <tbody>
           {lines.map((l) => (
-            <tr key={l.id} className="border-b border-bg-border/40">
-              <td className="py-2 text-zinc-300">{l.description}</td>
-              <td className="py-2 text-zinc-400">{l.remainingQty}</td>
+            <tr key={l.id} className="border-b border-slate-100">
+              <td className="py-2 text-slate-700">{l.description}</td>
+              <td className="py-2 text-slate-500">{l.remainingQty}</td>
               <td className="py-2">
                 <input type="number" min={0} max={l.remainingQty} value={qtyByLine[l.id] ?? ""}
                   onChange={(e) => setQtyByLine((prev) => ({ ...prev, [l.id]: e.target.value }))}
-                  className="w-24 rounded-lg bg-bg-hover border border-bg-border px-2 py-1 text-zinc-200" />
+                  className="w-24 rounded-lg bg-slate-50 border border-slate-200 px-2 py-1 text-slate-700 focus:outline-none focus:border-emerald-400" />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      {error && <div className="text-xs text-accent-red bg-accent-red/10 border border-accent-red/20 rounded-lg px-3 py-2">{error}</div>}
+      {error && <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</div>}
 
       <div className="flex gap-2">
         <button onClick={handleSubmit} disabled={submitting || !supplierDdtNumber}
-          className="px-3 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/20 text-accent-primary text-xs font-medium hover:bg-accent-primary/20 disabled:opacity-50 transition-colors">
+          className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50 transition-colors">
           Salva DDT
         </button>
         <button onClick={onCancel} disabled={submitting}
-          className="px-3 py-1.5 rounded-lg border border-bg-border text-zinc-400 text-xs font-medium hover:bg-bg-hover transition-colors">
+          className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-medium hover:bg-slate-50 transition-colors">
           Annulla
         </button>
       </div>

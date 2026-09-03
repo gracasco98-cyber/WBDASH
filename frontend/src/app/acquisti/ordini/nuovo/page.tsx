@@ -24,7 +24,7 @@ function computeAmounts(qty: number, unitPrice: number) {
   return { taxableAmount, vatAmount, totalAmount };
 }
 
-const inputClass = "bg-bg-hover border border-bg-border rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-accent-primary/50";
+const inputClass = "bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-emerald-400";
 
 export default function NuovoOrdinePage() {
   const router = useRouter();
@@ -82,78 +82,78 @@ export default function NuovoOrdinePage() {
   };
 
   return (
-    <div className="min-h-screen bg-bg-base">
+    <div className="min-h-screen bg-[#f5f6fa] text-slate-900">
       <AppHeader accentColor="primary" />
       <div className="flex">
         <GlobalSidebar />
         <div className="flex-1 min-w-0">
-          <main className="max-w-4xl px-4 md:px-6 py-4 md:py-6 space-y-4">
-            <h1 className="text-lg sm:text-xl font-bold text-white">Nuovo Ordine Fornitore</h1>
+          <main className="max-w-4xl mx-auto px-4 md:px-6 py-5 space-y-4">
+            <h1 className="text-2xl font-bold tracking-tight">Nuovo Ordine Fornitore</h1>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="rounded-xl border border-bg-border bg-bg-card p-5 space-y-3">
+              <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3 shadow-sm">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="text-xs text-zinc-400 flex flex-col gap-1">
+                  <label className="text-xs text-slate-500 flex flex-col gap-1">
                     Fornitore *
                     <select required className={inputClass} value={supplierId} onChange={e => setSupplierId(e.target.value)}>
                       <option value="">— seleziona —</option>
                       {suppliers.map(s => <option key={s.id} value={s.id}>{s.legalName}</option>)}
                     </select>
                   </label>
-                  <label className="text-xs text-zinc-400 flex flex-col gap-1">
+                  <label className="text-xs text-slate-500 flex flex-col gap-1">
                     Magazzino *
                     <select required className={inputClass} value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
                       <option value="">— seleziona —</option>
                       {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                     </select>
                   </label>
-                  <label className="text-xs text-zinc-400 flex flex-col gap-1">
+                  <label className="text-xs text-slate-500 flex flex-col gap-1">
                     Condizione di pagamento *
                     <select required className={inputClass} value={paymentTermId} onChange={e => setPaymentTermId(e.target.value)}>
                       <option value="">— seleziona —</option>
                       {paymentTerms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                   </label>
-                  <label className="text-xs text-zinc-400 flex flex-col gap-1">
+                  <label className="text-xs text-slate-500 flex flex-col gap-1">
                     Data ordine *
                     <input required type="date" className={inputClass} value={orderDate} onChange={e => setOrderDate(e.target.value)} />
                   </label>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-bg-border bg-bg-card p-5 space-y-3">
-                <h2 className="text-sm font-semibold text-white pb-2 border-b border-bg-border">Righe ordine</h2>
+              <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3 shadow-sm">
+                <h2 className="text-sm font-bold text-slate-900 pb-2 border-b border-slate-200">Righe ordine</h2>
                 {lines.map((line, i) => (
                   <div key={i} className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_auto] gap-2 items-end">
-                    <label className="text-xs text-zinc-400 flex flex-col gap-1">
+                    <label className="text-xs text-slate-500 flex flex-col gap-1">
                       Prodotto *
                       <ProductPicker
                         value={line.productId || null}
                         onChange={p => setLine(i, { productId: p?.id ?? "", productName: p?.name ?? "" })}
                       />
                     </label>
-                    <label className="text-xs text-zinc-400 flex flex-col gap-1">
+                    <label className="text-xs text-slate-500 flex flex-col gap-1">
                       Quantità *
                       <input required type="number" min="0.01" step="0.01" className={inputClass} value={line.orderedQty} onChange={e => setLine(i, { orderedQty: e.target.value })} />
                     </label>
-                    <label className="text-xs text-zinc-400 flex flex-col gap-1">
+                    <label className="text-xs text-slate-500 flex flex-col gap-1">
                       Prezzo unitario *
                       <input required type="number" min="0" step="0.01" className={inputClass} value={line.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} />
                     </label>
-                    <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="text-xs text-accent-red disabled:opacity-30 disabled:cursor-not-allowed px-2 py-1.5">Rimuovi</button>
+                    <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="text-xs text-rose-600 disabled:opacity-30 disabled:cursor-not-allowed px-2 py-1.5">Rimuovi</button>
                   </div>
                 ))}
-                <button type="button" onClick={addLine} className="text-xs text-accent-primary hover:underline">+ Aggiungi riga</button>
+                <button type="button" onClick={addLine} className="text-xs text-emerald-700 hover:underline">+ Aggiungi riga</button>
 
-                <div className="pt-3 border-t border-bg-border text-xs text-zinc-400 space-y-1">
+                <div className="pt-3 border-t border-slate-200 text-xs text-slate-500 space-y-1">
                   <div>Imponibile: € {totals.taxable.toFixed(2)}</div>
                   <div>IVA (22%): € {totals.vat.toFixed(2)}</div>
-                  <div className="text-white font-semibold">Totale: € {totals.total.toFixed(2)}</div>
+                  <div className="text-slate-900 font-semibold">Totale: € {totals.total.toFixed(2)}</div>
                 </div>
               </div>
 
-              {error && <div className="text-xs text-accent-red bg-accent-red/10 border border-accent-red/20 rounded-lg px-3 py-2">{error}</div>}
+              {error && <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</div>}
 
-              <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-accent-primary text-bg-base text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity">
+              <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors">
                 {saving ? "Salvataggio…" : "Crea Ordine"}
               </button>
             </form>
