@@ -23,9 +23,9 @@ describe("GlobalSidebar", () => {
     expect(screen.getByRole("link", { name: "Ordini" })).toHaveAttribute("href", "/ordini");
   });
 
-  it("renders the FINANCE, INVENTORY, MARKETING, SUPPORTO, ADMIN group headers", () => {
+  it("renders the operational group headers without the temporary Finance group", () => {
     render(<GlobalSidebar />);
-    expect(screen.getByText("FINANCE")).toBeInTheDocument();
+    expect(screen.queryByText("FINANCE")).not.toBeInTheDocument();
     expect(screen.getByText("INVENTORY")).toBeInTheDocument();
     expect(screen.getByText("MARKETING")).toBeInTheDocument();
     expect(screen.getByText("SUPPORTO")).toBeInTheDocument();
@@ -38,11 +38,8 @@ describe("GlobalSidebar", () => {
     expect(screen.getByRole("link", { name: "Panoramica" })).toHaveAttribute("href", "/acquisti");
   });
 
-  it("links P&L, Pagamenti, COGS, Magazzino, Advertising, Intelligence, Sync Center, Sicurezza to their existing unchanged URLs", () => {
+  it("links operational areas to their existing URLs", () => {
     render(<GlobalSidebar />);
-    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/amazon");
-    expect(screen.getByRole("link", { name: "P&L" })).toHaveAttribute("href", "/amazon/pl");
-    expect(screen.getByRole("link", { name: "Pagamenti" })).toHaveAttribute("href", "/amazon/payments");
     expect(screen.getByRole("link", { name: "COGS" })).toHaveAttribute("href", "/amazon/cogs");
     expect(screen.getByRole("link", { name: "Magazzino" })).toHaveAttribute("href", "/amazon/inventory");
     expect(screen.getByRole("link", { name: /advertising/i })).toHaveAttribute("href", "/amazon/ppc");
@@ -50,22 +47,16 @@ describe("GlobalSidebar", () => {
     expect(screen.getByRole("link", { name: "Sync Center" })).toHaveAttribute("href", "/amazon/sync");
     expect(screen.getByRole("link", { name: "Sicurezza" })).toHaveAttribute("href", "/account/security");
     expect(screen.getByRole("link", { name: /gestione utenti/i })).toHaveAttribute("href", "/admin/users");
+    expect(screen.getByRole("link", { name: "Prima Nota" })).toHaveAttribute("href", "/acquisti/prima-nota");
+    expect(screen.queryByRole("link", { name: "P&L" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Pagamenti" })).not.toBeInTheDocument();
   });
 
   it("renders 'Prossimamente' items as disabled, non-navigating", () => {
     render(<GlobalSidebar />);
-    const fisco = screen.getByText("Fisco").closest("button, a");
-    expect(fisco?.tagName).toBe("BUTTON");
-    expect(fisco).toBeDisabled();
-  });
-
-  it("does not mark Overview (/amazon) active on a sibling /amazon/* subpage, since those routes now live in other groups", () => {
-    vi.mocked(usePathname).mockReturnValue("/amazon/pl");
-    render(<GlobalSidebar />);
-    const overviewLink = screen.getByRole("link", { name: "Overview" });
-    expect(overviewLink.className).not.toMatch(/text-accent-primary/);
-    const plLink = screen.getByRole("link", { name: "P&L" });
-    expect(plLink.className).toMatch(/text-accent-primary/);
+    const supplierInvoices = screen.getByText("Fatture Fornitore").closest("button, a");
+    expect(supplierInvoices?.tagName).toBe("BUTTON");
+    expect(supplierInvoices).toBeDisabled();
   });
 
   it("adds the Redcare Keyword BI link to the MARKETING group", () => {
