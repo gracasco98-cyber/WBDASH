@@ -24,17 +24,17 @@ export default function ModificaMagazzinoPage({ params }: { params: { id: string
     router.push("/acquisti/magazzini");
   };
 
-  if (loading) return <div className="min-h-screen bg-bg-base flex items-center justify-center text-zinc-500 text-sm">Caricamento…</div>;
-  if (!warehouse) return <div className="min-h-screen bg-bg-base flex items-center justify-center text-zinc-500 text-sm">Magazzino non trovato</div>;
+  if (loading) return <div className="min-h-screen bg-[#f5f6fa] flex items-center justify-center text-slate-500 text-sm">Caricamento…</div>;
+  if (!warehouse) return <div className="min-h-screen bg-[#f5f6fa] flex items-center justify-center text-slate-500 text-sm">Magazzino non trovato</div>;
 
   return (
-    <div className="min-h-screen bg-bg-base">
+    <div className="min-h-screen bg-[#f5f6fa] text-slate-900">
       <AppHeader accentColor="primary" />
       <div className="flex">
         <GlobalSidebar />
         <div className="flex-1 min-w-0">
-          <main className="max-w-3xl px-4 md:px-6 py-4 md:py-6 space-y-4">
-            <h1 className="text-lg sm:text-xl font-bold text-white">{warehouse.name}</h1>
+          <main className="max-w-3xl mx-auto px-4 md:px-6 py-5 space-y-4">
+            <h1 className="text-2xl font-bold tracking-tight">{warehouse.name}</h1>
             <WarehouseForm
               initial={{ name: warehouse.name, code: warehouse.code, address: warehouse.address ?? "" }}
               disableCode
