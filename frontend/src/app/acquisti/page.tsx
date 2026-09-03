@@ -29,7 +29,7 @@ export default function AcquistiDashboardPage() {
         <GlobalSidebar />
         <div className="flex-1 min-w-0">
           <main className="max-w-[1600px] px-4 md:px-6 py-4 md:py-6 space-y-6">
-            <h1 className="text-lg sm:text-xl font-bold text-white">Amministrazione — Panoramica</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-white">Gestionale — Panoramica</h1>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <KpiCard
