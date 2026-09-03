@@ -42,17 +42,6 @@ const GROUPS = [
     ],
   },
   {
-    key: "finance", label: "FINANCE", icon: Wallet,
-    items: [
-      { href: "/amazon", label: "Overview" },
-      { href: "/amazon/pl", label: "P&L" },
-      { href: "/amazon/payments", label: "Pagamenti" },
-      { label: "Fisco", comingSoon: true },
-      { label: "Regole fees/IVA/spedizioni", comingSoon: true },
-      { label: "Reportistica", comingSoon: true },
-    ],
-  },
-  {
     key: "inventory", label: "INVENTORY", icon: Boxes,
     items: [
       { href: "/amazon/cogs", label: "COGS" },
@@ -89,7 +78,6 @@ type GroupKey = (typeof GROUPS)[number]["key"];
 
 const GROUP_ICON_CLASSES: Record<GroupKey, string> = {
   amministrazione: "text-accent-amber bg-accent-amber/10",
-  finance: "text-accent-purple bg-accent-purple/10",
   inventory: "text-accent-primary bg-accent-primary/10",
   marketing: "text-accent-blue bg-accent-blue/10",
   supporto: "text-accent-blue bg-accent-blue/10",
@@ -128,7 +116,7 @@ const ITEM_ICONS: Record<string, typeof Wallet> = {
  * route across every group (P&L, COGS, PPC, ...), which now live as
  * separate sibling items rather than children of it — so unlike every
  * other href here, it must match exactly, never via startsWith, or every
- * /amazon/* page would also light up Overview (and FINANCE) as active.
+ * /amazon/* page would also light up Overview as active.
  */
 function isHrefActive(pathname: string, href: string): boolean {
   if (href === "/amazon") return pathname === "/amazon";
@@ -138,7 +126,7 @@ function isHrefActive(pathname: string, href: string): boolean {
 export default function GlobalSidebar() {
   const pathname = usePathname();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    amministrazione: true, finance: true, inventory: true, marketing: true, supporto: true, admin: true,
+    amministrazione: true, inventory: true, marketing: true, supporto: true, admin: true,
   });
 
   const toggle = (key: string) => setOpenGroups(g => ({ ...g, [key]: !g[key] }));
