@@ -27,17 +27,17 @@ export default function ModificaContoPage({ params }: { params: { id: string } }
     router.push("/acquisti/banche");
   };
 
-  if (loading) return <div className="min-h-screen bg-bg-base flex items-center justify-center text-zinc-500 text-sm">Caricamento…</div>;
-  if (!account) return <div className="min-h-screen bg-bg-base flex items-center justify-center text-zinc-500 text-sm">Conto non trovato</div>;
+  if (loading) return <div className="min-h-screen bg-[#f5f6fa] flex items-center justify-center text-slate-500 text-sm">Caricamento…</div>;
+  if (!account) return <div className="min-h-screen bg-[#f5f6fa] flex items-center justify-center text-slate-500 text-sm">Conto non trovato</div>;
 
   return (
-    <div className="min-h-screen bg-bg-base">
+    <div className="min-h-screen bg-[#f5f6fa] text-slate-900">
       <AppHeader accentColor="primary" />
       <div className="flex">
         <GlobalSidebar />
         <div className="flex-1 min-w-0">
-          <main className="max-w-3xl px-4 md:px-6 py-4 md:py-6 space-y-4">
-            <h1 className="text-lg sm:text-xl font-bold text-white">{account.alias}</h1>
+          <main className="max-w-3xl mx-auto px-4 md:px-6 py-5 space-y-4">
+            <h1 className="text-2xl font-bold tracking-tight">{account.alias}</h1>
             <BankAccountForm
               initial={{
                 bankName: account.bankName, alias: account.alias, accountHolder: account.accountHolder,
