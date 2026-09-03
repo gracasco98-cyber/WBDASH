@@ -19,10 +19,10 @@ export default function WorkAreasHub() {
           <Link
             key={a.href}
             href={a.href}
-            className="flex flex-col items-center justify-center gap-2 rounded-xl border border-bg-border bg-bg-card p-4 text-center hover:border-accent-primary/30 hover:bg-bg-hover transition-colors"
+            className="flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm hover:border-emerald-300 hover:bg-emerald-50/40 transition-colors"
           >
-            <Icon size={20} className="text-accent-primary" />
-            <span className="text-xs text-zinc-300 font-medium">{a.label}</span>
+            <Icon size={20} className="text-emerald-600" />
+            <span className="text-xs text-slate-700 font-medium">{a.label}</span>
           </Link>
         );
       })}

@@ -12,9 +12,9 @@ function formatDay(dateStr: string): string {
 const ChartTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-bg-border bg-bg-card px-3 py-2 shadow-xl text-xs">
-      <div className="text-zinc-400 mb-1">{formatDay(label)}</div>
-      <div className="text-white font-medium">{payload[0].value} ordini</div>
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-lg text-xs">
+      <div className="text-slate-500 mb-1">{formatDay(label)}</div>
+      <div className="text-slate-900 font-medium">{payload[0].value} ordini</div>
     </div>
   );
 };
@@ -23,10 +23,10 @@ export default function OrdersOverTimeChart({ data }: Props) {
   const isEmpty = data.every(d => d.count === 0);
 
   return (
-    <div className="rounded-xl border border-bg-border bg-bg-card p-3 sm:p-5">
-      <h2 className="text-sm font-semibold text-white mb-4">Ordini creati — ultimi 30 giorni</h2>
+    <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-5 shadow-sm">
+      <h2 className="text-sm font-bold text-slate-900 mb-4">Ordini creati — ultimi 30 giorni</h2>
       {isEmpty ? (
-        <div className="flex items-center justify-center h-48 text-zinc-600 text-sm">Nessun ordine negli ultimi 30 giorni</div>
+        <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Nessun ordine negli ultimi 30 giorni</div>
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
@@ -36,13 +36,13 @@ export default function OrdersOverTimeChart({ data }: Props) {
                 <stop offset="100%" stopColor="#059669" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="var(--bg-border)" strokeDasharray="4 4" vertical={false} />
-            <XAxis dataKey="date" tick={{ fill: "var(--text-secondary)", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false}
+            <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 4" vertical={false} />
+            <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false}
               interval="preserveStartEnd" tickFormatter={formatDay} />
-            <YAxis tick={{ fill: "var(--text-secondary)", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
-            <Tooltip content={<ChartTooltip />} cursor={{ stroke: "var(--bg-border)", strokeWidth: 1 }} />
+            <YAxis tick={{ fill: "#64748b", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
+            <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#e2e8f0", strokeWidth: 1 }} />
             <Area type="monotone" dataKey="count" stroke="#059669" strokeWidth={2} fill="url(#gradOrdersOverTime)"
-              dot={false} activeDot={{ r: 4, fill: "#059669", stroke: "var(--bg-base)", strokeWidth: 2 }} />
+              dot={false} activeDot={{ r: 4, fill: "#059669", stroke: "#ffffff", strokeWidth: 2 }} />
           </AreaChart>
         </ResponsiveContainer>
       )}

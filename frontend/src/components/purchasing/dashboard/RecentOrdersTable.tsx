@@ -14,28 +14,28 @@ interface Props { orders: RecentOrderEntry[] }
 
 export default function RecentOrdersTable({ orders }: Props) {
   return (
-    <div className="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
-      <h2 className="text-sm font-semibold text-white px-4 py-3 border-b border-bg-border">Ultimi ordini</h2>
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+      <h2 className="text-sm font-bold text-slate-900 px-4 py-3 border-b border-slate-200">Ultimi ordini</h2>
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-zinc-500 text-left bg-bg-hover border-b border-bg-border">
+          <tr className="text-slate-500 text-left bg-slate-50 border-b border-slate-200">
             <th className="px-3 py-2.5">Numero</th><th className="px-3 py-2.5">Fornitore</th>
             <th className="px-3 py-2.5">Data</th><th className="px-3 py-2.5">Stato</th><th className="px-3 py-2.5">Totale</th>
           </tr>
         </thead>
         <tbody>
           {orders.map(o => (
-            <tr key={o.id} className="border-b border-bg-border/40 text-zinc-300 hover:bg-bg-hover/50">
+            <tr key={o.id} className="border-b border-slate-100 text-slate-700 hover:bg-emerald-50/30">
               <td className="px-3 py-2.5">
-                <Link href={`/acquisti/ordini/${o.id}`} className="font-mono text-accent-primary hover:underline">{o.poNumber}</Link>
+                <Link href={`/acquisti/ordini/${o.id}`} className="font-mono text-emerald-700 hover:underline">{o.poNumber}</Link>
               </td>
               <td className="px-3 py-2.5">{o.supplierName}</td>
               <td className="px-3 py-2.5">{new Date(o.orderDate).toLocaleDateString("it-IT")}</td>
               <td className="px-3 py-2.5">{STATUS_LABEL[o.logisticStatus]}</td>
-              <td className="px-3 py-2.5 tabular-nums">{formatEUR(o.totalValue)}</td>
+              <td className="px-3 py-2.5 tabular-nums font-semibold text-slate-900">{formatEUR(o.totalValue)}</td>
             </tr>
           ))}
-          {orders.length === 0 && <tr><td colSpan={5} className="text-center text-zinc-600 py-8">Nessun ordine ancora</td></tr>}
+          {orders.length === 0 && <tr><td colSpan={5} className="text-center text-slate-400 py-8">Nessun ordine ancora</td></tr>}
         </tbody>
       </table>
     </div>

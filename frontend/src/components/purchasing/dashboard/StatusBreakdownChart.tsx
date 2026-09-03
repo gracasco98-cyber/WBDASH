@@ -12,9 +12,9 @@ interface Props { data: StatusBreakdownEntry[] }
 const ChartTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-bg-border bg-bg-card px-3 py-2 shadow-xl text-xs">
-      <div className="text-zinc-400 mb-1">{label}</div>
-      <div className="text-white font-medium">{payload[0].value} ordini</div>
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-lg text-xs">
+      <div className="text-slate-500 mb-1">{label}</div>
+      <div className="text-slate-900 font-medium">{payload[0].value} ordini</div>
     </div>
   );
 };
@@ -24,16 +24,16 @@ export default function StatusBreakdownChart({ data }: Props) {
   const isEmpty = data.every(d => d.count === 0);
 
   return (
-    <div className="rounded-xl border border-bg-border bg-bg-card p-3 sm:p-5">
-      <h2 className="text-sm font-semibold text-white mb-4">Ordini per stato</h2>
+    <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-5 shadow-sm">
+      <h2 className="text-sm font-bold text-slate-900 mb-4">Ordini per stato</h2>
       {isEmpty ? (
-        <div className="flex items-center justify-center h-48 text-zinc-600 text-sm">Nessun ordine ancora</div>
+        <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Nessun ordine ancora</div>
       ) : (
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
-            <CartesianGrid stroke="var(--bg-border)" strokeDasharray="4 4" horizontal={false} />
-            <XAxis type="number" tick={{ fill: "var(--text-secondary)", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} allowDecimals={false} />
-            <YAxis type="category" dataKey="status" tick={{ fill: "var(--text-secondary)", fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
+            <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 4" horizontal={false} />
+            <XAxis type="number" tick={{ fill: "#64748b", fontSize: 10, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} allowDecimals={false} />
+            <YAxis type="category" dataKey="status" tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
             <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(5,150,105,0.06)" }} />
             <Bar dataKey="count" fill="#059669" radius={[0, 4, 4, 0]} maxBarSize={20} />
           </BarChart>
