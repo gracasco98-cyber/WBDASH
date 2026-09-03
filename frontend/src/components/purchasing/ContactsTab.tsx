@@ -41,7 +41,7 @@ export default function ContactsTab({ type, basePath, title }: Props) {
         actions={
           <Link
             href={`${basePath}/nuovo`}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/20 text-accent-primary text-xs font-medium hover:bg-accent-primary/20 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition-colors"
           >
             <Plus size={13} /> Nuovo
           </Link>
@@ -57,10 +57,10 @@ export default function ContactsTab({ type, basePath, title }: Props) {
         onChange={id => setTab(id as "active" | "inactive")}
       />
 
-      <div className="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-zinc-500 text-left bg-bg-hover border-b border-bg-border">
+            <tr className="text-slate-500 text-left bg-slate-50 border-b border-slate-200">
               <th className="px-3 py-2.5">Nome</th><th className="px-3 py-2.5">Referente</th>
               <th className="px-3 py-2.5">Email</th><th className="px-3 py-2.5">Telefono</th>
               <th className="px-3 py-2.5">Stato</th>
@@ -68,9 +68,9 @@ export default function ContactsTab({ type, basePath, title }: Props) {
           </thead>
           <tbody>
             {filtered.map(r => (
-              <tr key={r.id} className="border-b border-bg-border/40 text-zinc-300 hover:bg-bg-hover/50">
+              <tr key={r.id} className="border-b border-slate-100 text-slate-700 hover:bg-emerald-50/30">
                 <td className="px-3 py-2.5">
-                  <Link href={`${basePath}/${r.id}`} className="font-medium text-accent-primary hover:underline">{r.name}</Link>
+                  <Link href={`${basePath}/${r.id}`} className="font-medium text-emerald-700 hover:underline">{r.name}</Link>
                 </td>
                 <td className="px-3 py-2.5">{r.referent ?? "—"}</td>
                 <td className="px-3 py-2.5">{r.email ?? "—"}</td>
@@ -78,7 +78,7 @@ export default function ContactsTab({ type, basePath, title }: Props) {
                 <td className="px-3 py-2.5">{r.isActive ? "Attivo" : "Disattivato"}</td>
               </tr>
             ))}
-            {filtered.length === 0 && <tr><td colSpan={5} className="text-center text-zinc-600 py-8">Nessun contatto trovato</td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={5} className="text-center text-slate-400 py-8">Nessun contatto trovato</td></tr>}
           </tbody>
         </table>
       </div>

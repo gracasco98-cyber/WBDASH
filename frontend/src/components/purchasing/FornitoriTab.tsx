@@ -37,7 +37,7 @@ export default function FornitoriTab() {
         actions={
           <Link
             href="/acquisti/fornitori/nuovo"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary/10 border border-accent-primary/20 text-accent-primary text-xs font-medium hover:bg-accent-primary/20 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition-colors"
           >
             <Plus size={13} /> Nuovo Fornitore
           </Link>
@@ -59,10 +59,10 @@ export default function FornitoriTab() {
         onChange={id => setTab(id as "active" | "inactive")}
       />
 
-      <div className="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-zinc-500 text-left bg-bg-hover border-b border-bg-border">
+            <tr className="text-slate-500 text-left bg-slate-50 border-b border-slate-200">
               <th className="px-3 py-2.5">Fornitore</th><th className="px-3 py-2.5">Tipo</th>
               <th className="px-3 py-2.5">P.IVA</th><th className="px-3 py-2.5">Condizione</th>
               <th className="px-3 py-2.5">Prodotti</th><th className="px-3 py-2.5">Stato</th>
@@ -70,25 +70,25 @@ export default function FornitoriTab() {
           </thead>
           <tbody>
             {filtered.map(r => (
-              <tr key={r.id} className="border-b border-bg-border/40 text-zinc-300 hover:bg-bg-hover/50">
+              <tr key={r.id} className="border-b border-slate-100 text-slate-700 hover:bg-emerald-50/30">
                 <td className="px-3 py-2.5">
-                  <Link href={`/acquisti/fornitori/${r.id}`} className="font-medium text-accent-primary hover:underline">{r.legalName}</Link>
-                  <div className="text-[10px] text-zinc-500 font-mono">{r.internalCode}</div>
+                  <Link href={`/acquisti/fornitori/${r.id}`} className="font-medium text-emerald-700 hover:underline">{r.legalName}</Link>
+                  <div className="text-[10px] text-slate-500 font-mono">{r.internalCode}</div>
                 </td>
                 <td className="px-3 py-2.5">{r.supplierType}</td>
                 <td className="px-3 py-2.5 font-mono">{r.vatNumber ?? r.foreignVatNumber ?? "—"}</td>
                 <td className="px-3 py-2.5">
-                  {r.defaultPaymentTerm ? r.defaultPaymentTerm.name : <span className="text-accent-amber">— mancante</span>}
+                  {r.defaultPaymentTerm ? r.defaultPaymentTerm.name : <span className="text-amber-600">— mancante</span>}
                 </td>
                 <td className="px-3 py-2.5">
-                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] ${r._count.products > 0 ? "bg-accent-blue/15 text-accent-blue" : "bg-zinc-800 text-zinc-500"}`}>
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] ${r._count.products > 0 ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
                     {r._count.products > 0 ? r._count.products : "Nessuno"}
                   </span>
                 </td>
                 <td className="px-3 py-2.5">{r.isActive ? "Attivo" : "Disattivato"}</td>
               </tr>
             ))}
-            {filtered.length === 0 && <tr><td colSpan={6} className="text-center text-zinc-600 py-8">Nessun fornitore trovato</td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={6} className="text-center text-slate-400 py-8">Nessun fornitore trovato</td></tr>}
           </tbody>
         </table>
       </div>

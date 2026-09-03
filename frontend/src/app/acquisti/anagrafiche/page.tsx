@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { Users } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import FornitoriTab from "@/components/purchasing/FornitoriTab";
@@ -25,13 +26,17 @@ export default function AnagrafichePage() {
   useEffect(() => { loadCounts(); }, [loadCounts]);
 
   return (
-    <div className="min-h-screen bg-bg-base">
+    <div className="min-h-screen bg-[#f5f6fa] text-slate-900">
       <AppHeader accentColor="primary" />
       <div className="flex">
         <GlobalSidebar />
         <div className="flex-1 min-w-0">
-          <main className="max-w-[1600px] px-4 md:px-6 py-4 md:py-6 space-y-4">
-            <h1 className="text-lg sm:text-xl font-bold text-white">Anagrafiche</h1>
+          <main className="max-w-[1600px] mx-auto px-4 md:px-6 py-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <Users size={20} className="text-emerald-600" />
+              <h1 className="text-2xl font-bold tracking-tight">Anagrafiche</h1>
+              <span className="text-[10px] uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1">Tema chiaro</span>
+            </div>
             <TabsWithCount
               tabs={[
                 { id: "fornitori", label: "Fornitori", count: supplierCount },

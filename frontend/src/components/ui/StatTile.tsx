@@ -5,16 +5,16 @@ export interface StatTileProps {
 }
 
 const TONE_CLASSES: Record<NonNullable<StatTileProps["tone"]>, string> = {
-  primary: "text-accent-primary",
-  neutral: "text-zinc-300",
-  amber: "text-accent-amber",
+  primary: "text-emerald-700",
+  neutral: "text-slate-700",
+  amber: "text-amber-700",
 };
 
 export function StatTile({ value, label, tone = "neutral" }: StatTileProps) {
   return (
-    <div className="bg-bg-card border border-bg-border rounded-xl px-3.5 py-2.5">
+    <div className="bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 shadow-sm">
       <div className={`text-base font-bold ${TONE_CLASSES[tone]}`}>{value}</div>
-      <div className="text-[10px] uppercase tracking-wide text-zinc-500 mt-0.5">{label}</div>
+      <div className="text-[10px] uppercase tracking-wide text-slate-500 mt-0.5">{label}</div>
     </div>
   );
 }
