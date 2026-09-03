@@ -1,10 +1,13 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { CalendarDays } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import { api } from "@/lib/api";
 import type { SupplierPaymentDue, PaymentDueStatus } from "@/lib/api/payment-dues";
+
+const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
 
 export default function ScadenzarioPage() {
   const [rows, setRows] = useState<SupplierPaymentDue[]>([]);
@@ -31,18 +34,47 @@ export default function ScadenzarioPage() {
   };
 
   const today = new Date().toISOString().slice(0, 10);
+  const weekAhead = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+
+  const kpis = useMemo(() => {
+    const pending = rows.filter(r => r.status === "PENDING");
+    return {
+      totalDue: pending.reduce((s, r) => s + r.amount, 0),
+      overdue: pending.filter(r => r.dueDate.slice(0, 10) < today).reduce((s, r) => s + r.amount, 0),
+      dueThisWeek: pending.filter(r => r.dueDate.slice(0, 10) >= today && r.dueDate.slice(0, 10) <= weekAhead).reduce((s, r) => s + r.amount, 0),
+      paid: rows.filter(r => r.status === "PAID").reduce((s, r) => s + r.amount, 0),
+    };
+  }, [rows, today, weekAhead]);
 
   return (
-    <div className="min-h-screen bg-bg-base">
+    <div className="min-h-screen bg-[#f5f6fa] text-slate-900">
       <AppHeader accentColor="primary" />
       <div className="flex">
         <GlobalSidebar />
-        <div className="flex-1 min-w-0">
-          <main className="max-w-5xl px-4 md:px-6 py-4 md:py-6 space-y-4">
-            <h1 className="text-lg sm:text-xl font-bold text-white">Scadenzario</h1>
+        <main className="flex-1 min-w-0">
+          <div className="max-w-[1600px] mx-auto px-4 md:px-6 py-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <CalendarDays size={20} className="text-emerald-600" />
+              <h1 className="text-2xl font-bold tracking-tight">Scadenzario</h1>
+              <span className="text-[10px] uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1">Tema chiaro</span>
+            </div>
+
+            <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Totale da pagare", value: eur.format(kpis.totalDue), cls: "text-slate-900" },
+                { label: "Scaduto", value: eur.format(kpis.overdue), cls: kpis.overdue > 0 ? "text-rose-600" : "text-slate-900" },
+                { label: "In scadenza (7gg)", value: eur.format(kpis.dueThisWeek), cls: kpis.dueThisWeek > 0 ? "text-amber-700" : "text-slate-900" },
+                { label: "Pagato", value: eur.format(kpis.paid), cls: "text-emerald-700" },
+              ].map(({ label, value, cls }) => (
+                <div key={label} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</div>
+                  <div className={`mt-2 text-lg font-bold tabular-nums ${cls}`}>{value}</div>
+                </div>
+              ))}
+            </section>
 
             <select
-              className="bg-bg-hover border border-bg-border rounded-lg px-2.5 py-1.5 text-xs text-zinc-200"
+              className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 shadow-sm"
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value as PaymentDueStatus | "")}
             >
@@ -51,12 +83,12 @@ export default function ScadenzarioPage() {
               <option value="PAID">Pagate</option>
             </select>
 
-            {error && <div className="text-xs text-accent-red bg-accent-red/10 border border-accent-red/20 rounded-lg px-3 py-2">{error}</div>}
+            {error && <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</div>}
 
-            <div className="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-zinc-500 text-left bg-bg-hover border-b border-bg-border">
+                  <tr className="text-slate-500 text-left bg-slate-50 border-b border-slate-200">
                     <th className="px-3 py-2.5">Scadenza</th><th className="px-3 py-2.5">Ordine</th>
                     <th className="px-3 py-2.5">Fornitore</th><th className="px-3 py-2.5">Rata</th>
                     <th className="px-3 py-2.5">Importo</th><th className="px-3 py-2.5">Stato</th>
@@ -67,12 +99,12 @@ export default function ScadenzarioPage() {
                   {rows.map(r => {
                     const isOverdue = r.status === "PENDING" && r.dueDate.slice(0, 10) < today;
                     return (
-                      <tr key={r.id} className="border-b border-bg-border/40 text-zinc-300 hover:bg-bg-hover/50">
-                        <td className={`px-3 py-2.5 ${isOverdue ? "text-accent-red font-medium" : ""}`}>
+                      <tr key={r.id} className="border-b border-slate-100 text-slate-700 hover:bg-emerald-50/30">
+                        <td className={`px-3 py-2.5 ${isOverdue ? "text-rose-600 font-medium" : ""}`}>
                           {new Date(r.dueDate).toLocaleDateString("it-IT")}
                         </td>
                         <td className="px-3 py-2.5">
-                          <Link href={`/acquisti/ordini/${r.purchaseOrderId}`} className="font-mono text-accent-primary hover:underline">
+                          <Link href={`/acquisti/ordini/${r.purchaseOrderId}`} className="font-mono text-emerald-700 hover:underline">
                             {r.purchaseOrder.poNumber}
                           </Link>
                         </td>
@@ -81,11 +113,11 @@ export default function ScadenzarioPage() {
                         <td className="px-3 py-2.5">€ {r.amount.toFixed(2)}</td>
                         <td className="px-3 py-2.5">
                           {r.status === "PAID" ? (
-                            <span className="text-accent-primary">Pagato{r.paidDate ? ` il ${new Date(r.paidDate).toLocaleDateString("it-IT")}` : ""}</span>
+                            <span className="text-emerald-700">Pagato{r.paidDate ? ` il ${new Date(r.paidDate).toLocaleDateString("it-IT")}` : ""}</span>
                           ) : isOverdue ? (
-                            <span className="text-accent-red">Scaduta</span>
+                            <span className="text-rose-600">Scaduta</span>
                           ) : (
-                            <span className="text-zinc-500">Da pagare</span>
+                            <span className="text-slate-500">Da pagare</span>
                           )}
                         </td>
                         <td className="px-3 py-2.5">
@@ -93,7 +125,7 @@ export default function ScadenzarioPage() {
                             <button
                               onClick={() => handleMarkPaid(r.id, r.amount)}
                               disabled={payingId === r.id}
-                              className="px-2.5 py-1 rounded-lg bg-accent-primary/10 border border-accent-primary/20 text-accent-primary text-xs font-medium hover:bg-accent-primary/20 disabled:opacity-50 transition-colors"
+                              className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50 transition-colors"
                             >
                               Segna come pagato
                             </button>
@@ -102,12 +134,12 @@ export default function ScadenzarioPage() {
                       </tr>
                     );
                   })}
-                  {rows.length === 0 && <tr><td colSpan={7} className="text-center text-zinc-600 py-8">Nessuna scadenza</td></tr>}
+                  {rows.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-8">Nessuna scadenza</td></tr>}
                 </tbody>
               </table>
             </div>
-          </main>
-        </div>
+          </div>
+        </main>
       </div>
     </div>
   );
