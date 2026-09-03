@@ -30,6 +30,36 @@ function sortHits(hits: RedcareSearchHit[], key: SortKey, dir: SortDir): Redcare
   return withValue.map((w) => w.hit);
 }
 
+// Aggregate stats computed client-side from the currently displayed hits —
+// real data already fetched, no extra request, no fabricated fields.
+function MarketStatsBar({ hits, nbHits }: { hits: RedcareSearchHit[]; nbHits: number }) {
+  const prices = hits.map((h) => h.price).filter((p): p is number => p !== null);
+  const ratings = hits.map((h) => h.rating).filter((r): r is number => r !== null);
+  const inStockCount = hits.filter((h) => h.inStock === true).length;
+  const avgPrice = prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
+  const avgRating = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
+
+  const tiles = [
+    { label: "Prezzo medio", value: avgPrice !== null ? fmtEur(avgPrice) : "—" },
+    { label: "Rating medio", value: avgRating !== null ? avgRating.toFixed(1) : "—" },
+    { label: "Disponibili", value: `${inStockCount}/${hits.length}` },
+    { label: "Risultati totali", value: String(nbHits) },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+      {tiles.map((t) => (
+        <div key={t.label} className="bg-bg-elevated border border-bg-border rounded-lg px-3 py-2">
+          <div className="text-[10px] text-zinc-500 mb-0.5">{t.label}</div>
+          <div className="text-sm font-semibold text-white tabular-nums" data-testid={`market-tile-${t.label}`}>
+            {t.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SortHeader({
   label, sortKey, active, dir, onSort,
 }: {
@@ -147,6 +177,7 @@ export default function RedcareKeywordSearch({ onTracked }: Props) {
       {sortedHits && (
         <>
           <p className="text-xs text-zinc-500 mb-2">{nbHits} risultati per "{searched?.keyword ?? keyword}"</p>
+          <MarketStatsBar hits={sortedHits} nbHits={nbHits} />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -167,8 +198,18 @@ export default function RedcareKeywordSearch({ onTracked }: Props) {
                   <tr key={`${hit.position}-${hit.ean ?? "no-ean"}`} className="border-t border-bg-border align-top">
                     <td className="py-1.5 pr-3"><PositionBadge position={hit.position} /></td>
                     <td className="py-1.5 pr-3">
-                      <div className="text-white">{hit.productName ?? "—"}</div>
-                      {hit.brand && <div className="text-[11px] text-zinc-500">{hit.brand}</div>}
+                      <div className="flex items-center gap-2">
+                        {hit.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- external CDN thumbnail, not a local/optimized asset
+                          <img src={hit.imageUrl} alt={hit.productName ?? "Prodotto"} className="w-8 h-8 rounded object-cover bg-bg-elevated shrink-0" />
+                        ) : (
+                          <div className="w-8 h-8 rounded bg-bg-elevated shrink-0" />
+                        )}
+                        <div>
+                          <div className="text-white">{hit.productName ?? "—"}</div>
+                          {hit.brand && <div className="text-[11px] text-zinc-500">{hit.brand}</div>}
+                        </div>
+                      </div>
                     </td>
                     <td className="py-1.5 pr-3 text-zinc-400 text-[11px] max-w-[180px]">{hit.category ?? "—"}</td>
                     <td className="py-1.5 pr-3 text-zinc-400">

@@ -35,6 +35,7 @@ export interface RedcareSearchHit {
   inStock: boolean | null;
   category: string | null; // mainCategory lvl1>lvl2>lvl3 joined, lvl0 (site name) dropped
   sellerCount: number | null; // distinct sellers competing for this exact listing
+  imageUrl: string | null; // public CDN product image, live-search only (not persisted to snapshots)
 }
 
 export interface RedcareSearchResult {
@@ -81,6 +82,7 @@ function extractHit(raw: any, position: number): RedcareSearchHit {
     inStock: typeof raw.inStock === "boolean" ? raw.inStock : null,
     category: joinCategory(raw.mainCategory),
     sellerCount: typeof raw.seller_count === "number" ? raw.seller_count : null,
+    imageUrl: typeof raw.image === "string" ? raw.image : null,
   };
 }
 

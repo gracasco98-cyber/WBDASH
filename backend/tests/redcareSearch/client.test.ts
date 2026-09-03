@@ -19,7 +19,7 @@ describe("fetchSearchResults", () => {
           _rankingInfo: { promoted: null, promotedByReRanking: null },
           brand: "NATURPLAN", averageRating: 4.5, ratingCount: 12, inStock: true,
           mainCategory: { lvl0: "redcare.it", lvl1: "Benessere", lvl2: "Sistema Cardiovascolare", lvl3: "Gambe Pesanti" },
-          seller_count: 1,
+          seller_count: 1, image: "https://cdn.redcare.it/images/mp/prod/abc123",
         },
         {
           ean: "8054346340155", productName: "Diosmina Esperidina VitaminPure", price: 1990,
@@ -43,6 +43,7 @@ describe("fetchSearchResults", () => {
       promoted: null, promotedByReRanking: null,
       brand: "NATURPLAN", rating: 4.5, ratingCount: 12, inStock: true,
       category: "Benessere > Sistema Cardiovascolare > Gambe Pesanti", sellerCount: 1,
+      imageUrl: "https://cdn.redcare.it/images/mp/prod/abc123",
     });
     expect(result.hits[1]).toMatchObject({
       position: 2, promoted: true, promotedByReRanking: true,
@@ -59,6 +60,7 @@ describe("fetchSearchResults", () => {
     const result = await fetchSearchResults("IT", "x");
     expect(result.hits[0]).toMatchObject({
       brand: null, rating: null, ratingCount: null, inStock: null, sellerCount: null, category: "Solo",
+      imageUrl: null,
     });
   });
 

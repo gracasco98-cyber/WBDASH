@@ -2,8 +2,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type MarketingKeywordWatch, type MarketingKeywordSnapshot, type RedcareMarket } from "@/lib/api";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { ChevronDown, ChevronUp, Trash2, RefreshCw, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, Trash2, RefreshCw, Plus, ArrowUp, ArrowDown } from "lucide-react";
 import { PositionBadge } from "./PositionBadge";
+import { PositionSparkline } from "./PositionSparkline";
+import { fmtEur } from "@/lib/fmt";
 
 interface Props {
   refreshKey: number;
@@ -49,7 +51,11 @@ function bestPosition(watches: MarketingKeywordWatch[]): number | null {
 
 const LINE_COLORS = ["#6ee7b7", "#fbbf24", "#f472b6", "#93c5fd", "#c4b5fd"];
 
-function ProductChart({ group }: { group: ProductGroup }) {
+// Fetches each watch's position history once per product group (30 days),
+// shared by both the always-visible sparkline/delta cells and the
+// expandable combined chart — one fetch per watch, never duplicated across
+// the two views.
+function useGroupHistory(group: ProductGroup): Record<string, MarketingKeywordSnapshot[]> | null {
   const [series, setSeries] = useState<Record<string, MarketingKeywordSnapshot[]> | null>(null);
   const watchIdsKey = group.watches.map((w) => w.id).join(",");
 
@@ -63,11 +69,41 @@ function ProductChart({ group }: { group: ProductGroup }) {
     })();
     return () => { cancelled = true; };
     // Depend on the stable set of watch ids, not the `group` object identity —
-    // `group` is rebuilt every render (memoized only per watch-list change),
-    // so keying off it directly would refetch on every unrelated re-render.
+    // `group` is rebuilt every render, so keying off it directly would
+    // refetch on every unrelated re-render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchIdsKey]);
 
+  return series;
+}
+
+// Position change vs. the previous check — real, derived from the watch's
+// own history (mirrors the rank-change arrow in keyword-research tools). A
+// lower position number is better, so a decrease shows as an improvement.
+function PositionDelta({ snapshots }: { snapshots: MarketingKeywordSnapshot[] | undefined }) {
+  const positioned = (snapshots ?? []).filter(
+    (s): s is MarketingKeywordSnapshot & { position: number } => s.position !== null
+  );
+  if (positioned.length < 2) return null;
+  const current = positioned[positioned.length - 1].position;
+  const previous = positioned[positioned.length - 2].position;
+  const delta = previous - current;
+  if (delta === 0) return <span className="text-zinc-600 text-[10px]">=</span>;
+  const improved = delta > 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[10px] ${improved ? "text-emerald-400" : "text-red-400"}`}>
+      {improved ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
+      {Math.abs(delta)}
+    </span>
+  );
+}
+
+function ProductChart({
+  group, series,
+}: {
+  group: ProductGroup;
+  series: Record<string, MarketingKeywordSnapshot[]> | null;
+}) {
   if (!series) return <div className="h-40 flex items-center justify-center text-zinc-600 text-sm">Caricamento storico…</div>;
 
   const dates = Array.from(new Set(Object.values(series).flat().map((s) => s.checkedAt.slice(0, 10)))).sort();
@@ -137,13 +173,156 @@ function SummaryTiles({ watches }: { watches: MarketingKeywordWatch[] }) {
   );
 }
 
+function ProductGroupRow({
+  group, isOpen, onToggle, onRemove, onReload, setError,
+}: {
+  group: ProductGroup;
+  isOpen: boolean;
+  onToggle: () => void;
+  onRemove: (id: string) => void;
+  onReload: () => Promise<void>;
+  setError: (e: string | null) => void;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newKeyword, setNewKeyword] = useState("");
+  const series = useGroupHistory(group);
+  const best = bestPosition(group.watches);
+
+  // Refresh this product's position on demand — scoped server-side to just
+  // its watches (POST /watches/check-now), unlike the global daily job.
+  // Stops the click from bubbling to the header's expand/collapse toggle.
+  const checkNow = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setChecking(true);
+    setError(null);
+    try {
+      await api.marketingRedcare.checkNow({ market: group.market as RedcareMarket, ean: group.ean });
+      await onReload();
+    } catch {
+      setError("Impossibile aggiornare la posizione in questo momento.");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  // Add another keyword to this already-tracked product without going back
+  // to Cerebro search — same POST /watches the search results' "Traccia"
+  // buttons use, scoped to this product's market/ean/isOwn.
+  const addKeyword = async () => {
+    const keyword = newKeyword.trim();
+    if (!keyword) return;
+    setAdding(true);
+    setError(null);
+    try {
+      await api.marketingRedcare.createWatch({
+        market: group.market as RedcareMarket, ean: group.ean, keyword, label: group.label, isOwn: group.isOwn,
+      });
+      setNewKeyword("");
+      await onReload();
+    } catch {
+      setError("Impossibile aggiungere la keyword in questo momento.");
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <div className="border border-bg-border rounded-lg">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onToggle(); }}
+        className="w-full flex items-center justify-between px-3 py-2.5 text-left cursor-pointer"
+      >
+        <div className="flex items-center gap-2">
+          <span className={`text-sm ${group.isOwn ? "text-accent-primary" : "text-zinc-300"}`}>{group.label}</span>
+          <span className="text-[11px] text-zinc-500">{group.market}</span>
+          <span className="text-[11px] text-zinc-600">{group.watches.length} keyword</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={checkNow}
+            disabled={checking}
+            aria-label={`Aggiorna posizione ${group.label}`}
+            className="text-zinc-500 hover:text-accent-primary disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={checking ? "animate-spin" : ""} />
+          </button>
+          <PositionBadge position={best} />
+          {isOpen ? <ChevronUp size={16} className="text-zinc-500" /> : <ChevronDown size={16} className="text-zinc-500" />}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto px-3">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-zinc-600 text-[10px] uppercase">
+              <th className="py-1 pr-3 font-normal">Keyword</th>
+              <th className="py-1 pr-3 font-normal">Posizione</th>
+              <th className="py-1 pr-3 font-normal">Var.</th>
+              <th className="py-1 pr-3 font-normal">Trend</th>
+              <th className="py-1 pr-3 font-normal">Prezzo</th>
+              <th className="py-1 pr-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {group.watches.map((w) => (
+              <tr key={w.id} className="border-t border-bg-border/60">
+                <td className="py-1.5 pr-3 text-zinc-400">{w.keyword}</td>
+                <td className="py-1.5 pr-3"><PositionBadge position={foundPosition(w)} /></td>
+                <td className="py-1.5 pr-3"><PositionDelta snapshots={series?.[w.id]} /></td>
+                <td className="py-1.5 pr-3"><PositionSparkline snapshots={series?.[w.id] ?? []} /></td>
+                <td className="py-1.5 pr-3 text-zinc-400 tabular-nums">
+                  {w.latestSnapshot?.price != null ? fmtEur(w.latestSnapshot.price) : "—"}
+                </td>
+                <td className="py-1.5 pr-3">
+                  <button
+                    onClick={() => onRemove(w.id)}
+                    aria-label={`Rimuovi ${w.keyword}`}
+                    className="text-zinc-600 hover:text-red-400"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center gap-2 px-3 pb-2.5 pt-2">
+        <input
+          value={newKeyword}
+          onChange={(e) => setNewKeyword(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addKeyword()}
+          placeholder="Nuova parola chiave"
+          className="flex-1 bg-bg-elevated border border-bg-border rounded-lg px-2 py-1 text-xs text-white placeholder:text-zinc-600"
+        />
+        <button
+          onClick={addKeyword}
+          disabled={adding || !newKeyword.trim()}
+          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-accent-primary/10 text-accent-primary border border-accent-primary/20 disabled:opacity-50 whitespace-nowrap"
+        >
+          <Plus size={11} /> Aggiungi keyword
+        </button>
+      </div>
+
+      {isOpen && (
+        <div data-testid="product-chart-panel" className="border-t border-bg-border px-3 py-3">
+          <ProductChart group={group} series={series} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function RedcareTrackedKeywords({ refreshKey }: Props) {
   const [watches, setWatches] = useState<MarketingKeywordWatch[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [checkingKey, setCheckingKey] = useState<string | null>(null);
-  const [addingKey, setAddingKey] = useState<string | null>(null);
-  const [newKeywordByGroup, setNewKeywordByGroup] = useState<Record<string, string>>({});
+  const [filter, setFilter] = useState("");
 
   const load = async () => {
     try {
@@ -166,128 +345,48 @@ export default function RedcareTrackedKeywords({ refreshKey }: Props) {
     }
   };
 
-  // Refresh a single product's position on demand — scoped server-side to
-  // just this product's watches (POST /watches/check-now), unlike the
-  // global daily job. Stops the click from bubbling to the header's
-  // expand/collapse toggle.
-  const checkNow = async (group: ProductGroup, key: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCheckingKey(key);
-    setError(null);
-    try {
-      await api.marketingRedcare.checkNow({ market: group.market as RedcareMarket, ean: group.ean });
-      await load();
-    } catch {
-      setError("Impossibile aggiornare la posizione in questo momento.");
-    } finally {
-      setCheckingKey(null);
-    }
-  };
-
-  // Add another keyword to an already-tracked product without going back to
-  // Cerebro search — same POST /watches the search results' "Traccia"
-  // buttons use, just scoped to this product's market/ean/isOwn.
-  const addKeyword = async (group: ProductGroup, key: string) => {
-    const keyword = (newKeywordByGroup[key] ?? "").trim();
-    if (!keyword) return;
-    setAddingKey(key);
-    setError(null);
-    try {
-      await api.marketingRedcare.createWatch({
-        market: group.market as RedcareMarket, ean: group.ean, keyword, label: group.label, isOwn: group.isOwn,
-      });
-      setNewKeywordByGroup((prev) => ({ ...prev, [key]: "" }));
-      await load();
-    } catch {
-      setError("Impossibile aggiungere la keyword in questo momento.");
-    } finally {
-      setAddingKey(null);
-    }
-  };
-
   const groups = useMemo(() => groupByProduct(watches), [watches]);
+  const filteredGroups = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return groups;
+    return groups.filter((g) => g.label.toLowerCase().includes(q) || g.ean.toLowerCase().includes(q));
+  }, [groups, filter]);
 
   return (
     <div className="bg-bg-card border border-bg-border rounded-xl p-5">
-      <h3 className="text-sm font-semibold text-white mb-4">Prodotti monitorati</h3>
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <h3 className="text-sm font-semibold text-white">Prodotti monitorati</h3>
+        {groups.length > 0 && (
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filtra per nome o EAN…"
+            className="w-56 bg-bg-elevated border border-bg-border rounded-lg px-2 py-1 text-xs text-white placeholder:text-zinc-600"
+          />
+        )}
+      </div>
       {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
       {watches.length > 0 && <SummaryTiles watches={watches} />}
       {groups.length === 0 ? (
         <p className="text-sm text-zinc-600">
           Nessun prodotto monitorato — traccia un risultato dalla ricerca qui sopra, o aggiungine uno manualmente.
         </p>
+      ) : filteredGroups.length === 0 ? (
+        <p className="text-sm text-zinc-600">Nessun prodotto corrisponde al filtro.</p>
       ) : (
         <div className="space-y-3">
-          {groups.map((group) => {
+          {filteredGroups.map((group) => {
             const key = `${group.market}::${group.ean}`;
-            const isOpen = expanded === key;
-            const best = bestPosition(group.watches);
             return (
-              <div key={key} className="border border-bg-border rounded-lg">
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setExpanded(isOpen ? null : key)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpanded(isOpen ? null : key); }}
-                  className="w-full flex items-center justify-between px-3 py-2.5 text-left cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm ${group.isOwn ? "text-accent-primary" : "text-zinc-300"}`}>{group.label}</span>
-                    <span className="text-[11px] text-zinc-500">{group.market}</span>
-                    <span className="text-[11px] text-zinc-600">{group.watches.length} keyword</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={(e) => checkNow(group, key, e)}
-                      disabled={checkingKey === key}
-                      aria-label={`Aggiorna posizione ${group.label}`}
-                      className="text-zinc-500 hover:text-accent-primary disabled:opacity-50"
-                    >
-                      <RefreshCw size={14} className={checkingKey === key ? "animate-spin" : ""} />
-                    </button>
-                    <PositionBadge position={best} />
-                    {isOpen ? <ChevronUp size={16} className="text-zinc-500" /> : <ChevronDown size={16} className="text-zinc-500" />}
-                  </div>
-                </div>
-                <div className="px-3 pb-2.5 space-y-1">
-                  {group.watches.map((w) => (
-                    <div key={w.id} className="flex items-center justify-between text-sm">
-                      <span className="text-zinc-400">{w.keyword}</span>
-                      <div className="flex items-center gap-2">
-                        <PositionBadge position={foundPosition(w)} />
-                        <button
-                          onClick={() => remove(w.id)}
-                          aria-label={`Rimuovi ${w.keyword}`}
-                          className="text-zinc-600 hover:text-red-400"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex items-center gap-2 pt-2 mt-1 border-t border-bg-border">
-                    <input
-                      value={newKeywordByGroup[key] ?? ""}
-                      onChange={(e) => setNewKeywordByGroup((prev) => ({ ...prev, [key]: e.target.value }))}
-                      onKeyDown={(e) => e.key === "Enter" && addKeyword(group, key)}
-                      placeholder="Nuova parola chiave"
-                      className="flex-1 bg-bg-elevated border border-bg-border rounded-lg px-2 py-1 text-xs text-white placeholder:text-zinc-600"
-                    />
-                    <button
-                      onClick={() => addKeyword(group, key)}
-                      disabled={addingKey === key || !(newKeywordByGroup[key] ?? "").trim()}
-                      className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-accent-primary/10 text-accent-primary border border-accent-primary/20 disabled:opacity-50 whitespace-nowrap"
-                    >
-                      <Plus size={11} /> Aggiungi keyword
-                    </button>
-                  </div>
-                </div>
-                {isOpen && (
-                  <div className="border-t border-bg-border px-3 py-3">
-                    <ProductChart group={group} />
-                  </div>
-                )}
-              </div>
+              <ProductGroupRow
+                key={key}
+                group={group}
+                isOpen={expanded === key}
+                onToggle={() => setExpanded(expanded === key ? null : key)}
+                onRemove={remove}
+                onReload={load}
+                setError={setError}
+              />
             );
           })}
         </div>

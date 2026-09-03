@@ -245,7 +245,77 @@ describe("RedcareTrackedKeywords", () => {
     // best-position badge and the single keyword row's own badge.
     await waitFor(() => expect(screen.getAllByText("#3")).toHaveLength(2));
     // Refreshing must not have expanded the product row (the click didn't
-    // toggle the header), so the chart's history fetch never fires.
-    expect(watchHistoryMock).not.toHaveBeenCalled();
+    // toggle the header) — the big combined chart panel stays unmounted.
+    // (The row's own trend sparkline fetches history eagerly regardless of
+    // expand state, so watchHistory itself IS called — that's expected.)
+    expect(screen.queryByTestId("product-chart-panel")).not.toBeInTheDocument();
+  });
+
+  it("shows each keyword's latest price in the always-visible table", async () => {
+    listWatchesMock.mockResolvedValue({
+      watches: [watch({
+        id: "w1", ean: "111", keyword: "kw1", label: "Prodotto X",
+        latestSnapshot: { id: "s1", watchId: "w1", checkedAt: "2026-09-01T03:00:00Z", found: true, position: 2, nbHits: 10, price: 11.9, sellerName: null, productName: null, promoted: null, promotedByReRanking: null },
+      })],
+    });
+
+    render(<RedcareTrackedKeywords refreshKey={0} />);
+    const row = (await screen.findByText("kw1")).closest("tr");
+    // Regex matcher: \s absorbs whichever space character Intl.NumberFormat used.
+    expect(row).toHaveTextContent(/11,90\s*€/);
+  });
+
+  it("shows a dash for price when the keyword has no snapshot yet", async () => {
+    listWatchesMock.mockResolvedValue({ watches: [watch({ id: "w1", ean: "111", keyword: "kw1", label: "Prodotto X", latestSnapshot: null })] });
+    render(<RedcareTrackedKeywords refreshKey={0} />);
+    await screen.findByText("Prodotto X");
+    expect(screen.getByText("kw1").closest("tr")).toHaveTextContent("—");
+  });
+
+  it("fetches each keyword's position history on mount to power the trend sparkline, without needing to expand the product", async () => {
+    listWatchesMock.mockResolvedValue({
+      watches: [watch({ id: "w1", ean: "111", keyword: "kw1", label: "Prodotto X" })],
+    });
+    render(<RedcareTrackedKeywords refreshKey={0} />);
+    await screen.findByText("Prodotto X");
+
+    await waitFor(() => expect(watchHistoryMock).toHaveBeenCalledWith("w1", 30));
+    expect(screen.queryByTestId("product-chart-panel")).not.toBeInTheDocument();
+  });
+
+  it("shows a position-change indicator derived from the two most recent snapshots", async () => {
+    listWatchesMock.mockResolvedValue({
+      watches: [watch({ id: "w1", ean: "111", keyword: "kw1", label: "Prodotto X" })],
+    });
+    watchHistoryMock.mockResolvedValue({
+      snapshots: [
+        { id: "s1", watchId: "w1", checkedAt: "2026-09-01T03:00:00Z", found: true, position: 8, nbHits: 10, price: null, sellerName: null, productName: null, promoted: null, promotedByReRanking: null },
+        { id: "s2", watchId: "w1", checkedAt: "2026-09-02T03:00:00Z", found: true, position: 3, nbHits: 10, price: null, sellerName: null, productName: null, promoted: null, promotedByReRanking: null },
+      ],
+    });
+
+    render(<RedcareTrackedKeywords refreshKey={0} />);
+    await screen.findByText("Prodotto X");
+    // Position improved from 8 to 3 — a delta of 5, shown as an improvement.
+    expect(await screen.findByText("5")).toBeInTheDocument();
+  });
+
+  it("lets the user filter the tracked product list by name or EAN", async () => {
+    listWatchesMock.mockResolvedValue({
+      watches: [
+        watch({ id: "w1", ean: "111", keyword: "kw1", label: "Prodotto Alfa" }),
+        watch({ id: "w2", ean: "222", keyword: "kw2", label: "Prodotto Beta" }),
+      ],
+    });
+
+    const user = userEvent.setup();
+    render(<RedcareTrackedKeywords refreshKey={0} />);
+    await screen.findByText("Prodotto Alfa");
+    expect(screen.getByText("Prodotto Beta")).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText(/filtra per nome/i), "Alfa");
+
+    expect(screen.getByText("Prodotto Alfa")).toBeInTheDocument();
+    expect(screen.queryByText("Prodotto Beta")).not.toBeInTheDocument();
   });
 });

@@ -18,6 +18,7 @@ export interface RedcareSearchHit {
   inStock: boolean | null;
   category: string | null;
   sellerCount: number | null;
+  imageUrl: string | null;
 }
 
 export interface RedcareSearchResult {

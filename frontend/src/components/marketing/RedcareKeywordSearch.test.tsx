@@ -30,6 +30,7 @@ const HIT = {
   inStock: true,
   category: "Benessere > Sistema Cardiovascolare > Gambe Pesanti",
   sellerCount: 1,
+  imageUrl: "https://cdn.redcare.it/images/mp/prod/abc123",
 };
 
 describe("RedcareKeywordSearch", () => {
@@ -95,9 +96,44 @@ describe("RedcareKeywordSearch", () => {
     await user.click(screen.getByRole("button", { name: /cerca/i }));
 
     expect(await screen.findByText("Benessere > Sistema Cardiovascolare > Gambe Pesanti")).toBeInTheDocument();
-    expect(screen.getByText("4.5")).toBeInTheDocument();
+    // "4.5" appears twice with a single hit: the row's own rating and the
+    // market-stats bar's average (same value with only one result).
+    expect(screen.getAllByText("4.5")).toHaveLength(2);
     expect(screen.getByText("(12)")).toBeInTheDocument();
     expect(screen.getByText("Disponibile")).toBeInTheDocument();
+  });
+
+  it("shows a product thumbnail when the hit has an image URL, and a placeholder when it doesn't", async () => {
+    const user = userEvent.setup();
+    const withImage = { ...HIT, ean: "111", productName: "With image" };
+    const withoutImage = { ...HIT, ean: "222", productName: "No image", imageUrl: null };
+    mockSearch.mockResolvedValueOnce({ market: "IT", keyword: "x", nbHits: 2, hits: [withImage, withoutImage] });
+
+    render(<RedcareKeywordSearch onTracked={vi.fn()} />);
+    await user.type(screen.getByPlaceholderText(/cerca una keyword/i), "x");
+    await user.click(screen.getByRole("button", { name: "Cerca" }));
+    await screen.findByText("With image");
+
+    const img = screen.getByRole("img", { name: "With image" });
+    expect(img).toHaveAttribute("src", "https://cdn.redcare.it/images/mp/prod/abc123");
+    expect(screen.queryByRole("img", { name: "No image" })).not.toBeInTheDocument();
+  });
+
+  it("shows aggregate market stats computed from the current results", async () => {
+    const user = userEvent.setup();
+    const a = { ...HIT, ean: "111", price: 10, rating: 4, inStock: true };
+    const b = { ...HIT, ean: "222", price: 20, rating: 5, inStock: false };
+    mockSearch.mockResolvedValueOnce({ market: "IT", keyword: "x", nbHits: 40, hits: [a, b] });
+
+    render(<RedcareKeywordSearch onTracked={vi.fn()} />);
+    await user.type(screen.getByPlaceholderText(/cerca una keyword/i), "x");
+    await user.click(screen.getByRole("button", { name: "Cerca" }));
+    await screen.findByTestId("market-tile-Prezzo medio");
+
+    expect(screen.getByTestId("market-tile-Prezzo medio")).toHaveTextContent("15"); // avg of 10 and 20
+    expect(screen.getByTestId("market-tile-Rating medio")).toHaveTextContent("4.5"); // avg of 4 and 5
+    expect(screen.getByTestId("market-tile-Disponibili")).toHaveTextContent("1/2");
+    expect(screen.getByTestId("market-tile-Risultati totali")).toHaveTextContent("40");
   });
 
   it("re-sorts the results table by price when the Prezzo column header is clicked", async () => {
