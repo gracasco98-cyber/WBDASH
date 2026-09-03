@@ -377,6 +377,7 @@ export default function DashboardPage() {
       onGroupByChange={setProductsGroupBy}
       onRenamed={loadProductGroups}
       onMoved={loadProductGroups}
+      onVatRateChanged={loadProductGroups}
       shopifyMarketplaceRows={shopifyMarketplaceRows}
     />
   );

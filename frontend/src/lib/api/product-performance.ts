@@ -25,4 +25,14 @@ export const productPerformance = {
     });
     if (!res.ok) throw new Error(`API error ${res.status}`);
   },
+
+  updateVatRate: async (identifierId: string, vatRate: number | null): Promise<void> => {
+    const res = await fetch(apiUrl(`/api/amazon/products/identifiers/${identifierId}/vat-rate`), {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vatRate }),
+    });
+    if (!res.ok) throw new Error(`API error ${res.status}`);
+  },
 };

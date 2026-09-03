@@ -11,6 +11,9 @@ export interface ProductIdentifierRow {
   marketplace: string;
   asin: string | null;
   sku: string | null;
+  /** Sales VAT rate as a percentage (e.g. 22), manually entered. Informational
+   *  for Amazon — the dashboard VAT tile uses real AmazonOrderItem.itemTax. */
+  vatRate: number | null;
 }
 
 export interface ProductWithIdentifiers {
@@ -34,6 +37,7 @@ function toProductWithIdentifiers(row: any): ProductWithIdentifiers {
       marketplace: i.marketplace,
       asin: i.asin,
       sku: i.sku,
+      vatRate: i.vatRate !== null && i.vatRate !== undefined ? Number(i.vatRate) : null,
     })),
   };
 }
@@ -104,7 +108,18 @@ export async function createIdentifier(
       sku: params.sku ?? null,
     },
   });
-  return row;
+  return { ...row, vatRate: row.vatRate !== null ? Number(row.vatRate) : null };
+}
+
+/** Sets (or clears, with `vatRate: null`) the sales VAT rate on an identifier. */
+export async function updateIdentifierVatRate(
+  prisma: PrismaClient,
+  params: { identifierId: string; vatRate: number | null }
+): Promise<void> {
+  await prisma.productIdentifier.update({
+    where: { id: params.identifierId },
+    data: { vatRate: params.vatRate },
+  });
 }
 
 /**

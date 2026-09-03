@@ -3,7 +3,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
 import { resolveProductPerformance } from "../../repositories/amazon/product-performance.repo";
-import { moveIdentifier, renameProduct, findAllProducts } from "../../repositories/amazon/product.repo";
+import { moveIdentifier, renameProduct, findAllProducts, updateIdentifierVatRate } from "../../repositories/amazon/product.repo";
 import { findAdSpendForAsins } from "../../repositories/amazon/ad-spend.repo";
 import { getDateRange } from "../utils/datetime";
 
@@ -78,5 +78,17 @@ productsPerformanceRouter.patch("/products/identifiers/:id", async (req: Request
   } catch (err) {
     console.error("[PATCH /products/identifiers/:id]", err);
     res.status(500).json({ error: "Failed to move identifier" });
+  }
+});
+
+productsPerformanceRouter.patch("/products/identifiers/:id/vat-rate", async (req: Request, res: Response) => {
+  try {
+    const { vatRate } = req.body as { vatRate?: number | null };
+    if (vatRate === undefined) return res.status(400).json({ error: "vatRate is required" });
+    await updateIdentifierVatRate(prisma, { identifierId: req.params.id, vatRate });
+    res.status(204).send();
+  } catch (err) {
+    console.error("[PATCH /products/identifiers/:id/vat-rate]", err);
+    res.status(500).json({ error: "Failed to update VAT rate" });
   }
 });

@@ -787,6 +787,10 @@ model ProductIdentifier {
   marketplace String
   asin        String?
   sku         String?
+  /// Sales VAT rate as a percentage (e.g. 22.00), entered manually per listing.
+  /// Informational for Amazon today — the dashboard VAT tile uses the real
+  /// AmazonOrderItem.itemTax figure, not this rate (see product-performance.repo.ts).
+  vatRate     Decimal?    @db.Decimal(5, 2)
   createdAt   DateTime    @default(now())
 
   @@unique([channelType, marketplace, asin])

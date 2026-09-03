@@ -14,6 +14,7 @@ interface Props {
   onGroupByChange: (g: GroupBy) => void;
   onRenamed: () => void;
   onMoved: () => void;
+  onVatRateChanged?: () => void;
   /** Non-Amazon channels (Shopify: Redcare, Temu, eBay, ...), pre-built via
    *  buildShopifyMarketplaceRows. Only shown in the "marketplace" grouping —
    *  Shopify products have no unified identity with Amazon ASINs to group by
@@ -152,7 +153,46 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
   });
 }
 
-export default function ProductsPerformanceTable({ groups, groupBy, onGroupByChange, onRenamed, onMoved, shopifyMarketplaceRows }: Props) {
+/** Inline-editable "IVA %" field for one identifier row — same crude-but-
+ *  functional pattern as the existing "Sposta prodotto" affordance (no
+ *  dedicated edit modal exists in this table yet). Commits on blur or Enter;
+ *  an empty value clears the rate (sends null). */
+function VatRateEditor({
+  identifierId, initialRate, onSave,
+}: {
+  identifierId: string;
+  initialRate: number | null | undefined;
+  onSave: (identifierId: string, vatRate: number | null) => void;
+}) {
+  const [value, setValue] = useState(initialRate != null ? String(initialRate) : "");
+
+  const commit = () => {
+    const trimmed = value.trim();
+    const parsed = trimmed === "" ? null : Number(trimmed);
+    if (parsed !== null && Number.isNaN(parsed)) return;
+    onSave(identifierId, parsed);
+  };
+
+  return (
+    <span className="ml-2 inline-flex items-center gap-1">
+      <span className="text-[10px] text-zinc-500">IVA</span>
+      <input
+        aria-label="Aliquota IVA %"
+        type="number"
+        step="0.01"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && commit()}
+        onBlur={commit}
+        placeholder="—"
+        className="w-12 text-[10px] bg-bg-base border border-bg-border rounded px-1 py-0.5 text-zinc-300"
+      />
+      <span className="text-[10px] text-zinc-600">%</span>
+    </span>
+  );
+}
+
+export default function ProductsPerformanceTable({ groups, groupBy, onGroupByChange, onRenamed, onMoved, onVatRateChanged, shopifyMarketplaceRows }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [movingId, setMovingId] = useState<string | null>(null);
   const [targetProductId, setTargetProductId] = useState("");
@@ -185,6 +225,16 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
     } catch (err) {
       console.error("[ProductsPerformanceTable] Rename failed:", err);
       window.alert("Impossibile rinominare il prodotto. Riprova.");
+    }
+  };
+
+  const handleVatRateSave = async (identifierId: string, vatRate: number | null) => {
+    try {
+      await api.productPerformance.updateVatRate(identifierId, vatRate);
+      onVatRateChanged?.();
+    } catch (err) {
+      console.error("[ProductsPerformanceTable] VAT rate update failed:", err);
+      window.alert("Impossibile aggiornare l'aliquota IVA. Riprova.");
     }
   };
 
@@ -233,6 +283,9 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
           <div className="w-[22px] h-[22px] rounded-[5px] bg-bg-hover shrink-0" />
         )}
         <span className="ml-1 text-zinc-500"><CornerDownRight size={11} className="inline text-zinc-400 mr-1" />{child.label} — <span>{child.metrics.asin}</span></span>
+        {child.metrics.identifierId && (
+          <VatRateEditor identifierId={child.metrics.identifierId} initialRate={child.metrics.vatRate} onSave={handleVatRateSave} />
+        )}
       </div>
       {groupBy === "product" && (
         <button onClick={() => setMovingId(child.key)} className="ml-2 text-[10px] text-accent-blue bg-transparent border-none cursor-pointer underline">

@@ -61,6 +61,7 @@ export function sumAggregate(rows: ProductPerformanceRow[]): ProductPerformanceR
       grossProfit: acc.grossProfit + r.grossProfit,
       netProfit: acc.netProfit + r.netProfit,
       estimatedPayout: acc.estimatedPayout + r.estimatedPayout,
+      vatAmount: acc.vatAmount + (r.vatAmount ?? 0),
       adsSpend: r.adsSpend !== null ? (acc.adsSpend ?? 0) + r.adsSpend : acc.adsSpend,
       // AND-logic with a `true` seed, matching resolveProductPerformance's
       // aggregate and ProductsPerformanceTable's buildRowsByMarketplace: the
@@ -70,7 +71,7 @@ export function sumAggregate(rows: ProductPerformanceRow[]): ProductPerformanceR
       hasRealCogs: acc.hasRealCogs && r.hasRealCogs,
       hasStockData: acc.hasStockData && r.hasStockData,
     }),
-    { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0, adsSpend: null as number | null, hasRealFees: true, hasRealCogs: true, hasStockData: true }
+    { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0, vatAmount: 0, adsSpend: null as number | null, hasRealFees: true, hasRealCogs: true, hasStockData: true }
   );
   return {
     identifierId: "", asin: "", marketplace: "ALL", sku: null, bsr: null,
@@ -205,7 +206,7 @@ export default function PeriodTiles() {
               </div>
               <div className="grid grid-cols-2 gap-2 border-t border-bg-border/70 pt-2">
                 <div className="rounded-md border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5"><div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">Costi</div><div className="text-[11px] font-semibold tabular-nums text-zinc-300">{totalRow ? fmtEur(totalRow.amazonFees + totalRow.cogs + (totalRow.adsSpend ?? 0)) : "—"}</div></div>
-                <div className="rounded-md border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5"><div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">VAT</div><div className="text-[11px] font-semibold tabular-nums text-zinc-300">—</div></div>
+                <div className="rounded-md border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5"><div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">VAT</div><div className="text-[11px] font-semibold tabular-nums text-zinc-300">{totalRow ? fmtEur(totalRow.vatAmount ?? 0) : "—"}</div></div>
               </div>
               <div className="grid grid-cols-2 gap-x-2 gap-y-2 text-[11px]">
                 <div>

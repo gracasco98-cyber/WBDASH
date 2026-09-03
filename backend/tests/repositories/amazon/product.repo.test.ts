@@ -3,7 +3,7 @@ import { setupTestDb, truncateAll, createTestAmazonAccount, type TestDb } from "
 import { runWithAccount } from "../../../src/context/account-context";
 import {
   createProduct, createIdentifier, findAllProducts, findProductById,
-  moveIdentifier, renameProduct, findProductsByIdentifierSkus,
+  moveIdentifier, renameProduct, findProductsByIdentifierSkus, updateIdentifierVatRate,
 } from "../../../src/repositories/amazon/product.repo";
 
 let db: TestDb;
@@ -84,6 +84,29 @@ describe("product.repo", () => {
       await renameProduct(db.prisma, { productId: p.id, name: "New Name" });
       const found = await findProductById(db.prisma, p.id);
       expect(found?.name).toBe("New Name");
+    });
+  });
+
+  it("identifiers default to a null vatRate", async () => {
+    await runWithAccount(accountId, async () => {
+      const p = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      const ident = await createIdentifier(db.prisma, { productId: p.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-01" });
+      expect(ident.vatRate).toBeNull();
+    });
+  });
+
+  it("updateIdentifierVatRate sets and clears the VAT rate", async () => {
+    await runWithAccount(accountId, async () => {
+      const p = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      const ident = await createIdentifier(db.prisma, { productId: p.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-01" });
+
+      await updateIdentifierVatRate(db.prisma, { identifierId: ident.id, vatRate: 22 });
+      let found = await findProductById(db.prisma, p.id);
+      expect(found?.identifiers[0].vatRate).toBe(22);
+
+      await updateIdentifierVatRate(db.prisma, { identifierId: ident.id, vatRate: null });
+      found = await findProductById(db.prisma, p.id);
+      expect(found?.identifiers[0].vatRate).toBeNull();
     });
   });
 

@@ -7,6 +7,7 @@ import type { ProductPerformanceGroup, ProductPerformance } from "@/lib/api";
 const mockCatalogImages = vi.fn(async (_asins: string[]) => ({}) as Record<string, string | null>);
 const mockRename = vi.fn(async (_productId: string, _name: string) => undefined);
 const mockMoveIdentifier = vi.fn(async (_identifierId: string, _targetProductId: string) => undefined);
+const mockUpdateVatRate = vi.fn(async (_identifierId: string, _vatRate: number | null) => undefined);
 
 vi.mock("@/lib/api", () => ({
   api: {
@@ -14,6 +15,7 @@ vi.mock("@/lib/api", () => ({
     productPerformance: {
       rename: (productId: string, name: string) => mockRename(productId, name),
       moveIdentifier: (identifierId: string, targetProductId: string) => mockMoveIdentifier(identifierId, targetProductId),
+      updateVatRate: (identifierId: string, vatRate: number | null) => mockUpdateVatRate(identifierId, vatRate),
     },
   },
 }));
@@ -42,6 +44,8 @@ describe("ProductsPerformanceTable", () => {
     mockRename.mockResolvedValue(undefined);
     mockMoveIdentifier.mockClear();
     mockMoveIdentifier.mockResolvedValue(undefined);
+    mockUpdateVatRate.mockClear();
+    mockUpdateVatRate.mockResolvedValue(undefined);
   });
 
   it("renders one parent row per product in 'product' groupBy mode", () => {
@@ -206,5 +210,42 @@ describe("ProductsPerformanceTable", () => {
     promptSpy.mockRestore();
     alertSpy.mockRestore();
     consoleErrorSpy.mockRestore();
+  });
+
+  it("shows an editable VAT rate field on an expanded identifier row, pre-filled from the row's vatRate", async () => {
+    const user = userEvent.setup();
+    const groupsWithVat: ProductPerformanceGroup[] = [
+      { product: { id: "p1", name: "Resveratrolo 500mg", brand: null }, rows: [{ ...baseRow, vatRate: 22 }], aggregate: baseRow },
+    ];
+    render(<ProductsPerformanceTable groups={groupsWithVat} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /espandi resveratrolo 500mg/i }));
+    expect(screen.getByLabelText(/aliquota iva/i)).toHaveValue(22);
+  });
+
+  it("saves a new VAT rate when the identifier's IVA field is edited and confirmed", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} onVatRateChanged={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /espandi resveratrolo 500mg/i }));
+
+    const input = screen.getByLabelText(/aliquota iva/i);
+    await user.clear(input);
+    await user.type(input, "22");
+    await user.keyboard("{Enter}");
+
+    await vi.waitFor(() => expect(mockUpdateVatRate).toHaveBeenCalledWith("ident-1", 22));
+  });
+
+  it("calls onVatRateChanged after a successful VAT rate save", async () => {
+    const user = userEvent.setup();
+    const onVatRateChanged = vi.fn();
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} onVatRateChanged={onVatRateChanged} />);
+    await user.click(screen.getByRole("button", { name: /espandi resveratrolo 500mg/i }));
+
+    const input = screen.getByLabelText(/aliquota iva/i);
+    await user.clear(input);
+    await user.type(input, "22");
+    await user.keyboard("{Enter}");
+
+    await vi.waitFor(() => expect(onVatRateChanged).toHaveBeenCalled());
   });
 });

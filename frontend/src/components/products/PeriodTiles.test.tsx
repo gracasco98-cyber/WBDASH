@@ -24,7 +24,7 @@ const mockGet = vi.fn(async (_params: unknown) => ({
   groups: [{
     product: { id: "p1", name: "X", brand: null },
     rows: [],
-    aggregate: { identifierId: "i1", asin: "", marketplace: "ALL", sku: null, units: 5, sales: 100, promo: 0, refundsAmount: 0, refundsCount: 0, refundPct: 0, adsSpend: 5, realAcos: 0.05, amazonFees: 15, hasRealFees: true, hasRealCogs: true, cogs: 20, stock: 10, hasStockData: true, grossProfit: 60, netProfit: 60, estimatedPayout: 80, margin: 0.6, roi: 3, avgSellingPrice: 20, bsr: null },
+    aggregate: { identifierId: "i1", asin: "", marketplace: "ALL", sku: null, units: 5, sales: 100, promo: 0, refundsAmount: 0, refundsCount: 0, refundPct: 0, adsSpend: 5, realAcos: 0.05, amazonFees: 15, hasRealFees: true, hasRealCogs: true, cogs: 20, stock: 10, hasStockData: true, grossProfit: 60, netProfit: 60, estimatedPayout: 80, margin: 0.6, roi: 3, avgSellingPrice: 20, bsr: null, vatAmount: 12 },
   }],
 }));
 const mockProducts = vi.fn(async (_params: unknown) => ({
@@ -94,6 +94,11 @@ describe("PeriodTiles", () => {
   it("includes Shopify/Redcare net revenue in the net profit card", async () => {
     render(<PeriodTiles />);
     await vi.waitFor(() => expect(screen.getAllByText("€ 95,00")).toHaveLength(5));
+  });
+
+  it("fills the VAT tile with the real summed itemTax, one per period card", async () => {
+    render(<PeriodTiles />);
+    await vi.waitFor(() => expect(screen.getAllByText("€ 12,00")).toHaveLength(5));
   });
 
   it("falls back to 'all' when the global filter is a Shopify channel, not an Amazon one", async () => {
@@ -201,5 +206,10 @@ describe("sumAggregate", () => {
 
   it("returns null for an empty row set", () => {
     expect(sumAggregate([])).toBeNull();
+  });
+
+  it("sums real vatAmount across rows, treating a missing value as zero", () => {
+    const summed = sumAggregate([row({ vatAmount: 10 }), row({ vatAmount: 5 }), row({})])!;
+    expect(summed.vatAmount).toBe(15);
   });
 });

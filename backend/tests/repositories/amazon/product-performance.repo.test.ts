@@ -57,6 +57,30 @@ describe("resolveProductPerformance", () => {
     });
   });
 
+  it("sums real itemTax into vatAmount, and surfaces the identifier's manually entered vatRate", async () => {
+    await runWithAccount(accountId, async () => {
+      const product = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      const identifier = await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-01" });
+      const { updateIdentifierVatRate } = await import("../../../src/repositories/amazon/product.repo");
+      await updateIdentifierVatRate(db.prisma, { identifierId: identifier.id, vatRate: 22 });
+
+      await db.prisma.amazonOrder.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O1", purchaseDate: new Date("2026-08-01"), lastUpdatedDate: new Date("2026-08-01"), orderStatus: "Shipped", marketplace: "IT" },
+      });
+      await db.prisma.amazonOrderItem.create({
+        data: { amazonAccountId: accountId, amazonOrderId: "O1", orderItemId: "I1", asin: "B0ABC123", sku: "SKU-RSV-01", productTitle: "Resveratrolo 500mg", marketplace: "IT", quantityOrdered: 10, quantityShipped: 10, itemPrice: 200, itemTax: 44, promotionDiscount: 0, purchaseDate: new Date("2026-08-01") } as any,
+      });
+
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const group = groups.find(g => g.product.id === product.id)!;
+      expect(group.rows[0].vatAmount).toBe(44);
+      expect(group.rows[0].vatRate).toBe(22);
+      expect(group.aggregate.vatAmount).toBe(44);
+    });
+  });
+
   it("excludes cancelled Amazon orders from dashboard revenue and units", async () => {
     await runWithAccount(accountId, async () => {
       const { product } = await seedOneProductWithSales();

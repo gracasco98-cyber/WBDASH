@@ -682,6 +682,13 @@ export interface ProductPerformanceRow {
    *  buildShopifyMarketplaceRows) — Amazon rows are imageless here and rely
    *  on the separate ASIN-keyed catalogImages lookup instead. */
   imageUrl?: string | null;
+  /** Real VAT charged, summed from AmazonOrderItem.itemTax. Only set for
+   *  Amazon rows — Shopify VAT isn't tracked yet (undefined there). */
+  vatAmount?: number;
+  /** Manually entered sales VAT rate (%) on the Amazon identifier, or null
+   *  when unset / on the aggregate row (a single rate across identifiers
+   *  isn't meaningful). Undefined for Shopify rows. */
+  vatRate?: number | null;
 }
 
 export interface ProductPerformanceGroup {

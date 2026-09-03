@@ -127,3 +127,38 @@ describe("PATCH /products/identifiers/:id", () => {
     expect(res.status).toBe(204);
   });
 });
+
+describe("PATCH /products/identifiers/:id/vat-rate", () => {
+  it("sets the VAT rate on an identifier", async () => {
+    let identifierId = "";
+    await runWithAccount(accountId, async () => {
+      const p = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      const ident = await createIdentifier(db.prisma, { productId: p.id, channelType: "AMAZON", marketplace: "IT", asin: "B0X", sku: "SKU-X" });
+      identifierId = ident.id;
+    });
+
+    const res = await request(app).patch(`/products/identifiers/${identifierId}/vat-rate`).send({ vatRate: 22 });
+    expect(res.status).toBe(204);
+
+    const check = await request(app).get("/products/performance").query({ marketplace: "all", from: "2026-08-01", to: "2026-08-02" });
+    expect(check.status).toBe(200);
+  });
+
+  it("clears the VAT rate when sent null", async () => {
+    let identifierId = "";
+    await runWithAccount(accountId, async () => {
+      const p = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
+      const ident = await createIdentifier(db.prisma, { productId: p.id, channelType: "AMAZON", marketplace: "IT", asin: "B0X", sku: "SKU-X" });
+      identifierId = ident.id;
+    });
+
+    await request(app).patch(`/products/identifiers/${identifierId}/vat-rate`).send({ vatRate: 22 });
+    const res = await request(app).patch(`/products/identifiers/${identifierId}/vat-rate`).send({ vatRate: null });
+    expect(res.status).toBe(204);
+  });
+
+  it("returns 400 when vatRate is missing from the body", async () => {
+    const res = await request(app).patch("/products/identifiers/some-id/vat-rate").send({});
+    expect(res.status).toBe(400);
+  });
+});
