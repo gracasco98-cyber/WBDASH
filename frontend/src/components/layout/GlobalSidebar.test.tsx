@@ -23,6 +23,12 @@ describe("GlobalSidebar", () => {
     expect(screen.getByRole("link", { name: "Ordini" })).toHaveAttribute("href", "/ordini");
   });
 
+  it("renders the Bacheca and Task Manager top-level links", () => {
+    render(<GlobalSidebar />);
+    expect(screen.getByRole("link", { name: /bacheca/i })).toHaveAttribute("href", "/bacheca");
+    expect(screen.getByRole("link", { name: /task manager/i })).toHaveAttribute("href", "/task-manager");
+  });
+
   it("renders the operational group headers without the temporary Finance group", () => {
     render(<GlobalSidebar />);
     expect(screen.queryByText("FINANCE")).not.toBeInTheDocument();

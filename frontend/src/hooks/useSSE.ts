@@ -45,7 +45,7 @@ export function useSSE(onMessage: SSEHandler, enabled = true): void {
       }
     };
 
-    const EVENT_TYPES = ["connected", "order:new", "amazon:sync"];
+    const EVENT_TYPES = ["connected", "order:new", "amazon:sync", "task:assigned"];
     EVENT_TYPES.forEach(t => es.addEventListener(t, handleEvent(t) as EventListener));
 
     es.onerror = () => {

@@ -119,9 +119,11 @@ export default function AppHeader({
               </div>
             )}
             {/* Nav links */}
-            <a href="/"         onClick={() => setOpen(false)} className="px-3 py-2.5 text-sm rounded-lg text-zinc-400 hover:text-white hover:bg-bg-card transition-all">Dashboard</a>
-            <a href="/products" onClick={() => setOpen(false)} className="px-3 py-2.5 text-sm rounded-lg text-zinc-400 hover:text-white hover:bg-bg-card transition-all">Marketplace</a>
-            <a href="/amazon"   onClick={() => setOpen(false)} className="px-3 py-2.5 text-sm rounded-lg text-zinc-400 hover:text-white hover:bg-bg-card transition-all">Amazon</a>
+            <a href="/"              onClick={() => setOpen(false)} className="px-3 py-2.5 text-sm rounded-lg text-zinc-400 hover:text-white hover:bg-bg-card transition-all">Dashboard</a>
+            <a href="/products"      onClick={() => setOpen(false)} className="px-3 py-2.5 text-sm rounded-lg text-zinc-400 hover:text-white hover:bg-bg-card transition-all">Marketplace</a>
+            <a href="/amazon"        onClick={() => setOpen(false)} className="px-3 py-2.5 text-sm rounded-lg text-zinc-400 hover:text-white hover:bg-bg-card transition-all">Amazon</a>
+            <a href="/bacheca"       onClick={() => setOpen(false)} className="px-3 py-2.5 text-sm rounded-lg text-zinc-400 hover:text-white hover:bg-bg-card transition-all">Bacheca</a>
+            <a href="/task-manager"  onClick={() => setOpen(false)} className="px-3 py-2.5 text-sm rounded-lg text-zinc-400 hover:text-white hover:bg-bg-card transition-all">Task Manager</a>
             {/* ThemeToggle in drawer on mobile */}
             <div className="pt-2 border-t border-bg-border mt-1 flex items-center gap-2 px-3">
               <span className="text-xs text-zinc-500">Tema</span>

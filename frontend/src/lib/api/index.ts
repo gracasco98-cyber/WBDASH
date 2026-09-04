@@ -62,6 +62,8 @@ export type {
   RedcareMarket, RedcareSearchHit, RedcareSearchResult,
   MarketingKeywordSnapshot, MarketingKeywordWatch,
 } from "./marketing-redcare";
+export type { Task, TaskStatus, AssignableUser } from "./tasks";
+export type { BoardWidget } from "./board";
 
 // Import domain modules
 import { shopify } from "./shopify";
@@ -74,6 +76,8 @@ import { paymentDues } from "./payment-dues";
 import { acquistiDashboard } from "./acquisti-dashboard";
 import { mirakl } from "./mirakl";
 import { marketingRedcare } from "./marketing-redcare";
+import { tasks } from "./tasks";
+import { board } from "./board";
 
 // Compose the `api` object that all callers use via `import { api } from "@/lib/api"`
 export const api = {
@@ -112,4 +116,8 @@ export const api = {
 
   // ── Marketing / Redcare keyword BI ───────────────────────────────────────
   marketingRedcare,
+
+  // ── Bacheca / Task Manager ────────────────────────────────────────────────
+  tasks,
+  board,
 };

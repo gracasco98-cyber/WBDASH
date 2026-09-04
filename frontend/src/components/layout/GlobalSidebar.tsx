@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, ShoppingCart, ShoppingBag, Wallet, Boxes, Megaphone, LifeBuoy, Shield,
   FileText, ClipboardList, Warehouse, Landmark, CalendarClock, PackageSearch, ReceiptText, Sparkles, LockKeyhole,
-  ChevronDown,
+  ChevronDown, LayoutGrid, ClipboardCheck,
 } from "lucide-react";
 
 interface NavItem {
@@ -169,6 +169,30 @@ export default function GlobalSidebar() {
         >
           <ShoppingCart size={15} className="shrink-0" />
           Ordini
+        </Link>
+
+        <Link
+          href="/bacheca"
+          className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+            pathname.startsWith("/bacheca")
+              ? "bg-accent-primary/12 border-accent-primary/25 text-accent-primary"
+              : "border-transparent text-zinc-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <LayoutGrid size={15} className="shrink-0" />
+          Bacheca
+        </Link>
+
+        <Link
+          href="/task-manager"
+          className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+            pathname.startsWith("/task-manager")
+              ? "bg-accent-primary/12 border-accent-primary/25 text-accent-primary"
+              : "border-transparent text-zinc-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <ClipboardCheck size={15} className="shrink-0" />
+          Task Manager
         </Link>
 
         {GROUPS.map(group => {
