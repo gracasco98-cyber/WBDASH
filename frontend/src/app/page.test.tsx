@@ -69,6 +69,9 @@ vi.mock("@/lib/api", () => ({
     mirakl: {
       stuckOrders: vi.fn(async () => ({ stuckOrders: [] })),
     },
+    tasks: {
+      list: vi.fn(async () => ({ tasks: [] })),
+    },
   },
 }));
 

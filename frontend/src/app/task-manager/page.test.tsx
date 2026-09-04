@@ -21,6 +21,10 @@ vi.mock("@/hooks/useMarketplaceFilter", () => ({
   useMarketplaceFilter: () => ({ marketplace: "all", setMarketplace: vi.fn() }),
 }));
 
+// AppHeader's task-notification bell subscribes via useSSE — real EventSource
+// isn't available in jsdom.
+vi.mock("@/hooks/useSSE", () => ({ useSSE: vi.fn() }));
+
 import TaskManagerPage from "./page";
 
 const mockList = vi.fn();
@@ -58,7 +62,12 @@ describe("TaskManagerPage", () => {
   });
 
   it("loads tasks assigned to me by default", async () => {
-    mockList.mockResolvedValueOnce({ tasks: [TASK_ASSIGNED_TO_ME] });
+    // AppHeader's own notification-count fetch also calls list("assigned")
+    // on mount, alongside the page's own fetch — key by scope, not call
+    // order, so both callers see consistent data.
+    mockList.mockImplementation(async (scope?: string) =>
+      scope === "assigned" ? { tasks: [TASK_ASSIGNED_TO_ME] } : { tasks: [] }
+    );
     render(<TaskManagerPage />);
     expect(await screen.findByText("Controlla scadenza IVA")).toBeInTheDocument();
     expect(mockList).toHaveBeenCalledWith("assigned");
@@ -66,7 +75,9 @@ describe("TaskManagerPage", () => {
 
   it("switches to tasks created by me on tab click", async () => {
     const user = userEvent.setup();
-    mockList.mockResolvedValueOnce({ tasks: [] }).mockResolvedValueOnce({ tasks: [TASK_ASSIGNED_TO_ME] });
+    mockList.mockImplementation(async (scope?: string) =>
+      scope === "created" ? { tasks: [TASK_ASSIGNED_TO_ME] } : { tasks: [] }
+    );
     render(<TaskManagerPage />);
     await user.click(screen.getByRole("button", { name: /creati da me/i }));
     await waitFor(() => expect(mockList).toHaveBeenCalledWith("created"));
@@ -86,7 +97,9 @@ describe("TaskManagerPage", () => {
 
   it("updates a task's status from the list", async () => {
     const user = userEvent.setup();
-    mockList.mockResolvedValueOnce({ tasks: [{ ...TASK_ASSIGNED_TO_ME, status: "IN_PROGRESS" }] });
+    mockList.mockImplementation(async (scope?: string) =>
+      scope === "assigned" ? { tasks: [{ ...TASK_ASSIGNED_TO_ME, status: "IN_PROGRESS" }] } : { tasks: [] }
+    );
     render(<TaskManagerPage />);
     await screen.findByText("Controlla scadenza IVA");
 

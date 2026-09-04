@@ -1,11 +1,13 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, Menu, X } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
 import { UserMenu } from "@/components/auth/UserMenu";
 import AmazonAccountSelector from "@/components/amazon/AmazonAccountSelector";
 import MarketplaceFilterSelector from "@/components/layout/MarketplaceFilterSelector";
+import { api } from "@/lib/api";
+import { useSSE } from "@/hooks/useSSE";
 
 interface AppHeaderProps {
   accentColor?: "primary" | "amber";
@@ -26,6 +28,22 @@ export default function AppHeader({
 }: AppHeaderProps) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
+
+  // Real, page-independent notification: how many open (non-DONE) tasks are
+  // assigned to the current user. Refreshed live via SSE when someone
+  // assigns a new one — the task list itself is the "inbox", no separate
+  // notification model.
+  const [taskCount, setTaskCount] = useState(0);
+  const refreshTaskCount = useCallback(() => {
+    api.tasks.list("assigned")
+      .then(({ tasks }) => setTaskCount(tasks.filter(t => t.status !== "DONE").length))
+      .catch(() => {});
+  }, []);
+  useEffect(() => { refreshTaskCount(); }, [refreshTaskCount]);
+  useSSE((event) => { if (event === "task:assigned") refreshTaskCount(); });
+
+  const totalNotificationCount = notificationCount + taskCount;
+  const handleBellClick = onNotificationClick ?? (() => router.push("/task-manager"));
 
   return (
     <>
@@ -69,16 +87,16 @@ export default function AppHeader({
           {/* Page-specific extras (SyncStatus, clock, refresh) — hidden on mobile via own classes */}
           {rightExtras}
 
-          {/* Notification bell */}
+          {/* Notification bell — page-specific live-order count (if passed) + open tasks assigned to me */}
           <button
-            onClick={onNotificationClick}
+            onClick={handleBellClick}
             className="relative p-1.5 rounded-lg border border-bg-border text-zinc-400 hover:text-white hover:bg-bg-card transition-colors"
-            aria-label="Notifiche ordini live"
+            aria-label="Notifiche"
           >
             <Bell size={14} />
-            {notificationCount > 0 && (
+            {totalNotificationCount > 0 && (
               <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-[9px] font-bold flex items-center justify-center leading-none" style={{ color: '#ffffff' }}>
-                {notificationCount > 9 ? "9+" : notificationCount}
+                {totalNotificationCount > 9 ? "9+" : totalNotificationCount}
               </span>
             )}
           </button>
