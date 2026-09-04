@@ -8,6 +8,7 @@ import AmazonAccountSelector from "@/components/amazon/AmazonAccountSelector";
 import MarketplaceFilterSelector from "@/components/layout/MarketplaceFilterSelector";
 import { api } from "@/lib/api";
 import { useSSE } from "@/hooks/useSSE";
+import { onTaskStatusChanged } from "@/lib/taskEvents";
 
 interface AppHeaderProps {
   accentColor?: "primary" | "amber";
@@ -41,6 +42,10 @@ export default function AppHeader({
   }, []);
   useEffect(() => { refreshTaskCount(); }, [refreshTaskCount]);
   useSSE((event) => { if (event === "task:assigned") refreshTaskCount(); });
+  // Local status changes (e.g. completing a task from Task Manager or the
+  // Bacheca widget) don't go through SSE — those components call
+  // emitTaskStatusChanged() directly so the badge doesn't wait for a reload.
+  useEffect(() => onTaskStatusChanged(refreshTaskCount), [refreshTaskCount]);
 
   const totalNotificationCount = notificationCount + taskCount;
   const handleBellClick = onNotificationClick ?? (() => router.push("/task-manager"));

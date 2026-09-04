@@ -5,6 +5,7 @@ import AppHeader from "@/components/layout/AppHeader";
 import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import { api } from "@/lib/api";
 import type { Task, TaskStatus, AssignableUser } from "@/lib/api";
+import { emitTaskStatusChanged } from "@/lib/taskEvents";
 
 type Scope = "assigned" | "created";
 
@@ -55,6 +56,7 @@ export default function TaskManagerPage() {
     if (!next) return;
     try {
       await api.tasks.updateStatus(task.id, next);
+      emitTaskStatusChanged();
       load(scope);
     } catch {
       setError("Impossibile aggiornare il task in questo momento.");

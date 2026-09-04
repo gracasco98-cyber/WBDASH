@@ -361,7 +361,7 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
                 <div className="rounded-lg bg-bg-hover/70 px-2 py-1.5"><div className="text-[9px] uppercase text-zinc-500">Profitto</div><div className={`text-xs font-semibold tabular-nums ${m.netProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}>{fmtEur(m.netProfit)}</div></div>
                 <div className="rounded-lg bg-bg-hover/70 px-2 py-1.5"><div className="text-[9px] uppercase text-zinc-500">Margine</div><div className="text-xs font-semibold tabular-nums text-zinc-700">{(m.margin * 100).toFixed(1)}%</div></div>
               </div>
-              {isOpen && entry.children && <div className="mt-2 space-y-1.5 border-t border-bg-border/60 pt-2">{entry.children.map((child) => <div key={child.key} className="flex items-center justify-between gap-2 text-[11px] text-zinc-500"><span className="min-w-0 truncate">{child.label}</span><span className="shrink-0 tabular-nums text-zinc-700">{fmtEur(child.metrics.sales)}</span></div>)}</div>}
+              {isOpen && entry.children && <div className="mt-2 space-y-1.5 border-t border-bg-border/60 pt-2">{entry.children.map((child) => <div key={child.key} className="flex items-center justify-between gap-2 text-[11px] text-zinc-500"><span className="min-w-0 truncate">{child.label}</span><span className="flex items-center gap-2 shrink-0"><span className="tabular-nums text-zinc-700">{fmtEur(child.metrics.sales)}</span>{child.metrics.identifierId && <VatRateEditor identifierId={child.metrics.identifierId} initialRate={child.metrics.vatRate} onSave={handleVatRateSave} />}</span></div>)}</div>}
             </div>
           );
         })}

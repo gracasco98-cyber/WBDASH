@@ -43,6 +43,12 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
+const mockEmitTaskStatusChanged = vi.fn();
+vi.mock("@/lib/taskEvents", () => ({
+  emitTaskStatusChanged: () => mockEmitTaskStatusChanged(),
+  onTaskStatusChanged: () => () => {},
+}));
+
 const TASK_ASSIGNED_TO_ME = {
   id: "t1", title: "Controlla scadenza IVA", description: "Verifica il pagamento di settembre",
   status: "TODO", createdById: "bob", assigneeId: "alice", dueDate: null, completedAt: null,
@@ -59,6 +65,7 @@ describe("TaskManagerPage", () => {
     mockAssignableUsers.mockResolvedValue({ users: [{ id: "bob", email: "bob@example.com" }] });
     mockCreate.mockResolvedValue({});
     mockUpdateStatus.mockResolvedValue({});
+    mockEmitTaskStatusChanged.mockReset();
   });
 
   it("loads tasks assigned to me by default", async () => {
@@ -105,6 +112,7 @@ describe("TaskManagerPage", () => {
 
     await user.click(screen.getByRole("button", { name: /segna come fatto/i }));
     await waitFor(() => expect(mockUpdateStatus).toHaveBeenCalledWith("t1", "DONE"));
+    expect(mockEmitTaskStatusChanged).toHaveBeenCalledTimes(1);
   });
 
   it("shows an empty state when there are no tasks", async () => {

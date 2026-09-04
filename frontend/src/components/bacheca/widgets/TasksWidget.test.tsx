@@ -9,6 +9,9 @@ vi.mock("@/lib/api", () => ({
   api: { tasks: { list: (scope?: string) => mockList(scope), updateStatus: (id: string, status: string) => mockUpdateStatus(id, status) } },
 }));
 
+const mockEmitTaskStatusChanged = vi.fn();
+vi.mock("@/lib/taskEvents", () => ({ emitTaskStatusChanged: () => mockEmitTaskStatusChanged() }));
+
 function task(overrides: Partial<{ id: string; title: string; status: string }> = {}) {
   return {
     id: "t1", title: "Controlla scadenza IVA", description: null, status: "TODO",
@@ -23,6 +26,7 @@ describe("TasksWidget", () => {
     mockList.mockReset();
     mockUpdateStatus.mockReset();
     mockUpdateStatus.mockResolvedValue({});
+    mockEmitTaskStatusChanged.mockReset();
   });
 
   it("shows tasks assigned to the current user, not yet done", async () => {
@@ -46,6 +50,7 @@ describe("TasksWidget", () => {
 
     await user.click(screen.getByRole("checkbox", { name: /completa/i }));
     await waitFor(() => expect(mockUpdateStatus).toHaveBeenCalledWith("t1", "DONE"));
+    expect(mockEmitTaskStatusChanged).toHaveBeenCalledTimes(1);
   });
 
   it("links to the full Task Manager page", async () => {

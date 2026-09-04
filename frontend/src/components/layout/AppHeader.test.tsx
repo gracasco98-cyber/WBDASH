@@ -30,6 +30,7 @@ vi.mock("@/hooks/useSSE", () => ({
 }));
 
 import AppHeader from "./AppHeader";
+import { emitTaskStatusChanged } from "@/lib/taskEvents";
 
 function task(status: string, id = "t1") {
   return { id, title: "Task", description: null, status, createdById: "bob", assigneeId: "alice", dueDate: null, completedAt: null, createdAt: "", updatedAt: "" };
@@ -81,5 +82,16 @@ describe("AppHeader — task notification bell", () => {
     mockList.mockResolvedValue({ tasks: [task("TODO")] });
     render(<AppHeader notificationCount={3} />);
     await waitFor(() => expect(screen.getByText("4")).toBeInTheDocument());
+  });
+
+  it("refetches the count when a task status changes locally (e.g. completed from Task Manager)", async () => {
+    mockList.mockResolvedValueOnce({ tasks: [] }).mockResolvedValueOnce({ tasks: [task("TODO")] });
+    render(<AppHeader />);
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(1));
+
+    emitTaskStatusChanged();
+
+    await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
+    expect(mockList).toHaveBeenCalledTimes(2);
   });
 });

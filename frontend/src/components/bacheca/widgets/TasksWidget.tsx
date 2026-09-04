@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import type { Task } from "@/lib/api";
+import { emitTaskStatusChanged } from "@/lib/taskEvents";
 
 export default function TasksWidget() {
   const [openTasks, setOpenTasks] = useState<Task[]>([]);
@@ -14,6 +15,7 @@ export default function TasksWidget() {
 
   const complete = async (id: string) => {
     await api.tasks.updateStatus(id, "DONE");
+    emitTaskStatusChanged();
     load();
   };
 
