@@ -37,6 +37,8 @@ import { businessContactsRouter } from "./purchasing/routes/business-contacts.ro
 import { bankMovementsRouter } from "./purchasing/routes/bank-movements.routes";
 import miraklRouter from "./routes/mirakl.routes";
 import marketingRedcareRouter from "./routes/marketingRedcare.routes";
+import { tasksRouter } from "./routes/tasks.routes";
+import { boardRouter } from "./routes/board.routes";
 import { startRedcareKeywordTrackingSchedule } from "./jobs/redcareKeywordTracking.job";
 import { addSSEClient, sseClientCount } from "./sse/sse";
 
@@ -148,7 +150,7 @@ app.get("/api/sse/events", requireAuth, (req, res) => {
   // Send initial connected event so client knows stream is live
   res.write(`event: connected\ndata: {"ts":${Date.now()}}\n\n`);
 
-  addSSEClient(res);
+  addSSEClient(res, req.user?.id ?? null);
 
   // If client disconnects (browser tab closed) remove from set
   req.on("close", () => res.end());
@@ -174,6 +176,8 @@ app.use("/api/purchasing", requireAuth, dashboardRouter);
 app.use("/api/purchasing", requireAuth, paymentDuesRouter);
 app.use("/api/mirakl",     requireAuth, miraklRouter);
 app.use("/api/marketing/redcare", requireAuth, marketingRedcareRouter);
+app.use("/api/tasks", requireAuth, tasksRouter);
+app.use("/api/board", requireAuth, boardRouter);
 
 // ─── 404 / error handler ─────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: "Endpoint non trovato." }));
