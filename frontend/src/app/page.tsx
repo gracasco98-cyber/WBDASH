@@ -21,7 +21,7 @@ import { useSSE } from "@/hooks/useSSE";
 import { usePeriodFilter } from "@/hooks/usePeriodFilter";
 import { getDateRangeForPreset } from "@/lib/periodUtils";
 import {
-  RefreshCw, Eye, EyeOff, ChevronDown,
+  RefreshCw, Eye, EyeOff, ChevronDown, RotateCcw, Activity,
 } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
 import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
@@ -422,17 +422,42 @@ export default function DashboardPage() {
         <StuckOrdersBanner />
 
         {/* ── Filter Bar ─────────────────────────────────────────────────────── */}
-        <div className="flex flex-wrap items-center gap-3 w-full">
-          <FilterBar
-            marketplace={marketplace} setMarketplace={setMarketplace}
-            status={status} setStatus={setStatus}
-            selectedProduct={selectedProduct}
-            onSelectProduct={setSelectedProduct}
-          />
-          <div className="ml-auto">
-            <GlobalPeriodSelector />
+        <section className="rounded-2xl border border-bg-border bg-bg-card shadow-sm overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-bg-border/70">
+            <div className="flex items-center gap-2.5">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent-primary/10 text-accent-primary">
+                <Activity size={16} />
+              </span>
+              <div>
+                <h1 className="text-sm font-semibold text-zinc-100">Panoramica vendite</h1>
+                <p className="text-[11px] text-zinc-500">Monitora ricavi, marginalità e prodotti in un unico spazio</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+              <span className={`h-1.5 w-1.5 rounded-full ${loading ? "bg-accent-amber animate-pulse" : "bg-accent-primary"}`} />
+              {loading ? "Aggiornamento in corso" : `Aggiornato alle ${clockTime ? lastRefresh.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "--:--"}`}
+            </div>
           </div>
-        </div>
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-bg-hover/35">
+            <FilterBar
+              marketplace={marketplace} setMarketplace={setMarketplace}
+              status={status} setStatus={setStatus}
+              selectedProduct={selectedProduct}
+              onSelectProduct={setSelectedProduct}
+            />
+            <div className="ml-auto flex items-center gap-2">
+              {(marketplace !== "all" || status !== "all") && (
+                <button
+                  onClick={() => { setMarketplace("all"); setStatus("all"); }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-bg-border bg-bg-card px-2.5 py-2 text-[11px] font-medium text-zinc-500 hover:text-accent-primary hover:border-accent-primary/40 transition-colors"
+                >
+                  <RotateCcw size={12} /> Azzera filtri
+                </button>
+              )}
+              <GlobalPeriodSelector />
+            </div>
+          </div>
+        </section>
 
         {/* ── Context banner (active filter) ──────────────────────────────────── */}
         {filterLabel && (

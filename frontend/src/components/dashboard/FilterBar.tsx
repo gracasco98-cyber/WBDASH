@@ -2,6 +2,7 @@
 import ProductSearchBar from "./ProductSearchBar";
 import { MARKETPLACE_META } from "@/lib/marketplaces";
 import { SelectedProduct } from "./ProductBIOverview";
+import { ShoppingBag, CheckCircle } from "lucide-react";
 
 // Amazon channel keys used in the marketplace filter
 export const AMAZON_CHANNEL_MAP: Record<string, string> = {
@@ -37,13 +38,15 @@ export default function FilterBar({
   selectedProduct, onSelectProduct,
 }: Props) {
   return (
-    <div className="flex flex-wrap items-center gap-2 w-full max-w-full flex-1">
+    <div className="flex flex-wrap items-center gap-2 w-full max-w-full flex-1" aria-label="Filtri dashboard">
       {/* Marketplace select — grouped: Amazon / Sito */}
-      <select
-        value={marketplace}
-        onChange={(e) => setMarketplace(e.target.value)}
-        className="min-w-0 max-w-full w-full sm:w-auto px-3 py-1.5 text-xs rounded-lg border border-bg-border bg-bg-card text-zinc-300 focus:outline-none focus:border-accent-primary/40"
-      >
+      <label className="relative flex items-center min-w-0 w-full sm:w-auto">
+        <ShoppingBag size={14} className="absolute left-3 text-accent-primary pointer-events-none" />
+        <select
+          value={marketplace}
+          onChange={(e) => setMarketplace(e.target.value)}
+          className="min-w-0 max-w-full w-full sm:w-auto pl-9 pr-3 py-2 text-xs rounded-lg border border-bg-border bg-bg-card text-zinc-300 focus:outline-none focus:border-accent-primary/40"
+        >
         <option value="all">Tutti i marketplace</option>
 
         <optgroup label="Amazon EU">
@@ -68,18 +71,22 @@ export default function FilterBar({
               <option key={k} value={k}>{v.label}</option>
             ))}
         </optgroup>
-      </select>
+        </select>
+      </label>
 
       {/* Status select */}
-      <select
-        value={status}
-        onChange={(e) => setStatus(e.target.value)}
-        className="min-w-0 max-w-full w-full sm:w-auto px-3 py-1.5 text-xs rounded-lg border border-bg-border bg-bg-card text-zinc-300 focus:outline-none focus:border-accent-primary/40"
-      >
-        {STATUSES.map((s) => (
-          <option key={s.value} value={s.value}>{s.label}</option>
-        ))}
-      </select>
+      <label className="relative flex items-center min-w-0 w-full sm:w-auto">
+        <CheckCircle size={14} className="absolute left-3 text-accent-primary pointer-events-none" />
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="min-w-0 max-w-full w-full sm:w-auto pl-9 pr-3 py-2 text-xs rounded-lg border border-bg-border bg-bg-card text-zinc-300 focus:outline-none focus:border-accent-primary/40"
+        >
+          {STATUSES.map((s) => (
+            <option key={s.value} value={s.value}>{s.label}</option>
+          ))}
+        </select>
+      </label>
 
       {/* Product search — positioned on the right */}
       {onSelectProduct && (
