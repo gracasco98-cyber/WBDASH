@@ -103,6 +103,26 @@ describe("HomePage — product BI section", () => {
     expect(screen.getByLabelText(/raggruppa per/i)).toBeInTheDocument();
   });
 
+  it("doesn't clip the period-selector dropdown with an overflow-hidden ancestor", async () => {
+    // LOCK-IN: the filter-bar card wraps GlobalPeriodSelector's popover in an
+    // `overflow-hidden` ancestor (added for the rounded-corner card look),
+    // which visually clips the dropdown to nothing and makes it unclickable
+    // once it extends past the card — confirmed live in production.
+    const { container } = render(<HomePage />);
+    await screen.findByRole("button", { name: /oggi/i });
+
+    // Several "Oggi"-labeled buttons exist (PeriodTiles' own tiles included) —
+    // GlobalPeriodSelector's is the one built around the Calendar icon.
+    const calendarIcon = container.querySelector("svg.lucide-calendar");
+    expect(calendarIcon).not.toBeNull();
+    let el: HTMLElement | null = calendarIcon!.closest("button");
+    expect(el).not.toBeNull();
+    while (el && el !== container) {
+      expect(el.className).not.toContain("overflow-hidden");
+      el = el.parentElement;
+    }
+  });
+
   it("fetches product performance groups for the home page's own PRODOTTI section", async () => {
     render(<HomePage />);
     await screen.findByLabelText(/raggruppa per/i);

@@ -422,7 +422,7 @@ export default function DashboardPage() {
         <StuckOrdersBanner />
 
         {/* ── Filter Bar ─────────────────────────────────────────────────────── */}
-        <section className="rounded-2xl border border-bg-border bg-bg-card shadow-sm overflow-hidden">
+        <section className="rounded-2xl border border-bg-border bg-bg-card shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-bg-border/70">
             <div className="flex items-center gap-2.5">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent-primary/10 text-accent-primary">
@@ -438,7 +438,7 @@ export default function DashboardPage() {
               {loading ? "Aggiornamento in corso" : `Aggiornato alle ${clockTime ? lastRefresh.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "--:--"}`}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-bg-hover/35">
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-bg-hover/35 rounded-b-2xl">
             <FilterBar
               marketplace={marketplace} setMarketplace={setMarketplace}
               status={status} setStatus={setStatus}
