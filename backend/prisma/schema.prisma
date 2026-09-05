@@ -1292,6 +1292,9 @@ model Task {
   assigneeId  String
   assignee    User       @relation("TaskAssignee", fields: [assigneeId], references: [id])
   dueDate     DateTime?
+  relatedType String?
+  relatedLabel String?
+  relatedUrl  String?
   completedAt DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt

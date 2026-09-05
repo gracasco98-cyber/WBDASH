@@ -110,6 +110,9 @@ export default function TaskManagerPage() {
   const [description, setDescription] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [relatedType, setRelatedType] = useState("");
+  const [relatedLabel, setRelatedLabel] = useState("");
+  const [relatedUrl, setRelatedUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const load = useCallback(
@@ -169,11 +172,15 @@ export default function TaskManagerPage() {
         description: description.trim() || undefined,
         assigneeId,
         dueDate: dueDate || undefined,
+        relatedType: relatedType || undefined,
+        relatedLabel: relatedLabel || undefined,
+        relatedUrl: relatedUrl || undefined,
       });
       setTitle("");
       setDescription("");
       setAssigneeId("");
       setDueDate("");
+      setRelatedType(""); setRelatedLabel(""); setRelatedUrl("");
       setShowCreate(false);
       load(scope);
     } catch {
@@ -453,6 +460,11 @@ export default function TaskManagerPage() {
                         {selected.description}
                       </p>
                     )}
+                    {selected.relatedUrl && (
+                      <a href={selected.relatedUrl} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-accent-blue/20 bg-accent-blue/10 px-3 py-2 text-xs font-medium text-accent-blue hover:bg-accent-blue/15">
+                        Apri {selected.relatedLabel || "collegamento"} ↗
+                      </a>
+                    )}
                     <div className="space-y-3 mt-5 border-t border-bg-border pt-4">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-zinc-500 flex items-center gap-2">
@@ -568,7 +580,7 @@ export default function TaskManagerPage() {
               rows={3}
               className="w-full px-3 py-2 rounded-lg border border-bg-border bg-bg-hover text-xs text-white mb-3"
             />
-            <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2">
               <label className="text-[11px] text-zinc-500">
                 Assegna a
                 <select
@@ -594,8 +606,16 @@ export default function TaskManagerPage() {
                   className="mt-1 w-full px-2 py-2 rounded-lg border border-bg-border bg-bg-hover text-xs text-white"
                 />
               </label>
-            </div>
-            <button
+              </div>
+              <div className="mt-3 rounded-lg border border-bg-border bg-bg-hover/50 p-3">
+                <div className="text-[11px] font-semibold text-zinc-400 mb-2">Collega a un modulo o record</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <select aria-label="Tipo collegamento" value={relatedType} onChange={e => setRelatedType(e.target.value)} className="px-2 py-2 rounded-lg border border-bg-border bg-bg-card text-xs text-white"><option value="">Tipo</option><option value="amazon">Amazon</option><option value="order">Ordine</option><option value="product">Prodotto / ASIN</option><option value="bank">Prima Nota</option><option value="warehouse">Magazzino / DDT</option><option value="due">Scadenza</option></select>
+                  <input value={relatedLabel} onChange={e => setRelatedLabel(e.target.value)} placeholder="Nome record" className="px-2 py-2 rounded-lg border border-bg-border bg-bg-card text-xs text-white" />
+                  <input value={relatedUrl} onChange={e => setRelatedUrl(e.target.value)} placeholder="URL del record" type="url" className="px-2 py-2 rounded-lg border border-bg-border bg-bg-card text-xs text-white" />
+                </div>
+              </div>
+              <button
               onClick={createTask}
               disabled={creating || !title.trim() || !assigneeId}
               className="mt-4 w-full py-2.5 rounded-lg bg-accent-primary text-white text-xs font-semibold disabled:opacity-50"

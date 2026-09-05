@@ -9,6 +9,9 @@ export interface CreateTaskInput {
   createdById: string;
   assigneeId: string;
   dueDate?: Date | null;
+  relatedType?: string | null;
+  relatedLabel?: string | null;
+  relatedUrl?: string | null;
 }
 
 export async function createTask(prisma: PrismaClient, input: CreateTaskInput): Promise<Task> {
@@ -19,6 +22,9 @@ export async function createTask(prisma: PrismaClient, input: CreateTaskInput): 
       createdById: input.createdById,
       assigneeId: input.assigneeId,
       dueDate: input.dueDate ?? null,
+      relatedType: input.relatedType ?? null,
+      relatedLabel: input.relatedLabel ?? null,
+      relatedUrl: input.relatedUrl ?? null,
     },
   });
 }
