@@ -11,6 +11,9 @@ export interface Task {
   createdById: string;
   assigneeId: string;
   dueDate: string | null;
+  relatedType: string | null;
+  relatedLabel: string | null;
+  relatedUrl: string | null;
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -42,7 +45,7 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
 export const tasks = {
   list: (scope?: "assigned" | "created") => get<{ tasks: Task[] }>("/api/tasks", scope ? { scope } : undefined),
   assignableUsers: () => get<{ users: AssignableUser[] }>("/api/tasks/assignable-users"),
-  create: (data: { title: string; description?: string; assigneeId: string; dueDate?: string }) =>
+  create: (data: { title: string; description?: string; assigneeId: string; dueDate?: string; relatedType?: string; relatedLabel?: string; relatedUrl?: string }) =>
     post<Task>("/api/tasks", data),
   updateStatus: (id: string, status: TaskStatus) => patch<Task>(`/api/tasks/${id}/status`, { status }),
 };

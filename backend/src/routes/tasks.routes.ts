@@ -35,8 +35,9 @@ tasksRouter.get("/", async (req: Request, res: Response) => {
 });
 
 tasksRouter.post("/", async (req: Request, res: Response) => {
-  const { title, description, assigneeId, dueDate } = req.body as {
+  const { title, description, assigneeId, dueDate, relatedType, relatedLabel, relatedUrl } = req.body as {
     title?: string; description?: string; assigneeId?: string; dueDate?: string;
+    relatedType?: string; relatedLabel?: string; relatedUrl?: string;
   };
   if (!title || !title.trim()) return res.status(400).json({ error: "title è obbligatorio." });
   if (!assigneeId) return res.status(400).json({ error: "assigneeId è obbligatorio." });
@@ -48,6 +49,9 @@ tasksRouter.post("/", async (req: Request, res: Response) => {
       createdById: req.user!.id,
       assigneeId,
       dueDate: dueDate ? new Date(dueDate) : null,
+      relatedType: relatedType?.trim() || null,
+      relatedLabel: relatedLabel?.trim() || null,
+      relatedUrl: relatedUrl?.trim() || null,
     });
     if (task.assigneeId !== task.createdById) {
       broadcastToUser(task.assigneeId, "task:assigned", { taskId: task.id, title: task.title });
