@@ -18,9 +18,15 @@ const OPEN_STATUSES: LogisticStatus[] = ["DRAFT", "SENT", "CONFIRMED", "IN_PRODU
 export default function OrdiniFornitorePage() {
   const [rows, setRows] = useState<PurchaseOrder[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    api.purchaseOrders.list(statusFilter ? { logisticStatus: statusFilter } : undefined).then(setRows).catch(() => {});
+    setLoading(true); setError(null);
+    api.purchaseOrders.list(statusFilter ? { logisticStatus: statusFilter } : undefined)
+      .then(setRows)
+      .catch(() => { setRows([]); setError("Impossibile caricare gli ordini. Verifica la connessione e riprova."); })
+      .finally(() => setLoading(false));
   }, [statusFilter]);
   useEffect(() => { load(); }, [load]);
 
@@ -80,6 +86,8 @@ export default function OrdiniFornitorePage() {
               {Object.entries(STATUS_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
             </select>
 
+            {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700"><span>{error}</span><button onClick={load} className="font-semibold underline">Riprova</button></div>}
+
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
               <table className="w-full text-xs">
                 <thead>
@@ -90,7 +98,7 @@ export default function OrdiniFornitorePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map(r => (
+                  {loading ? <tr><td colSpan={5} className="text-center text-slate-400 py-10">Caricamento ordini…</td></tr> : rows.map(r => (
                     <tr key={r.id} className="border-b border-slate-100 text-slate-700 hover:bg-emerald-50/30">
                       <td className="px-3 py-2.5">
                         <Link href={`/acquisti/ordini/${r.id}`} className="font-mono text-emerald-700 hover:underline">{r.poNumber}</Link>
@@ -101,7 +109,7 @@ export default function OrdiniFornitorePage() {
                       <td className="px-3 py-2.5">{STATUS_LABEL[r.logisticStatus]}</td>
                     </tr>
                   ))}
-                  {rows.length === 0 && <tr><td colSpan={5} className="text-center text-slate-400 py-8">Nessun ordine — inizia creandone uno</td></tr>}
+                  {!loading && rows.length === 0 && !error && <tr><td colSpan={5} className="text-center text-slate-400 py-8">Nessun ordine — inizia creandone uno</td></tr>}
                 </tbody>
               </table>
             </div>
