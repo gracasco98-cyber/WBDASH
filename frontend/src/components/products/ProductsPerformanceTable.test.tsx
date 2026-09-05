@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProductsPerformanceTable, { buildShopifyMarketplaceRows } from "./ProductsPerformanceTable";
@@ -28,6 +28,13 @@ const baseRow = {
   avgSellingPrice: 20, bsr: null,
 };
 
+// The component reads window.innerWidth (via a resize-listener effect) to
+// decide between the compact mobile card view and the desktop table — set
+// it before render so the mount-time read already sees the mobile width.
+function setMobileViewport() {
+  Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 375 });
+}
+
 const groups: ProductPerformanceGroup[] = [
   {
     product: { id: "p1", name: "Resveratrolo 500mg", brand: null },
@@ -46,6 +53,10 @@ describe("ProductsPerformanceTable", () => {
     mockMoveIdentifier.mockResolvedValue(undefined);
     mockUpdateVatRate.mockClear();
     mockUpdateVatRate.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 1024 });
   });
 
   it("renders one parent row per product in 'product' groupBy mode", () => {
@@ -233,6 +244,37 @@ describe("ProductsPerformanceTable", () => {
     await user.keyboard("{Enter}");
 
     await vi.waitFor(() => expect(mockUpdateVatRate).toHaveBeenCalledWith("ident-1", 22));
+  });
+
+  it("shows a thumbnail on the mobile expanded child row, matching the desktop view", async () => {
+    // LOCK-IN: the dedicated mobile card view (introduced alongside the
+    // compact layout) never rendered a product thumbnail at all — expanded
+    // child rows on mobile must show one just like the desktop table does.
+    setMobileViewport();
+    mockCatalogImages.mockResolvedValue({ B0ABC123: "https://example.com/img.jpg" });
+    const user = userEvent.setup();
+    const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    // At mobile width the compact card view AND the (CSS-only-hidden, still
+    // present in jsdom) desktop table both render — click the first (mobile)
+    // expand button.
+    await user.click(screen.getAllByRole("button", { name: /espandi resveratrolo 500mg/i })[0]);
+    await vi.waitFor(() => expect(container.querySelector("img")).toBeInTheDocument());
+    expect(container.querySelector("img")).toHaveAttribute("src", "https://example.com/img.jpg");
+  });
+
+  it("keeps the VAT rate field out of the product name row on mobile, so the name isn't crowded", async () => {
+    setMobileViewport();
+    const groupsWithVat: ProductPerformanceGroup[] = [
+      { product: { id: "p1", name: "Resveratrolo 500mg", brand: null }, rows: [{ ...baseRow, vatRate: 22 }], aggregate: baseRow },
+    ];
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groupsWithVat} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    await user.click(screen.getAllByRole("button", { name: /espandi resveratrolo 500mg/i })[0]);
+
+    const vatInput = screen.getAllByLabelText(/aliquota iva/i)[0];
+    const nameRow = screen.getAllByText("Amazon.it")[0].closest(".justify-between");
+    expect(nameRow).not.toBeNull();
+    expect(nameRow).not.toContainElement(vatInput);
   });
 
   it("calls onVatRateChanged after a successful VAT rate save", async () => {

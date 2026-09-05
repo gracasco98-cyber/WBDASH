@@ -361,7 +361,29 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
                 <div className="rounded-lg bg-bg-hover/70 px-2 py-1.5"><div className="text-[9px] uppercase text-zinc-500">Profitto</div><div className={`text-xs font-semibold tabular-nums ${m.netProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}>{fmtEur(m.netProfit)}</div></div>
                 <div className="rounded-lg bg-bg-hover/70 px-2 py-1.5"><div className="text-[9px] uppercase text-zinc-500">Margine</div><div className="text-xs font-semibold tabular-nums text-zinc-700">{(m.margin * 100).toFixed(1)}%</div></div>
               </div>
-              {isOpen && entry.children && <div className="mt-2 space-y-1.5 border-t border-bg-border/60 pt-2">{entry.children.map((child) => <div key={child.key} className="flex items-center justify-between gap-2 text-[11px] text-zinc-500"><span className="min-w-0 truncate">{child.label}</span><span className="flex items-center gap-2 shrink-0"><span className="tabular-nums text-zinc-700">{fmtEur(child.metrics.sales)}</span>{child.metrics.identifierId && <VatRateEditor identifierId={child.metrics.identifierId} initialRate={child.metrics.vatRate} onSave={handleVatRateSave} />}</span></div>)}</div>}
+              {isOpen && entry.children && <div className="mt-2 space-y-2 border-t border-bg-border/60 pt-2">{entry.children.map((child) => {
+                const thumb = images[child.metrics.asin] ?? child.metrics.imageUrl ?? null;
+                return (
+                  <div key={child.key} className="flex items-start gap-2 text-[11px] text-zinc-500">
+                    {thumb ? (
+                      <img src={thumb} alt="" className="w-[22px] h-[22px] rounded-[5px] object-cover shrink-0" />
+                    ) : (
+                      <div className="w-[22px] h-[22px] rounded-[5px] bg-bg-hover shrink-0" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate">{child.label}</span>
+                        <span className="tabular-nums text-zinc-700 shrink-0">{fmtEur(child.metrics.sales)}</span>
+                      </div>
+                      {child.metrics.identifierId && (
+                        <div className="mt-1">
+                          <VatRateEditor identifierId={child.metrics.identifierId} initialRate={child.metrics.vatRate} onSave={handleVatRateSave} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}</div>}
             </div>
           );
         })}
