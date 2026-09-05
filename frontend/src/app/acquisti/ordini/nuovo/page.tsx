@@ -38,11 +38,14 @@ export default function NuovoOrdinePage() {
   const [lines, setLines] = useState<LineRow[]>([{ ...EMPTY_LINE }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.suppliers.list().then(setSuppliers).catch(() => {});
-    api.purchasing.warehouses.list().then(setWarehouses).catch(() => {});
-    api.purchasing.paymentTerms.list().then(setPaymentTerms).catch(() => {});
+    Promise.all([
+      api.suppliers.list().then(setSuppliers),
+      api.purchasing.warehouses.list().then(setWarehouses),
+      api.purchasing.paymentTerms.list().then(setPaymentTerms),
+    ]).catch(() => setLoadError("Impossibile caricare fornitori, magazzini o condizioni di pagamento. Ricarica la pagina e riprova."));
   }, []);
 
   const setLine = (i: number, patch: Partial<LineRow>) =>
@@ -89,6 +92,7 @@ export default function NuovoOrdinePage() {
         <div className="flex-1 min-w-0">
           <main className="max-w-4xl mx-auto px-4 md:px-6 py-5 space-y-4">
             <h1 className="text-2xl font-bold tracking-tight">Nuovo Ordine Fornitore</h1>
+            {loadError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{loadError}</div>}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3 shadow-sm">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

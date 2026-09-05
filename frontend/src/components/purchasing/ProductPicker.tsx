@@ -12,8 +12,9 @@ export default function ProductPicker({ value, onChange }: Props) {
   const [products, setProducts] = useState<PickerProduct[]>([]);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState(false);
 
-  useEffect(() => { api.purchaseOrders.products.listForPicker().then(setProducts).catch(() => {}); }, []);
+  useEffect(() => { api.purchaseOrders.products.listForPicker().then(setProducts).catch(() => setError(true)); }, []);
 
   const selected = useMemo(() => products.find(p => p.id === value) ?? null, [products, value]);
 
@@ -25,6 +26,7 @@ export default function ProductPicker({ value, onChange }: Props) {
 
   return (
     <div className="relative">
+      {error && <div className="mb-1 text-[10px] text-rose-600">Prodotti non disponibili. Riprova a ricaricare.</div>}
       <input
         className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-emerald-400 w-full"
         placeholder="Cerca prodotto…"
