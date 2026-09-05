@@ -6,8 +6,9 @@ import PeriodTiles, { sumAggregate } from "./PeriodTiles";
 import type { ProductPerformanceRow } from "@/lib/api";
 
 const setPreset = vi.fn();
+let mockCompareMode: "none" | "previous_period" | "same_period_last_year" = "none";
 vi.mock("@/hooks/usePeriodFilter", () => ({
-  usePeriodFilter: () => ({ state: { preset: "yesterday", from: "", to: "", compareMode: "none" }, setPreset, setDateRange: vi.fn(), setCompareMode: vi.fn(), reset: vi.fn() }),
+  usePeriodFilter: () => ({ state: { preset: "yesterday", from: "", to: "", compareMode: mockCompareMode }, setPreset, setDateRange: vi.fn(), setCompareMode: vi.fn(), reset: vi.fn() }),
 }));
 
 let mockMarketplace = "all";
@@ -39,7 +40,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("PeriodTiles", () => {
-  beforeEach(() => { mockGet.mockClear(); mockProducts.mockClear(); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; });
+  beforeEach(() => { mockGet.mockClear(); mockProducts.mockClear(); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; mockCompareMode = "none"; });
 
   it("fetches 5 fixed presets independently of the active period", async () => {
     render(<PeriodTiles />);
@@ -159,6 +160,110 @@ describe("PeriodTiles", () => {
     for (const [params] of mockProducts.mock.calls as [any][]) {
       expect(amazonPairs.has(`${params.from}|${params.to}`)).toBe(true);
     }
+  });
+
+  it("doesn't fetch comparison periods when compareMode is 'none' (default)", async () => {
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+    await new Promise(r => setTimeout(r, 0));
+    expect(mockGet).toHaveBeenCalledTimes(5);
+  });
+
+  it("shows a green + badge on Ricavi netti when the comparison period had lower sales", async () => {
+    mockCompareMode = "previous_period";
+    const row = (sales: number) => ({ identifierId: "i1", asin: "", marketplace: "ALL", sku: null, units: 5, sales, promo: 0, refundsAmount: 0, refundsCount: 0, refundPct: 0, adsSpend: 5, realAcos: 0.05, amazonFees: 15, hasRealFees: true, hasRealCogs: true, cogs: 20, stock: 10, hasStockData: true, grossProfit: 60, netProfit: 60, estimatedPayout: 80, margin: 0.6, roi: 3, avgSellingPrice: 20, bsr: null, vatAmount: 12 });
+    for (let i = 0; i < 5; i++) mockGet.mockResolvedValueOnce({ groups: [{ product: { id: "p1", name: "X", brand: null }, rows: [], aggregate: row(200) }] });
+    for (let i = 0; i < 5; i++) mockGet.mockResolvedValueOnce({ groups: [{ product: { id: "p1", name: "X", brand: null }, rows: [], aggregate: row(100) }] });
+
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+
+    await vi.waitFor(() => expect(mockGet).toHaveBeenCalledTimes(10));
+    await vi.waitFor(() => expect(screen.getAllByText(/^\+\d/).length).toBeGreaterThan(0));
+  });
+
+  it("shows a red − badge on Ricavi netti when the comparison period had higher sales", async () => {
+    mockCompareMode = "previous_period";
+    const row = (sales: number) => ({ identifierId: "i1", asin: "", marketplace: "ALL", sku: null, units: 5, sales, promo: 0, refundsAmount: 0, refundsCount: 0, refundPct: 0, adsSpend: 5, realAcos: 0.05, amazonFees: 15, hasRealFees: true, hasRealCogs: true, cogs: 20, stock: 10, hasStockData: true, grossProfit: 60, netProfit: 60, estimatedPayout: 80, margin: 0.6, roi: 3, avgSellingPrice: 20, bsr: null, vatAmount: 12 });
+    for (let i = 0; i < 5; i++) mockGet.mockResolvedValueOnce({ groups: [{ product: { id: "p1", name: "X", brand: null }, rows: [], aggregate: row(100) }] });
+    for (let i = 0; i < 5; i++) mockGet.mockResolvedValueOnce({ groups: [{ product: { id: "p1", name: "X", brand: null }, rows: [], aggregate: row(200) }] });
+
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+
+    await vi.waitFor(() => expect(mockGet).toHaveBeenCalledTimes(10));
+    await vi.waitFor(() => expect(screen.getAllByText(/^-\d/).length).toBeGreaterThan(0));
+  });
+
+  it("fetches each tile's comparison range via getComparePeriod, not the tile's own range", async () => {
+    mockCompareMode = "previous_period";
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+    await vi.waitFor(() => expect(mockGet).toHaveBeenCalledTimes(10));
+
+    const todayIso = formatDateToIso(new Date());
+    const yesterdayIso = formatDateToIso(addDays(new Date(), -1));
+    const comparisonCallForToday = (mockGet.mock.calls as [any][]).find(
+      ([p]) => p.from === yesterdayIso && p.to === yesterdayIso
+    );
+    expect(comparisonCallForToday).toBeDefined();
+    // The "today" tile's OWN range (today..today) must still have been
+    // requested too — the comparison fetch is additive, not a replacement.
+    const ownCallForToday = (mockGet.mock.calls as [any][]).find(
+      ([p]) => p.from === todayIso && p.to === todayIso
+    );
+    expect(ownCallForToday).toBeDefined();
+  });
+
+  it("switches to the monthly tile set (Mese in corso / Mese scorso) when toggled", async () => {
+    const user = userEvent.setup();
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+    mockGet.mockClear();
+
+    await user.click(screen.getByRole("button", { name: /mensile/i }));
+
+    expect(await screen.findByRole("button", { name: /mese in corso/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /mese scorso/i })).toBeInTheDocument();
+    // The daily-only tiles ("7 giorni" etc.) are gone once switched.
+    expect(screen.queryByRole("button", { name: /^7 giorni$/i })).not.toBeInTheDocument();
+  });
+
+  it("fetches month_to_date and last_month's real date ranges once switched to the monthly set", async () => {
+    const user = userEvent.setup();
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+    mockGet.mockClear();
+
+    await user.click(screen.getByRole("button", { name: /mensile/i }));
+    await screen.findByRole("button", { name: /mese in corso/i });
+    await vi.waitFor(() => expect(mockGet).toHaveBeenCalled());
+
+    const today = new Date();
+    const firstOfMonth = formatDateToIso(new Date(today.getFullYear(), today.getMonth(), 1));
+    const todayIso = formatDateToIso(today);
+    const firstOfLastMonth = formatDateToIso(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+    const lastOfLastMonth = formatDateToIso(new Date(today.getFullYear(), today.getMonth(), 0));
+
+    await vi.waitFor(() => {
+      const mtdCall = (mockGet.mock.calls as [any][]).find(([p]) => p.from === firstOfMonth && p.to === todayIso);
+      expect(mtdCall).toBeDefined();
+      const lastMonthCall = (mockGet.mock.calls as [any][]).find(([p]) => p.from === firstOfLastMonth && p.to === lastOfLastMonth);
+      expect(lastMonthCall).toBeDefined();
+    });
+  });
+
+  it("switches back to the daily set and restores its tiles", async () => {
+    const user = userEvent.setup();
+    render(<PeriodTiles />);
+    await screen.findAllByText(/€/);
+    await user.click(screen.getByRole("button", { name: /mensile/i }));
+    await screen.findByRole("button", { name: /mese in corso/i });
+
+    await user.click(screen.getByRole("button", { name: /giornaliero/i }));
+
+    expect(await screen.findByRole("button", { name: /^7 giorni$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /mese in corso/i })).not.toBeInTheDocument();
   });
 
   it("resolves the 'last30' tile's range using local-timezone date math, not UTC", async () => {

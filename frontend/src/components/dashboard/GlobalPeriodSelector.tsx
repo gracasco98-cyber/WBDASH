@@ -21,6 +21,8 @@ const PERIOD_OPTIONS: PeriodOption[] = [
   { value: "last7", label: "Ultimi 7 giorni" },
   { value: "last14", label: "Ultimi 14 giorni" },
   { value: "last30", label: "Ultimi 30 giorni" },
+  { value: "month_to_date", label: "Mese in corso" },
+  { value: "last_month", label: "Mese scorso" },
   { value: "custom", label: "Range personalizzato" },
 ];
 

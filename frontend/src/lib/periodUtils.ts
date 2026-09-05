@@ -53,6 +53,17 @@ export function getDateRangeForPreset(preset: PeriodPreset): DateRange | null {
       const thirtyDaysAgo = addDays(today, -29);
       return { from: formatDateToIso(thirtyDaysAgo), to: todayIso };
 
+    case "month_to_date": {
+      const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      return { from: formatDateToIso(firstOfMonth), to: todayIso };
+    }
+
+    case "last_month": {
+      const firstOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const lastOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+      return { from: formatDateToIso(firstOfLastMonth), to: formatDateToIso(lastOfLastMonth) };
+    }
+
     default:
       return null;
   }
@@ -70,6 +81,10 @@ export function getPeriodLabel(preset: PeriodPreset, from?: string, to?: string)
       return "Ultimi 14 giorni";
     case "last30":
       return "Ultimi 30 giorni";
+    case "month_to_date":
+      return "Mese in corso";
+    case "last_month":
+      return "Mese scorso";
     case "custom":
       if (from && to) {
         return `${from} → ${to}`;

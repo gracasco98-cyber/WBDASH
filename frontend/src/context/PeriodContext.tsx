@@ -1,7 +1,7 @@
 "use client";
 import React, { createContext, useState, useCallback, ReactNode } from "react";
 
-export type PeriodPreset = "today" | "yesterday" | "last7" | "last14" | "last30" | "custom";
+export type PeriodPreset = "today" | "yesterday" | "last7" | "last14" | "last30" | "month_to_date" | "last_month" | "custom";
 export type CompareMode = "none" | "previous_period" | "same_period_last_year";
 
 export interface PeriodState {
