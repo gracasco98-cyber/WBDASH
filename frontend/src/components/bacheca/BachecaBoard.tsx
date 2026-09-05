@@ -74,17 +74,17 @@ export default function BachecaBoard() {
         <div className="relative">
           <button
             onClick={() => setPickerOpen(o => !o)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-900/10 border border-amber-900/20 text-amber-900 text-xs font-medium hover:bg-amber-900/20 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent-primary text-white text-xs font-semibold hover:opacity-90 transition-colors"
           >
             <Plus size={13} /> Aggiungi widget
           </button>
           {pickerOpen && (
-            <div className="absolute right-0 mt-1 z-20 bg-white border border-amber-900/20 rounded-lg shadow-lg py-1 min-w-[160px]">
+            <div className="absolute right-0 mt-1 z-20 bg-bg-card border border-bg-border rounded-xl shadow-xl py-1 min-w-[210px]">
               {WIDGET_REGISTRY.map(def => (
                 <button
                   key={def.type}
                   onClick={() => addWidget(def.type)}
-                  className="w-full text-left px-3 py-1.5 text-xs text-amber-950 hover:bg-amber-50"
+                  className="w-full text-left px-3 py-2 text-xs text-zinc-700 hover:bg-bg-hover"
                 >
                   {def.label}
                 </button>
@@ -95,7 +95,7 @@ export default function BachecaBoard() {
       </div>
 
       {widgets.length === 0 ? (
-        <div className="text-center py-16 text-amber-950/50 text-sm">
+        <div className="rounded-xl border border-dashed border-bg-border bg-bg-card py-16 text-center text-zinc-500 text-sm">
           Bacheca vuota — aggiungi il tuo primo widget.
         </div>
       ) : (
@@ -110,15 +110,14 @@ export default function BachecaBoard() {
           {widgets.map(widget => {
             const def = widgetDef(widget.type);
             return (
-              <div key={widget.i} className="bg-[#fdf6e3] border border-amber-900/15 rounded-sm shadow-md p-3 pt-6 relative rotate-[-0.4deg] overflow-hidden">
-                <div className="widget-drag-handle absolute top-0 left-0 right-0 h-5 cursor-move" />
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500/80 shadow-sm absolute -top-1 left-1/2 -translate-x-1/2" />
+              <div key={widget.i} className="bg-bg-card border border-bg-border rounded-xl shadow-sm p-3 pt-4 relative overflow-hidden">
+                <div className="widget-drag-handle absolute top-0 left-0 right-0 h-3 cursor-move" />
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-semibold text-amber-950/50 uppercase tracking-wide">{def?.label}</span>
+                  <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide">{def?.label}</span>
                   <button
                     onClick={() => removeWidget(widget.i)}
                     aria-label={`Rimuovi ${def?.label}`}
-                    className="text-amber-950/30 hover:text-amber-950/70"
+                    className="text-zinc-400 hover:text-accent-red"
                   >
                     <X size={12} />
                   </button>
