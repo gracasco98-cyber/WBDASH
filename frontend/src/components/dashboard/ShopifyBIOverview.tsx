@@ -223,6 +223,12 @@ function shopifyRows(data: ShopifyPeriodStats | null): Row[] {
       small: true,
     },
     {
+      key: "adSpend", label: "Marketplace Ads",
+      value: data ? (data.adSpend > 0 ? fmtEur(data.adSpend) : "â€”") : null,
+      color: data && data.adSpend > 0 ? "text-purple-400" : "text-zinc-600",
+      small: true,
+    },
+    {
       key: "margin", label: "Margine %",
       value: data && data.grossRevenue > 0
         ? `${((data.netRevenue / data.grossRevenue) * 100).toFixed(1)}%`
@@ -283,6 +289,7 @@ function amazonRows(data: AmazonPeriodStats | null): Row[] {
 function totalRows(s: ShopifyPeriodStats | null, a: AmazonPeriodStats | null): Row[] {
   const totalGross = (s?.grossRevenue ?? 0) + (a?.grossRevenue ?? 0);
   const totalNet   = (s?.netRevenue   ?? 0) + (a?.estPayout   ?? 0);
+  const totalAdSpend = (s?.adSpend ?? 0) + (a?.adSpend ?? 0);
   const totalOrd   = (s?.orderCount   ?? 0) + (a?.orderCount  ?? 0);
   const margin     = totalGross > 0 ? (totalNet / totalGross) * 100 : null;
 
@@ -308,9 +315,9 @@ function totalRows(s: ShopifyPeriodStats | null, a: AmazonPeriodStats | null): R
       color: "text-zinc-300",
     },
     {
-      key: "adSpend", label: "Ad Spend (Amazon)",
-      value: a ? (a.adSpend > 0 ? fmtEur(a.adSpend) : "â€”") : null,
-      color: a && a.adSpend > 0 ? "text-purple-400" : "text-zinc-600",
+      key: "adSpend", label: "Marketplace Ads",
+      value: (s || a) ? (totalAdSpend > 0 ? fmtEur(totalAdSpend) : "â€”") : null,
+      color: totalAdSpend > 0 ? "text-purple-400" : "text-zinc-600",
       small: true,
     },
     {

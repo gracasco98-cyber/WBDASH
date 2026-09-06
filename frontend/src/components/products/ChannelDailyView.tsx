@@ -30,7 +30,7 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
   const [data, setData] = useState<ChannelDailyResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeChannels, setActiveChannels] = useState<Set<string>>(new Set());
-  const [metric, setMetric] = useState<"grossRevenue" | "unitsSold">("grossRevenue");
+  const [metric, setMetric] = useState<"grossRevenue" | "netRevenue" | "adSpend" | "unitsSold">("grossRevenue");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,10 +81,12 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
     let total = 0;
     for (const mp of data.marketplaces) {
       if (activeChannels.has(mp)) {
+        const dailyRows = data.rows.filter(r => r.date === row.date && r.marketplace === mp);
         const val = metric === "unitsSold"
-          ? (data.rows.filter(r => r.date === row.date && r.marketplace === mp)
-              .reduce((s, r) => s + r.unitsSold, 0))
-          : Number(row[mp] ?? 0);
+          ? dailyRows.reduce((s, r) => s + r.unitsSold, 0)
+          : metric === "grossRevenue"
+            ? Number(row[mp] ?? 0)
+            : dailyRows.reduce((s, r) => s + r[metric], 0);
         filtered[mp] = val;
         total += val;
       }
@@ -101,6 +103,9 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
   const grandTotal = activeTotals.reduce((s, [, t]) => s + t.grossRevenue, 0);
   const grandUnits = activeTotals.reduce((s, [, t]) => s + t.unitsSold, 0);
   const grandOrders = activeTotals.reduce((s, [, t]) => s + t.orderCount, 0);
+  const grandAdSpend = activeTotals.reduce((s, [, t]) => s + t.adSpend, 0);
+  const grandNet = activeTotals.reduce((s, [, t]) => s + t.netRevenue, 0);
+  const grandMargin = grandTotal > 0 ? (grandNet / grandTotal) * 100 : null;
 
   // Build pivot table: rows=dates (desc), cols=channels
   const pivotDates = [...data.dates].reverse().slice(0, 30); // last 30 days newest first
@@ -148,16 +153,37 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
           >
             UnitÃ 
           </button>
+          <button
+            onClick={() => setMetric("netRevenue")}
+            className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs rounded-md transition-all ${
+              metric === "netRevenue"
+                ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            Netto
+          </button>
+          <button
+            onClick={() => setMetric("adSpend")}
+            className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs rounded-md transition-all ${
+              metric === "adSpend"
+                ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            Ads
+          </button>
         </div>
       </div>
 
       {/* KPI summary row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: "Fatturato totale", value: fmtEur(grandTotal), icon: <TrendingUp size={14} />, color: "text-green-400" },
           { label: "UnitÃ  vendute", value: fmtNum(grandUnits), icon: <Package size={14} />, color: "text-purple-400" },
           { label: "Ordini", value: fmtNum(grandOrders), icon: <ShoppingBag size={14} />, color: "text-blue-400" },
-          { label: "Canali attivi", value: String(activeTotals.length), icon: <RotateCcw size={14} />, color: "text-amber-400" },
+          { label: "Marketplace Ads", value: fmtEur(grandAdSpend), icon: <RotateCcw size={14} />, color: "text-purple-400" },
+          { label: "Margine netto", value: grandMargin === null ? "—" : `${grandMargin.toFixed(1)}%`, icon: <TrendingUp size={14} />, color: grandMargin !== null && grandMargin >= 0 ? "text-emerald-400" : "text-red-400" },
         ].map(({ label, value, icon, color }) => (
           <div key={label} className="bg-bg-card rounded-xl p-3 sm:p-4 border border-bg-border">
             <div className={`flex items-center gap-2 mb-1 sm:mb-1.5 ${color}`}>{icon}<span className="text-[10px] sm:text-xs text-zinc-400">{label}</span></div>
@@ -197,7 +223,7 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
       <div className="rounded-xl border border-bg-border bg-bg-card p-3 sm:p-5">
         <div className="flex items-center justify-between mb-3 sm:mb-4">
           <p className="text-xs sm:text-sm font-medium text-zinc-300">
-            {metric === "grossRevenue" ? "Fatturato giornaliero per canale" : "UnitÃ  vendute per canale"}
+            {metric === "grossRevenue" ? "Fatturato giornaliero per canale" : metric === "unitsSold" ? "UnitÃ  vendute per canale" : metric === "adSpend" ? "Spesa Ads giornaliera per canale" : "Netto giornaliero dopo Ads"}
           </p>
           <span className="text-xs text-zinc-500">{data.dates.length} giorni</span>
         </div>
@@ -216,7 +242,7 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
                 tick={{ fill: "#71717a", fontSize: 10 }}
                 axisLine={false}
                 tickLine={false}
-                tickFormatter={metric === "grossRevenue" ? fmtEurCompact : (v) => String(v)}
+                tickFormatter={metric === "unitsSold" ? (v) => String(v) : fmtEurCompact}
               />
               <Tooltip
                 contentStyle={{
@@ -229,7 +255,7 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
                 formatter={(value: number, name: string) => {
                   const meta = getMeta(name);
                   return [
-                    metric === "grossRevenue" ? fmtEur(value) : fmtNum(value),
+                    metric === "unitsSold" ? fmtNum(value) : fmtEur(value),
                     meta.label,
                   ];
                 }}
@@ -269,6 +295,8 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
                 <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">Ordini</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">Fatturato</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">Netto</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">Ads</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">Margine</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">% sul totale</th>
               </tr>
             </thead>
@@ -299,6 +327,12 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
                     <td className="px-4 py-3 text-right text-sm font-mono text-accent-primary tabular-nums">
                       {fmtEur(t.netRevenue)}
                     </td>
+                    <td className="px-4 py-3 text-right text-sm font-mono text-purple-400 tabular-nums">
+                      {t.adSpend > 0 ? fmtEur(t.adSpend) : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300 tabular-nums">
+                      {t.margin === null ? "—" : `${t.margin.toFixed(1)}%`}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <div className="w-20 h-1.5 rounded-full bg-bg-base overflow-hidden">
@@ -322,8 +356,10 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
                 <td className="px-4 py-3 text-right text-sm font-mono text-zinc-400 tabular-nums">{fmtNum(grandOrders)}</td>
                 <td className="px-4 py-3 text-right text-sm font-mono text-white tabular-nums">{fmtEur(grandTotal)}</td>
                 <td className="px-4 py-3 text-right text-sm font-mono text-accent-primary tabular-nums">
-                  {fmtEur(activeTotals.reduce((s, [, t]) => s + t.netRevenue, 0))}
+                  {fmtEur(grandNet)}
                 </td>
+                <td className="px-4 py-3 text-right text-sm font-mono text-purple-400 tabular-nums">{fmtEur(grandAdSpend)}</td>
+                <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300 tabular-nums">{grandMargin === null ? "—" : `${grandMargin.toFixed(1)}%`}</td>
                 <td className="px-4 py-3 text-right text-xs text-zinc-500">100%</td>
               </tr>
             </tbody>

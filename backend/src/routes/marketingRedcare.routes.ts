@@ -8,9 +8,94 @@ import {
   createOrReactivateWatch, findActiveWatches, deactivateWatch, findLatestSnapshot, findSnapshotHistory,
 } from "../repositories/marketing/redcareWatch.repo";
 import { runRedcareKeywordTracking } from "../jobs/redcareKeywordTracking.job";
+import {
+  deleteDailyAdSpend,
+  findDailyAdSpends,
+  upsertDailyAdSpend,
+} from "../repositories/marketing/marketplaceAdSpend.repo";
 
 const router = Router();
 const VALID_MARKETS = ["IT", "DE"];
+const VALID_AD_MARKETPLACES = ["REDCARE_IT", "REDCARE_DE"];
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseDateOnly(value: unknown): Date | null {
+  if (typeof value !== "string" || !DATE_ONLY_RE.test(value)) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? null : date;
+}
+
+function serializeAdSpend(row: {
+  id: string; spendDate: Date; marketplace: string; amount: unknown;
+  currency: string; source: string; note: string | null; createdAt: Date; updatedAt: Date;
+}) {
+  return {
+    ...row,
+    spendDate: row.spendDate.toISOString().slice(0, 10),
+    amount: Number(row.amount),
+  };
+}
+
+// Daily Redcare advertising costs manually copied from the SA-Tech report.
+router.get("/ad-spend", async (req: Request, res: Response) => {
+  const today = new Date();
+  const defaultFrom = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 2, 1));
+  const from = req.query.from ? parseDateOnly(req.query.from) : defaultFrom;
+  const to = req.query.to ? parseDateOnly(req.query.to) : today;
+  const marketplace = typeof req.query.marketplace === "string" ? req.query.marketplace : undefined;
+  if (!from || !to || from > to) return res.status(400).json({ error: "Intervallo date non valido." });
+  if (marketplace && !VALID_AD_MARKETPLACES.includes(marketplace)) {
+    return res.status(400).json({ error: "Marketplace Redcare non valido." });
+  }
+  try {
+    const rows = await findDailyAdSpends(prisma, { from, to, marketplace });
+    res.json({
+      entries: rows.map(serializeAdSpend),
+      total: rows.reduce((sum, row) => sum + Number(row.amount), 0),
+    });
+  } catch (err) {
+    await logError("marketing-redcare-list-ad-spend", err);
+    res.status(500).json({ error: "Impossibile recuperare la spesa Ads Redcare." });
+  }
+});
+
+router.put("/ad-spend", async (req: Request, res: Response) => {
+  const { spendDate, marketplace, amount, note } = req.body ?? {};
+  const date = parseDateOnly(spendDate);
+  const numericAmount = typeof amount === "number" ? amount : Number(amount);
+  if (!date || !VALID_AD_MARKETPLACES.includes(marketplace)) {
+    return res.status(400).json({ error: "spendDate e marketplace Redcare sono obbligatori." });
+  }
+  if (!Number.isFinite(numericAmount) || numericAmount < 0 || numericAmount > 10_000_000) {
+    return res.status(400).json({ error: "L'importo deve essere un numero positivo valido." });
+  }
+  if (note != null && (typeof note !== "string" || note.length > 500)) {
+    return res.status(400).json({ error: "La nota non può superare 500 caratteri." });
+  }
+  try {
+    const saved = await upsertDailyAdSpend(prisma, {
+      spendDate: date,
+      marketplace,
+      amount: numericAmount,
+      source: "SA_TECH_MANUAL",
+      note: note?.trim() || null,
+    }, req.user?.id);
+    res.json(serializeAdSpend(saved));
+  } catch (err) {
+    await logError("marketing-redcare-upsert-ad-spend", err, { spendDate, marketplace });
+    res.status(500).json({ error: "Impossibile salvare la spesa Ads Redcare." });
+  }
+});
+
+router.delete("/ad-spend/:id", async (req: Request, res: Response) => {
+  try {
+    await deleteDailyAdSpend(prisma, req.params.id, req.user?.id);
+    res.status(204).send();
+  } catch (err) {
+    await logError("marketing-redcare-delete-ad-spend", err, { id: req.params.id });
+    res.status(404).json({ error: "Spesa Ads non trovata." });
+  }
+});
 
 router.get("/search", async (req: Request, res: Response) => {
   const market = String(req.query.market ?? "");

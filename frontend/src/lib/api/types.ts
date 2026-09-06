@@ -5,11 +5,12 @@
 export interface Summary {
   totalRevenue: number;
   netRevenue: number;
+  adSpend: number;
   totalRefunds: number;
   orderCount: number;
   aov: number;
   lastHour: { revenue: number; orders: number };
-  byMarketplace: Record<string, { count: number; revenue: number; net: number }>;
+  byMarketplace: Record<string, { count: number; revenue: number; net: number; adSpend: number }>;
 }
 
 export interface TimePoint {
@@ -78,6 +79,7 @@ export interface ProductPerformance {
 export interface ProductKpis {
   totalGross: number;
   totalNet: number;
+  totalAdSpend: number;
   totalUnits: number;
   totalRefunds: number;
   productCount: number;
@@ -154,6 +156,8 @@ export interface ChannelDailyRow {
   grossRevenue: number;
   refundedAmount: number;
   netRevenue: number;
+  adSpend: number;
+  margin: number | null;
   orderCount: number;
 }
 
@@ -162,7 +166,14 @@ export interface ChannelDailyResponse {
   dates: string[];
   marketplaces: string[];
   chartData: Array<Record<string, string | number>>;
-  totals: Record<string, { unitsSold: number; grossRevenue: number; netRevenue: number; orderCount: number }>;
+  totals: Record<string, {
+    unitsSold: number;
+    grossRevenue: number;
+    netRevenue: number;
+    orderCount: number;
+    adSpend: number;
+    margin: number | null;
+  }>;
 }
 
 export interface HourChannelRow {
@@ -177,6 +188,7 @@ export interface HourChannelRow {
 export interface ShopifyPeriodStats {
   grossRevenue: number;
   netRevenue:   number;
+  adSpend:      number;
   orderCount:   number;
   refunds:      number;
   pctChange:    number | null;

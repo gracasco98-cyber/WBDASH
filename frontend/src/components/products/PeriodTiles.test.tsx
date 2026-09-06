@@ -30,7 +30,7 @@ const mockGet = vi.fn(async (_params: unknown) => ({
 }));
 const mockProducts = vi.fn(async (_params: unknown) => ({
   products: [{ grossRevenue: 40, unitsSold: 2 }],
-  kpis: { totalGross: 40, totalNet: 35 },
+  kpis: { totalGross: 40, totalNet: 35, totalAdSpend: 6 },
 }));
 vi.mock("@/lib/api", () => ({
   api: {
@@ -95,6 +95,12 @@ describe("PeriodTiles", () => {
   it("includes Shopify/Redcare net revenue in the net profit card", async () => {
     render(<PeriodTiles />);
     await vi.waitFor(() => expect(screen.getAllByText("€ 95,00")).toHaveLength(5));
+  });
+
+  it("adds Redcare marketplace Ads to the Ads and total-cost fields", async () => {
+    render(<PeriodTiles />);
+    await vi.waitFor(() => expect(screen.getAllByText("€ 11,00")).toHaveLength(5));
+    expect(screen.getAllByText("€ 46,00")).toHaveLength(5);
   });
 
   it("fills the VAT tile with the real summed itemTax, one per period card", async () => {
