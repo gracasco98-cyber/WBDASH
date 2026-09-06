@@ -194,7 +194,6 @@ function VatRateEditor({
 
 export default function ProductsPerformanceTable({ groups, groupBy, onGroupByChange, onRenamed, onMoved, onVatRateChanged, shopifyMarketplaceRows }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [isMobile, setIsMobile] = useState(false);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [targetProductId, setTargetProductId] = useState("");
   const [images, setImages] = useState<Record<string, string | null>>({});
@@ -202,13 +201,6 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
   const rows = groupBy === "product"
     ? buildRowsByProduct(groups)
     : [...buildRowsByMarketplace(groups), ...(shopifyMarketplaceRows ?? [])];
-
-  useEffect(() => {
-    const update = () => setIsMobile(window.innerWidth < 768);
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
 
   useEffect(() => {
     const asins = [...new Set(groups.flatMap((g) => g.rows.map((r) => r.asin)).filter(Boolean))];
@@ -337,59 +329,7 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
         </label>
       </div>
 
-      {/* A compact view keeps the most important metrics visible on phones.
-       * The full financial table remains available on desktop and can still
-       * be exported without losing any columns. */}
-      {isMobile && <div className="divide-y divide-bg-border/70">
-        {rows.length === 0 ? (
-          <div className="py-12 text-center px-4">
-            <PackageSearch size={26} className="mx-auto mb-2 text-zinc-400" />
-            <p className="text-sm font-medium text-zinc-600">Nessun dato nel periodo selezionato</p>
-            <p className="mt-1 text-[11px] text-zinc-500">Prova a cambiare periodo o marketplace.</p>
-          </div>
-        ) : rows.map((entry) => {
-          const isOpen = expanded.has(entry.key);
-          const m = entry.metrics;
-          return (
-            <div key={entry.key} className="p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 font-medium text-zinc-700">{parentLabel(entry, isOpen)}</div>
-                <div className="text-right shrink-0"><div className="text-[10px] text-zinc-500">Ricavi</div><div className="text-sm font-semibold tabular-nums text-zinc-800">{fmtEur(m.sales)}</div></div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-3">
-                <div className="rounded-lg bg-bg-hover/70 px-2 py-1.5"><div className="text-[9px] uppercase text-zinc-500">Unità</div><div className="text-xs font-semibold tabular-nums text-zinc-700">{m.units}</div></div>
-                <div className="rounded-lg bg-bg-hover/70 px-2 py-1.5"><div className="text-[9px] uppercase text-zinc-500">Profitto</div><div className={`text-xs font-semibold tabular-nums ${m.netProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}>{fmtEur(m.netProfit)}</div></div>
-                <div className="rounded-lg bg-bg-hover/70 px-2 py-1.5"><div className="text-[9px] uppercase text-zinc-500">Margine</div><div className="text-xs font-semibold tabular-nums text-zinc-700">{(m.margin * 100).toFixed(1)}%</div></div>
-              </div>
-              {isOpen && entry.children && <div className="mt-2 space-y-2 border-t border-bg-border/60 pt-2">{entry.children.map((child) => {
-                const thumb = images[child.metrics.asin] ?? child.metrics.imageUrl ?? null;
-                return (
-                  <div key={child.key} className="flex items-start gap-2 text-[11px] text-zinc-500">
-                    {thumb ? (
-                      <img src={thumb} alt="" className="w-[22px] h-[22px] rounded-[5px] object-cover shrink-0" />
-                    ) : (
-                      <div className="w-[22px] h-[22px] rounded-[5px] bg-bg-hover shrink-0" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 truncate">{child.label}</span>
-                        <span className="tabular-nums text-zinc-700 shrink-0">{fmtEur(child.metrics.sales)}</span>
-                      </div>
-                      {child.metrics.identifierId && (
-                        <div className="mt-1">
-                          <VatRateEditor identifierId={child.metrics.identifierId} initialRate={child.metrics.vatRate} onSave={handleVatRateSave} />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}</div>}
-            </div>
-          );
-        })}
-      </div>}
-
-      <div className="hidden md:block overflow-x-auto rounded-b-lg">
+      <div className="overflow-x-auto rounded-b-lg">
         <table className="w-full min-w-[1540px] border-collapse text-[11.5px]">
           <thead>
             <tr className="text-[9px] uppercase tracking-wider text-zinc-500 text-left bg-bg-hover/80 border-b border-bg-border">
