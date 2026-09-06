@@ -242,7 +242,7 @@ export default function PeriodTiles() {
           Mensile
         </button>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+    <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
       {activeTiles.map(({ preset, label, headerBg, accent, Icon }) => {
         const totalRow = totals[preset];
         const shopifyRow = shopifyTotals[preset];
@@ -288,28 +288,28 @@ export default function PeriodTiles() {
                 <div className="flex items-center justify-between text-zinc-500 text-[10px] uppercase tracking-[0.08em]"><span>Profitto netto</span><VariationBadge variation={profitVariation} dark /></div>
                 <div className={`text-[16px] font-bold tabular-nums mt-1 ${combinedNetProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}>{hasAny ? fmtEur(combinedNetProfit) : "—"}</div>
               </div>
-              <div className="grid grid-cols-2 gap-2 border-t border-bg-border/70 pt-2">
+              <div className="hidden sm:grid grid-cols-2 gap-2 border-t border-bg-border/70 pt-2">
                 <div className="rounded-md border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5"><div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">Costi</div><div className="text-[11px] font-semibold tabular-nums text-zinc-300">{totalRow ? fmtEur(totalRow.amazonFees + totalRow.cogs + (totalRow.adsSpend ?? 0)) : "—"}</div></div>
                 <div className="rounded-md border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5"><div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">VAT</div><div className="text-[11px] font-semibold tabular-nums text-zinc-300">{totalRow ? fmtEur(totalRow.vatAmount ?? 0) : "—"}</div></div>
               </div>
               <div className="grid grid-cols-2 gap-x-2 gap-y-2 text-[11px]">
-                <div>
+                <div className="hidden sm:block">
                   <div className="text-zinc-500 text-[10px]">Unità</div>
                   <div className="text-zinc-300 tabular-nums">{hasAny ? combinedUnits : "—"}</div>
                 </div>
-                <div>
+                <div className="hidden sm:block">
                   <div className="text-zinc-500 text-[10px]">Resi</div>
                   <div className="text-zinc-300 tabular-nums">{totalRow ? totalRow.refundsCount : "—"}</div>
                 </div>
-                <div className="pt-2 border-t border-bg-border">
+                <div className="hidden sm:block pt-2 border-t border-bg-border">
                   <div className="text-zinc-500 text-[10px]">Ads</div>
                   <div className="text-zinc-300 tabular-nums">{totalRow ? dash(totalRow.adsSpend, fmtEur) : "—"}</div>
                 </div>
-                <div className="pt-2 border-t border-bg-border">
+                <div className="hidden sm:block pt-2 border-t border-bg-border">
                   <div className="text-zinc-500 text-[10px]">Payout stimato</div>
                   <div className="text-zinc-300 tabular-nums">{totalRow ? fmtEur(totalRow.estimatedPayout) : "—"}</div>
                 </div>
-                <div>
+                <div className="hidden sm:block">
                   <div className="text-zinc-500 text-[10px]">Fee Amazon</div>
                   <div className="text-zinc-300 tabular-nums">{totalRow ? fmtEur(totalRow.amazonFees) : "—"}</div>
                 </div>

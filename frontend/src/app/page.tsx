@@ -438,14 +438,14 @@ export default function DashboardPage() {
               {loading ? "Aggiornamento in corso" : `Aggiornato alle ${clockTime ? lastRefresh.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "--:--"}`}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-bg-hover/35 rounded-b-2xl">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 px-4 py-3 bg-bg-hover/35 rounded-b-2xl">
             <FilterBar
               marketplace={marketplace} setMarketplace={setMarketplace}
               status={status} setStatus={setStatus}
               selectedProduct={selectedProduct}
               onSelectProduct={setSelectedProduct}
             />
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto w-full sm:w-auto flex items-center gap-2">
               {(marketplace !== "all" || status !== "all") && (
                 <button
                   onClick={() => { setMarketplace("all"); setStatus("all"); }}

@@ -90,7 +90,7 @@ export default function FilterBar({
 
       {/* Product search — positioned on the right */}
       {onSelectProduct && (
-        <div className="ml-auto min-w-0">
+        <div className="ml-auto min-w-0 w-full sm:w-auto">
           <ProductSearchBar
             onSelect={onSelectProduct}
             selected={selectedProduct ?? null}
