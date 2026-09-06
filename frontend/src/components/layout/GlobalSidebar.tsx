@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, ShoppingCart, ShoppingBag, Wallet, Boxes, Megaphone, LifeBuoy, Shield,
   FileText, ClipboardList, Warehouse, Landmark, CalendarClock, PackageSearch, ReceiptText, Sparkles, LockKeyhole,
-  ChevronDown, LayoutGrid, ClipboardCheck,
+  ChevronDown, LayoutGrid, ClipboardCheck, Target,
 } from "lucide-react";
 
 interface NavItem {
@@ -52,6 +52,7 @@ const GROUPS = [
     key: "marketing", label: "MARKETING", icon: Megaphone,
     items: [
       { href: "/amazon/ppc", label: "Advertising" },
+      { href: "/amazon/marketing", label: "Keyword Positioning" },
       { href: "/amazon/analytics", label: "Intelligence" },
       { href: "/marketing/redcare", label: "Redcare Keyword BI" },
     ],
@@ -97,6 +98,7 @@ const ITEM_ICONS: Record<string, typeof Wallet> = {
   "Condizioni pagamento": ReceiptText,
   "Scadenzario": CalendarClock,
   "Prima Nota": Wallet,
+  "Keyword Positioning": Target,
   "P&L": Sparkles,
   "Pagamenti": Wallet,
   "COGS": ReceiptText,
