@@ -380,6 +380,8 @@ export default function DashboardPage() {
       onMoved={loadProductGroups}
       onVatRateChanged={loadProductGroups}
       shopifyMarketplaceRows={shopifyMarketplaceRows}
+      dateRange={{ from: apiFrom, to: apiTo }}
+      marketplace={isAmazonMp ? (amazonMpCode ?? "all") : "all"}
     />
   );
   const productsBlock = sections.products && <div className="mt-2">{productsTable}</div>;

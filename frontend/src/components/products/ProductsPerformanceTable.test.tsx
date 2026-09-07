@@ -2,16 +2,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProductsPerformanceTable, { buildShopifyMarketplaceRows, buildProductsCsv } from "./ProductsPerformanceTable";
-import type { ProductPerformanceGroup, ProductPerformance } from "@/lib/api";
+import type { ProductPerformanceGroup, ProductPerformance, AmazonOrdersResponse } from "@/lib/api";
 
 const mockCatalogImages = vi.fn(async (_asins: string[]) => ({}) as Record<string, string | null>);
 const mockRename = vi.fn(async (_productId: string, _name: string) => undefined);
 const mockMoveIdentifier = vi.fn(async (_identifierId: string, _targetProductId: string) => undefined);
 const mockUpdateVatRate = vi.fn(async (_identifierId: string, _vatRate: number | null) => undefined);
+const mockAmazonOrders = vi.fn(async (_params: Record<string, string>): Promise<AmazonOrdersResponse> => ({ orders: [], total: 0, page: 1, limit: 100 }));
 
 vi.mock("@/lib/api", () => ({
   api: {
-    amazon: { catalogImages: (asins: string[]) => mockCatalogImages(asins) },
+    amazon: {
+      catalogImages: (asins: string[]) => mockCatalogImages(asins),
+      orders: (params: Record<string, string>) => mockAmazonOrders(params),
+    },
     productPerformance: {
       rename: (productId: string, name: string) => mockRename(productId, name),
       moveIdentifier: (identifierId: string, targetProductId: string) => mockMoveIdentifier(identifierId, targetProductId),
@@ -385,6 +389,48 @@ describe("ProductsPerformanceTable — column visibility (Colonne)", () => {
 
     render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
     expect(screen.queryByRole("columnheader", { name: "BSR" })).not.toBeInTheDocument();
+  });
+});
+
+describe("ProductsPerformanceTable — Visualizza per: Ordini", () => {
+  beforeEach(() => {
+    mockAmazonOrders.mockClear();
+    mockAmazonOrders.mockResolvedValue({ total: 0, page: 1, limit: 100, orders: [] });
+  });
+
+  it("shows a 'Visualizza per' toggle defaulting to Prodotto", () => {
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} dateRange={{ from: "2026-09-01", to: "2026-09-07" }} marketplace="all" />);
+    expect(screen.getByRole("button", { name: /prodotto/i })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("fetches and renders Amazon orders for the given date range once 'Ordini' is selected", async () => {
+    const user = userEvent.setup();
+    mockAmazonOrders.mockResolvedValue({
+      total: 1, page: 1, limit: 100,
+      orders: [{
+        id: "o1", amazonOrderId: "111-2223334-5556667", purchaseDate: "2026-09-05T10:00:00Z",
+        lastUpdatedDate: "2026-09-05T10:00:00Z", orderStatus: "Shipped", salesChannel: "Amazon.it",
+        marketplace: "IT", fulfillmentChannel: "AFN", shipCountry: "IT", currency: "EUR",
+        itemTotal: 45.9, isBusinessOrder: false, items: [{ id: "i1" } as never, { id: "i2" } as never],
+      }],
+    });
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} dateRange={{ from: "2026-09-01", to: "2026-09-07" }} marketplace="all" />);
+
+    await user.click(screen.getByRole("button", { name: /^ordini$/i }));
+
+    await vi.waitFor(() => expect(mockAmazonOrders).toHaveBeenCalledWith(expect.objectContaining({ from: "2026-09-01", to: "2026-09-07" })));
+    expect(await screen.findByText("111-2223334-5556667")).toBeInTheDocument();
+    expect(screen.getByText("€ 45,90")).toBeInTheDocument();
+  });
+
+  it("hides the 'Raggruppa per' grouping select while the Ordini view is active", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} dateRange={{ from: "2026-09-01", to: "2026-09-07" }} marketplace="all" />);
+    expect(screen.getByLabelText(/raggruppa per/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^ordini$/i }));
+
+    expect(screen.queryByLabelText(/raggruppa per/i)).not.toBeInTheDocument();
   });
 });
 
