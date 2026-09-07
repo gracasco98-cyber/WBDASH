@@ -100,6 +100,36 @@ router.get("/", async (req: Request, res: Response) => {
 
     const validSortKeys = ["grossRevenue", "netRevenue", "unitsSold", "orderCount", "refundedAmount"];
     const key = validSortKeys.includes(sortBy) ? sortBy : "grossRevenue";
+    // Keep advertising-only Redcare days visible in the product identity
+    // view. Ads are entered at marketplace/day level, so when there is no
+    // order/product to attach them to, expose a transparent synthetic row
+    // instead of silently dropping the cost from the product page.
+    const productCount = products.length;
+    const adOnlyByMarketplace = new Map<string, number>();
+    for (const row of adRows) {
+      adOnlyByMarketplace.set(
+        row.marketplace,
+        (adOnlyByMarketplace.get(row.marketplace) ?? 0) + Number(row.amount),
+      );
+    }
+    for (const [adMarketplace, adSpend] of adOnlyByMarketplace) {
+      products.push({
+        shopifyProductId: `__ads__${adMarketplace}`,
+        productTitle: `Ads ${adMarketplace === "REDCARE_IT" ? "Redcare IT" : adMarketplace === "REDCARE_DE" ? "Redcare DE" : adMarketplace}`,
+        sku: null,
+        imageUrl: null,
+        marketplace: adMarketplace,
+        unitsSold: 0,
+        grossRevenue: 0,
+        refundedAmount: 0,
+        netRevenue: -adSpend,
+        orderCount: 0,
+        avgUnitPrice: 0,
+        totalDiscount: 0,
+        adSpend,
+      } as (typeof products)[number]);
+    }
+
     products.sort((a, b) =>
       sortDir === "asc" ? (a as any)[key] - (b as any)[key] : (b as any)[key] - (a as any)[key]
     );
@@ -134,7 +164,7 @@ router.get("/", async (req: Request, res: Response) => {
         redcareAdSpend: totalAdSpend,
         totalUnits:   products.reduce((s, p) => s + p.unitsSold, 0),
         totalRefunds: Number(orderKpis[0]?.refunds ?? 0),
-        productCount: products.length,
+        productCount,
       },
     });
   } catch (err) {

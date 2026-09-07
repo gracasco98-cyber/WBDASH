@@ -200,8 +200,17 @@ export default function DashboardPage() {
   const loadShopifyMarketplaceRows = useCallback(async () => {
     if (isAmazonMp) { setShopifyMarketplaceRows([]); return; }
     try {
-      const { products } = await api.products(params());
-      setShopifyMarketplaceRows(buildShopifyMarketplaceRows(products));
+      const requestParams = params();
+      const [{ products }, channelDaily] = await Promise.all([
+        api.products(requestParams),
+        api.channelDaily(requestParams),
+      ]);
+      const adSpendByMarketplace = Object.fromEntries(
+        Object.entries(channelDaily.totals)
+          .filter(([, total]) => total.adSpend > 0)
+          .map(([mp, total]) => [mp, total.adSpend]),
+      );
+      setShopifyMarketplaceRows(buildShopifyMarketplaceRows(products, adSpendByMarketplace));
     } catch (err) {
       console.error("[DashboardPage] Failed to load Shopify product performance:", err);
     }

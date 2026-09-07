@@ -74,6 +74,8 @@ export interface ProductPerformance {
   orderCount: number;
   avgUnitPrice: number;
   totalDiscount: number;
+  /** Marketplace-level Ads allocated to this row for the selected period. */
+  adSpend?: number;
 }
 
 export interface ProductKpis {

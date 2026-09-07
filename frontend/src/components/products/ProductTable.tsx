@@ -130,6 +130,7 @@ export default function ProductTable({ products, loading, onDetail }: Props) {
                 <div className="flex items-center gap-1">Rimborsi <SortIcon k="refundedAmount" /></div>
               </th>
               <Th label="Netto" k="netRevenue" />
+              <Th label="Ads" />
               <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wide whitespace-nowrap hidden lg:table-cell cursor-pointer hover:text-white select-none" onClick={() => handleSort("orderCount")}>
                 <div className="flex items-center gap-1">Ordini <SortIcon k="orderCount" /></div>
               </th>
@@ -239,6 +240,9 @@ export default function ProductTable({ products, loading, onDetail }: Props) {
                   </td>
                   <td className="px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-mono text-accent-primary tabular-nums font-medium whitespace-nowrap">
                     {fmtEur(p.netRevenue)}
+                  </td>
+                  <td className="px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-mono text-purple-400 tabular-nums whitespace-nowrap">
+                    {p.adSpend != null ? fmtEur(p.adSpend) : "—"}
                   </td>
                   <td className="px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-zinc-400 tabular-nums whitespace-nowrap hidden lg:table-cell">
                     {fmtNum(p.orderCount)}

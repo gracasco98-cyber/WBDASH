@@ -224,12 +224,34 @@ const COUNTRY_LABEL: Record<string, string> = {
  */
 export function buildShopifyMarketplaceRows(
   products: ProductPerformance[],
+  adSpendByMarketplace: Record<string, number> = {},
 ): RowEntry[] {
   const byMarketplace = new Map<string, ProductPerformance[]>();
   for (const p of products) {
     const list = byMarketplace.get(p.marketplace) ?? [];
     list.push(p);
     byMarketplace.set(p.marketplace, list);
+  }
+  // Keep advertising-only channels visible even when there are no orders in
+  // the selected period (a common case for a newly started Redcare campaign).
+  for (const [mp, spend] of Object.entries(adSpendByMarketplace)) {
+    if (spend > 0 && !byMarketplace.has(mp)) {
+      byMarketplace.set(mp, [{
+        shopifyProductId: `ads-${mp}`,
+        productTitle: `Ads ${getMeta(mp).label}`,
+        sku: null,
+        imageUrl: null,
+        marketplace: mp,
+        unitsSold: 0,
+        grossRevenue: 0,
+        refundedAmount: 0,
+        netRevenue: -spend,
+        orderCount: 0,
+        avgUnitPrice: 0,
+        totalDiscount: 0,
+        adSpend: spend,
+      }]);
+    }
   }
   return [...byMarketplace.entries()].map(([mp, items]) => {
     const units = items.reduce((s, p) => s + p.unitsSold, 0);
@@ -247,6 +269,9 @@ export function buildShopifyMarketplaceRows(
         refundsAmount,
         refundPct: sales > 0 ? refundsAmount / sales : 0,
         avgSellingPrice: units > 0 ? sales / units : 0,
+        adsSpend: Object.prototype.hasOwnProperty.call(adSpendByMarketplace, mp)
+          ? adSpendByMarketplace[mp]
+          : null,
       },
       children: items.map((p) => ({
         key: `shopify-${mp}-${p.shopifyProductId}`,
@@ -260,6 +285,7 @@ export function buildShopifyMarketplaceRows(
           refundsAmount: p.refundedAmount,
           refundPct: p.grossRevenue > 0 ? p.refundedAmount / p.grossRevenue : 0,
           avgSellingPrice: p.avgUnitPrice,
+          adsSpend: p.adSpend ?? null,
           imageUrl: p.imageUrl,
         },
       })),
