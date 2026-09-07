@@ -4,7 +4,7 @@
 //       This middleware only prevents the flicker of protected pages before a 401.
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_PATHS = new Set(["/login", "/favicon.ico"]);
+const PUBLIC_PATHS = new Set(["/login", "/favicon.ico", "/mockups/mobile"]);
 const SESSION_COOKIE = "dash_sid";
 
 export function middleware(req: NextRequest) {
