@@ -39,6 +39,7 @@ import miraklRouter from "./routes/mirakl.routes";
 import marketingRedcareRouter from "./routes/marketingRedcare.routes";
 import { tasksRouter } from "./routes/tasks.routes";
 import { boardRouter } from "./routes/board.routes";
+import launchesRouter from "./routes/launches.routes";
 import { startRedcareKeywordTrackingSchedule } from "./jobs/redcareKeywordTracking.job";
 import { addSSEClient, sseClientCount } from "./sse/sse";
 
@@ -178,6 +179,7 @@ app.use("/api/mirakl",     requireAuth, miraklRouter);
 app.use("/api/marketing/redcare", requireAuth, marketingRedcareRouter);
 app.use("/api/tasks", requireAuth, tasksRouter);
 app.use("/api/board", requireAuth, boardRouter);
+app.use("/api/launches", requireAuth, launchesRouter);
 
 // ─── 404 / error handler ─────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: "Endpoint non trovato." }));

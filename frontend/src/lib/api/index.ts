@@ -65,6 +65,7 @@ export type {
 export type { Task, TaskStatus, AssignableUser } from "./tasks";
 export type { BoardWidget } from "./board";
 export type { ChatMessage, ChatResponse } from "./chat";
+export type { Launch, LaunchDay, LaunchKeywordDay, LaunchDayInput, LaunchKeywordInput } from "./launches";
 
 // Import domain modules
 import { shopify } from "./shopify";
@@ -80,6 +81,7 @@ import { marketingRedcare } from "./marketing-redcare";
 import { tasks } from "./tasks";
 import { board } from "./board";
 import { chat } from "./chat";
+import { launches } from "./launches";
 
 // Compose the `api` object that all callers use via `import { api } from "@/lib/api"`
 export const api = {
@@ -125,4 +127,5 @@ export const api = {
 
   // ── Chat / Insight AI ─────────────────────────────────────────────────────
   chat,
+  launches,
 };

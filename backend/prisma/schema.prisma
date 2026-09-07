@@ -1293,6 +1293,72 @@ model MarketplaceAdSpend {
   @@index([spendDate])
 }
 
+// Product launch tracking. These values are planning/launch inputs and are
+// intentionally kept separate from real order revenue and Amazon settlement
+// data. Launch costs can be included in profitability views without changing
+// the source-of-truth sales figures.
+model Launch {
+  id          String      @id @default(cuid())
+  name        String
+  productId   String?
+  productName String
+  sku         String?
+  marketplace String      @default("all")
+  startedOn   DateTime    @db.Date
+  status      String      @default("ACTIVE")
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  days        LaunchDay[]
+
+  @@index([status])
+  @@index([startedOn])
+}
+
+model LaunchDay {
+  id             String             @id @default(cuid())
+  launchId       String
+  launch         Launch             @relation(fields: [launchId], references: [id], onDelete: Cascade)
+  day            DateTime           @db.Date
+  fakeRevenue    Decimal            @default(0) @db.Decimal(14, 4)
+  fakeOrders     Int                @default(0)
+  reviewCount    Int                @default(0)
+  reviewRating   Decimal?           @db.Decimal(4, 2)
+  adsCost        Decimal            @default(0) @db.Decimal(14, 4)
+  reviewCost     Decimal            @default(0) @db.Decimal(14, 4)
+  couponCost     Decimal            @default(0) @db.Decimal(14, 4)
+  giveawayCost   Decimal            @default(0) @db.Decimal(14, 4)
+  logisticsCost  Decimal            @default(0) @db.Decimal(14, 4)
+  otherCost      Decimal            @default(0) @db.Decimal(14, 4)
+  note           String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  keywords       LaunchKeywordDay[]
+
+  @@unique([launchId, day])
+  @@index([day])
+}
+
+model LaunchKeywordDay {
+  id             String    @id @default(cuid())
+  launchDayId    String
+  launchDay      LaunchDay @relation(fields: [launchDayId], references: [id], onDelete: Cascade)
+  keyword        String
+  position       Int?
+  previousPosition Int?
+  volume         Int?
+  fakeRevenue    Decimal   @default(0) @db.Decimal(14, 4)
+  fakeOrders     Int       @default(0)
+  reviewCount    Int       @default(0)
+  adsCost        Decimal   @default(0) @db.Decimal(14, 4)
+  note           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([launchDayId, keyword])
+  @@index([keyword])
+}
+
 // ─── Bacheca / Task Manager module ─────────────────────────────────────────
 // Company-wide (no amazonAccountId) — task assignment between real User
 // accounts, and each user's own personal board layout.
