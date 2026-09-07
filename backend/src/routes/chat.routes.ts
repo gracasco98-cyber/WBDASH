@@ -248,7 +248,10 @@ router.post("/", async (req: Request, res: Response) => {
     // Agentic loop: call OpenAI, execute tools, repeat until text response
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
+        // gpt-4o-mini: same tool-calling flow, ~15-20x cheaper than gpt-4o —
+        // switched 2026-09-07 after real cost concerns with gpt-4o on this
+        // chatbot + the Insight AI panel, which added more calls on top of it.
+        model: "gpt-4o-mini",
         messages: conversation,
         tools: TOOLS,
         tool_choice: "auto",
