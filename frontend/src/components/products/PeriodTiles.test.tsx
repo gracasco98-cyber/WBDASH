@@ -30,7 +30,7 @@ const mockGet = vi.fn(async (_params: unknown): Promise<{ groups: { product: { i
 }));
 const mockProducts = vi.fn(async (_params: unknown) => ({
   products: [{ grossRevenue: 40, unitsSold: 2 }],
-  kpis: { totalGross: 40, totalNet: 35, totalAdSpend: 6 },
+  kpis: { totalGross: 40, totalNet: 35, totalAdSpend: 99, redcareAdSpend: 6 },
 }));
 const mockTimeseries = vi.fn(async (_params: unknown) => [] as { time: string; revenue: number; count: number }[]);
 vi.mock("@/lib/api", () => ({
@@ -329,7 +329,7 @@ describe("PeriodTiles", () => {
     it("adds a Proiezione mese tile projecting month-to-date run-rate to the full month", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       vi.setSystemTime(new Date(2026, 8, 10)); // 10 September 2026 — 10 days elapsed, 30-day month
-      mockProducts.mockResolvedValue({ products: [], kpis: { totalGross: 0, totalNet: 0, totalAdSpend: 0 } });
+      mockProducts.mockResolvedValue({ products: [], kpis: { totalGross: 0, totalNet: 0, totalAdSpend: 0, redcareAdSpend: 0 } });
       mockGet.mockImplementation(async (params: any) => {
         if (params.from === "2026-09-01" && params.to === "2026-09-10") return groupsWith(100);
         return { groups: [] };
@@ -346,7 +346,7 @@ describe("PeriodTiles", () => {
     it("compares the forecast against last month's real total, even when compareMode is 'none'", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       vi.setSystemTime(new Date(2026, 8, 10));
-      mockProducts.mockResolvedValue({ products: [], kpis: { totalGross: 0, totalNet: 0, totalAdSpend: 0 } });
+      mockProducts.mockResolvedValue({ products: [], kpis: { totalGross: 0, totalNet: 0, totalAdSpend: 0, redcareAdSpend: 0 } });
       mockGet.mockImplementation(async (params: any) => {
         if (params.from === "2026-09-01" && params.to === "2026-09-10") return groupsWith(100); // MTD -> forecast 300
         if (params.from === "2026-08-01" && params.to === "2026-08-31") return groupsWith(200); // last month actual
@@ -364,7 +364,7 @@ describe("PeriodTiles", () => {
     it("always shows a comparison badge on Oggi vs Ieri in the monthly set, even when compareMode is 'none'", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       vi.setSystemTime(new Date(2026, 8, 10));
-      mockProducts.mockResolvedValue({ products: [], kpis: { totalGross: 0, totalNet: 0, totalAdSpend: 0 } });
+      mockProducts.mockResolvedValue({ products: [], kpis: { totalGross: 0, totalNet: 0, totalAdSpend: 0, redcareAdSpend: 0 } });
       mockGet.mockImplementation(async (params: any) => {
         if (params.from === "2026-09-10" && params.to === "2026-09-10") return groupsWith(150); // Oggi
         if (params.from === "2026-09-09" && params.to === "2026-09-09") return groupsWith(100); // Ieri

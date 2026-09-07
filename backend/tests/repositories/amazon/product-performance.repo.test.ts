@@ -317,9 +317,13 @@ describe("resolveProductPerformance", () => {
       expect(deRow.adsSpend).toBe(7);
       expect(itRow.realAcos).toBeCloseTo(20 / 200, 4);
       expect(deRow.realAcos).toBeCloseTo(7 / 100, 4);
+      // Ads are a net-profit expense, not a second gross-profit deduction.
+      expect(itRow.grossProfit - itRow.netProfit).toBeCloseTo(20, 2);
+      expect(deRow.grossProfit - deRow.netProfit).toBeCloseTo(7, 2);
       // Aggregate sums each marketplace's own spend once — 27, not 40 or 54.
       expect(group.aggregate.adsSpend).toBeCloseTo(27, 2);
       expect(group.aggregate.realAcos).toBeCloseTo(27 / 300, 4);
+      expect(group.aggregate.grossProfit - group.aggregate.netProfit).toBeCloseTo(27, 2);
     });
   });
 

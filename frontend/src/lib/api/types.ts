@@ -80,6 +80,8 @@ export interface ProductKpis {
   totalGross: number;
   totalNet: number;
   totalAdSpend: number;
+  /** Daily Redcare Ads included in totalNet for the requested range. */
+  redcareAdSpend?: number;
   totalUnits: number;
   totalRefunds: number;
   productCount: number;
