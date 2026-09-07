@@ -7,7 +7,7 @@ import { findAllProducts } from "../../src/repositories/amazon/product.repo";
 let db: TestDb;
 let accountId: string;
 
-beforeAll(async () => { db = await setupTestDb(); }, 60_000);
+beforeAll(async () => { db = await setupTestDb(); });
 afterAll(async () => { await db.cleanup(); });
 beforeEach(async () => {
   await truncateAll(db.prisma);

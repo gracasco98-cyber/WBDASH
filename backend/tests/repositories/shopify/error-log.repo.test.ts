@@ -9,7 +9,7 @@ let db: TestDb;
 
 beforeAll(async () => {
   db = await setupTestDb();
-}, 60_000);
+});
 
 afterAll(async () => {
   await db.cleanup();

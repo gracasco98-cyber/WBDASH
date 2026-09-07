@@ -31,8 +31,15 @@ export async function setupTestDb(): Promise<TestDb> {
 
   const databaseUrl = container.getConnectionUri();
 
-  // Applica schema Prisma
-  execSync('npx prisma db push --skip-generate', {
+  // Apply the real, versioned migrations (never `db push`) — `db push` syncs
+  // the test DB directly from schema.prisma, which is NOT what dev/prod run.
+  // A migration whose SQL has drifted from schema.prisma (wrong column type,
+  // missing constraint, ...) passes every test under `db push` because the
+  // test DB never sees the drifted SQL at all — it gets the schema's
+  // (correct) shape instead. `migrate deploy` applies the actual
+  // migration.sql files in order, so the test DB's schema is byte-for-byte
+  // what a real deploy produces, closing that blind spot.
+  execSync('npx prisma migrate deploy', {
     env: { ...process.env, DATABASE_URL: databaseUrl },
     stdio: process.env.TEST_VERBOSE ? 'inherit' : 'ignore',
   });

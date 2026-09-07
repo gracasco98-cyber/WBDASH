@@ -30,7 +30,7 @@ beforeAll(async () => {
   // handlers would silently read/write the wrong database.
   process.env.DATABASE_URL = db.databaseUrl;
   ({ productsPerformanceRouter } = await import("../../src/amazon/routes/products-performance.routes"));
-}, 60_000);
+});
 afterAll(async () => { await db.cleanup(); });
 beforeEach(async () => {
   await truncateAll(db.prisma);
