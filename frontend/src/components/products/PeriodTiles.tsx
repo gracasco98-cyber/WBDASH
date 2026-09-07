@@ -10,24 +10,76 @@ import type { ProductPerformanceRow } from "@/lib/api";
 import { formatDateToIso } from "@/lib/periodUtils";
 import { getComparePeriod, calculateVariation } from "@/lib/compareUtils";
 import { fmtEur, dash } from "./MetricRow";
-import { CalendarDays, CalendarClock, CalendarRange, Sparkles, History } from "lucide-react";
+import { CalendarDays, CalendarClock, CalendarRange, Sparkles, History, TrendingUp } from "lucide-react";
 
-type Tile = { preset: PeriodPreset; label: string; headerBg: string; accent: string; Icon: typeof CalendarDays };
+type DateRange = { from: string; to: string };
+type Tile = {
+  id: string;
+  preset: PeriodPreset;
+  label: string;
+  headerBg: string;
+  accent: string;
+  Icon: typeof CalendarDays;
+  /** Marks the "Proiezione mese" tile: its sales/profit are the month-to-date
+   *  run-rate projected across the full month, not the raw fetched total. */
+  isForecast?: boolean;
+  /** When set, this tile always shows a comparison against this fixed range,
+   *  independent of the global "Confronto" mode (GlobalPeriodSelector) —
+   *  used by the monthly set, where every tile has one natural predecessor
+   *  to compare against (Oggi vs Ieri, Mese in corso vs lo stesso numero di
+   *  giorni del mese scorso, ...). */
+  fixedCompareRange?: (current: DateRange) => DateRange | null;
+};
 type TileSetKey = "days" | "monthly";
+
+function daysInMonth(year: number, monthIndex0: number): number {
+  return new Date(year, monthIndex0 + 1, 0).getDate();
+}
 
 const TILE_SETS: Record<TileSetKey, Tile[]> = {
   days: [
-    { preset: "today", label: "Oggi", headerBg: "#edf5ff", accent: "#2a78d6", Icon: CalendarDays },
-    { preset: "yesterday", label: "Ieri", headerBg: "#fff7e6", accent: "#d89000", Icon: History },
-    { preset: "last7", label: "7 giorni", headerBg: "#eaf8f2", accent: "#059669", Icon: CalendarRange },
-    { preset: "last14", label: "14 giorni", headerBg: "#f3effe", accent: "#7c3aed", Icon: CalendarClock },
-    { preset: "last30", label: "30 giorni", headerBg: "#edf5ff", accent: "#2a78d6", Icon: Sparkles },
+    { id: "today", preset: "today", label: "Oggi", headerBg: "#edf5ff", accent: "#2a78d6", Icon: CalendarDays },
+    { id: "yesterday", preset: "yesterday", label: "Ieri", headerBg: "#fff7e6", accent: "#d89000", Icon: History },
+    { id: "last7", preset: "last7", label: "7 giorni", headerBg: "#eaf8f2", accent: "#059669", Icon: CalendarRange },
+    { id: "last14", preset: "last14", label: "14 giorni", headerBg: "#f3effe", accent: "#7c3aed", Icon: CalendarClock },
+    { id: "last30", preset: "last30", label: "30 giorni", headerBg: "#edf5ff", accent: "#2a78d6", Icon: Sparkles },
   ],
   monthly: [
-    { preset: "today", label: "Oggi", headerBg: "#edf5ff", accent: "#2a78d6", Icon: CalendarDays },
-    { preset: "yesterday", label: "Ieri", headerBg: "#fff7e6", accent: "#d89000", Icon: History },
-    { preset: "month_to_date", label: "Mese in corso", headerBg: "#eaf8f2", accent: "#059669", Icon: CalendarRange },
-    { preset: "last_month", label: "Mese scorso", headerBg: "#f3effe", accent: "#7c3aed", Icon: CalendarClock },
+    {
+      id: "today", preset: "today", label: "Oggi", headerBg: "#edf5ff", accent: "#2a78d6", Icon: CalendarDays,
+      fixedCompareRange: () => presetDateRange("yesterday"),
+    },
+    {
+      id: "yesterday", preset: "yesterday", label: "Ieri", headerBg: "#fff7e6", accent: "#d89000", Icon: History,
+      fixedCompareRange: () => {
+        const today = new Date();
+        const dayBeforeYesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2);
+        return { from: formatDateToIso(dayBeforeYesterday), to: formatDateToIso(dayBeforeYesterday) };
+      },
+    },
+    {
+      id: "month_to_date", preset: "month_to_date", label: "Mese in corso", headerBg: "#eaf8f2", accent: "#059669", Icon: CalendarRange,
+      fixedCompareRange: () => {
+        const today = new Date();
+        const firstOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const sameDayCountLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+        return { from: formatDateToIso(firstOfLastMonth), to: formatDateToIso(sameDayCountLastMonth) };
+      },
+    },
+    {
+      id: "forecast", preset: "month_to_date", label: "Proiezione mese", headerBg: "#f3effe", accent: "#7c3aed", Icon: TrendingUp,
+      isForecast: true,
+      fixedCompareRange: () => presetDateRange("last_month"),
+    },
+    {
+      id: "last_month", preset: "last_month", label: "Mese scorso", headerBg: "#edf5ff", accent: "#2a78d6", Icon: Sparkles,
+      fixedCompareRange: () => {
+        const today = new Date();
+        const firstOfMonthBeforeLast = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+        const lastOfMonthBeforeLast = new Date(today.getFullYear(), today.getMonth() - 1, 0);
+        return { from: formatDateToIso(firstOfMonthBeforeLast), to: formatDateToIso(lastOfMonthBeforeLast) };
+      },
+    },
   ],
 };
 
@@ -49,9 +101,18 @@ function presetDateRange(preset: PeriodPreset): { from: string; to: string } {
   }
 }
 
-function tileDateLabel(preset: PeriodPreset): string {
-  const { from, to } = presetDateRange(preset);
+function tileDateLabel(tile: Tile): string {
+  const { preset, isForecast } = tile;
   const format = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+  if (isForecast) {
+    // The forecast projects across the whole month, not just the
+    // month-to-date range its data comes from — show the full month's span.
+    const today = new Date();
+    const from = formatDateToIso(new Date(today.getFullYear(), today.getMonth(), 1));
+    const to = formatDateToIso(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+    return `${format(from)} – ${format(to)} (stima)`;
+  }
+  const { from, to } = presetDateRange(preset);
   if (preset === "today") return `Oggi · ${format(to)}`;
   if (preset === "yesterday") return `Ieri · ${format(to)}`;
   return `${format(from)} – ${format(to)}`;
@@ -124,14 +185,18 @@ export default function PeriodTiles() {
   // Same translation the home page applies before hitting the product-performance
   // endpoint: only Amazon channels narrow the scope, everything else is "all".
   const productMarketplace = isAmazonChannel(globalMarketplace) ? (amazonChannelCode(globalMarketplace) ?? "all") : "all";
-  const [totals, setTotals] = useState<Partial<Record<PeriodPreset, ProductPerformanceRow | null>>>({});
+  // Keyed by tile.id, not tile.preset — the monthly set's "Proiezione mese"
+  // tile shares its preset (month_to_date) with "Mese in corso" but needs
+  // its own comparison target, so preset alone is no longer a unique key.
+  const [totals, setTotals] = useState<Record<string, ProductPerformanceRow | null>>({});
   // Shopify (Redcare/Temu/eBay/...) contribution to the tiles. Redcare Ads are
   // marketplace/day costs; fee and COGS figures remain unavailable here.
-  const [shopifyTotals, setShopifyTotals] = useState<Partial<Record<PeriodPreset, { sales: number; units: number; netProfit: number; adSpend: number }>>>({});
-  // Populated only when a "Confronto" mode is active (GlobalPeriodSelector) —
-  // each tile's own comparison period (e.g. "Oggi" vs "Ieri" for
-  // previous_period), fetched additively alongside its own range.
-  const [compareTotals, setCompareTotals] = useState<Partial<Record<PeriodPreset, ProductPerformanceRow | null>>>({});
+  const [shopifyTotals, setShopifyTotals] = useState<Record<string, { sales: number; units: number; netProfit: number; adSpend: number }>>({});
+  // Populated for any tile that needs a comparison: either the global
+  // "Confronto" mode (GlobalPeriodSelector) for the daily set, or a tile's
+  // own fixedCompareRange for the monthly set (always on, e.g. "Oggi" vs
+  // "Ieri"), fetched additively alongside its own range.
+  const [compareTotals, setCompareTotals] = useState<Record<string, ProductPerformanceRow | null>>({});
   const { selectedAccountId } = useAmazonAccount();
   // Main dashboard default: when the user hasn't drilled into one specific
   // Amazon account, sum every active account instead of leaving the tiles
@@ -145,10 +210,10 @@ export default function PeriodTiles() {
     (async () => {
       try {
         const results = await Promise.all(
-          activeTiles.map(async ({ preset }) => {
+          activeTiles.map(async ({ id, preset }) => {
             const { from, to } = presetDateRange(preset);
             const { groups } = await api.productPerformance.get({ marketplace: productMarketplace, from, to, amazonAccountId });
-            return [preset, sumAggregate(groups.map((g) => g.aggregate))] as const;
+            return [id, sumAggregate(groups.map((g) => g.aggregate))] as const;
           })
         );
         if (!cancelled) setTotals(Object.fromEntries(results));
@@ -168,7 +233,7 @@ export default function PeriodTiles() {
     (async () => {
       try {
         const results = await Promise.all(
-          activeTiles.map(async ({ preset }) => {
+          activeTiles.map(async ({ id, preset }) => {
             // Reuse the exact same browser-resolved from/to the Amazon fetch
             // above uses (presetDateRange), instead of sending just the
             // preset name and letting the server resolve "today" on its own
@@ -182,7 +247,7 @@ export default function PeriodTiles() {
               to,
               ...(shopifyMarketplace ? { marketplace: shopifyMarketplace } : {}),
             });
-            return [preset, {
+            return [id, {
               // Use the order-level KPI for revenue so the card includes the
               // same Shopify/Redcare population as the dashboard summary
               // (shipping/discount adjustments and test-order exclusion).
@@ -202,16 +267,18 @@ export default function PeriodTiles() {
   }, [globalMarketplace, activeTiles]);
 
   useEffect(() => {
-    if (state.compareMode === "none") { setCompareTotals({}); return; }
+    const tilesNeedingCompare = activeTiles.filter((t) => t.fixedCompareRange || state.compareMode !== "none");
+    if (tilesNeedingCompare.length === 0) { setCompareTotals({}); return; }
     let cancelled = false;
     (async () => {
       try {
         const results = await Promise.all(
-          activeTiles.map(async ({ preset }) => {
-            const compare = getComparePeriod(state.compareMode, presetDateRange(preset));
-            if (!compare) return [preset, null] as const;
+          tilesNeedingCompare.map(async ({ id, preset, fixedCompareRange }) => {
+            const current = presetDateRange(preset);
+            const compare = fixedCompareRange ? fixedCompareRange(current) : getComparePeriod(state.compareMode, current);
+            if (!compare) return [id, null] as const;
             const { groups } = await api.productPerformance.get({ marketplace: productMarketplace, from: compare.from, to: compare.to, amazonAccountId });
-            return [preset, sumAggregate(groups.map((g) => g.aggregate))] as const;
+            return [id, sumAggregate(groups.map((g) => g.aggregate))] as const;
           })
         );
         if (!cancelled) setCompareTotals(Object.fromEntries(results));
@@ -243,9 +310,38 @@ export default function PeriodTiles() {
         </button>
       </div>
     <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-      {activeTiles.map(({ preset, label, headerBg, accent, Icon }) => {
-        const totalRow = totals[preset];
-        const shopifyRow = shopifyTotals[preset];
+      {activeTiles.map((tile) => {
+        const { id, preset, label, headerBg, accent, Icon, isForecast } = tile;
+        const rawTotalRow = totals[id];
+        const rawShopifyRow = shopifyTotals[id];
+        // "Proiezione mese": linearly projects the month-to-date run-rate
+        // across the full month (mtd / giorni trascorsi * giorni nel mese) —
+        // a naive run-rate forecast, not a seasonally-adjusted model.
+        const today = new Date();
+        const forecastMultiplier = isForecast
+          ? daysInMonth(today.getFullYear(), today.getMonth()) / today.getDate()
+          : 1;
+        const scaleAmazonRow = (row: ProductPerformanceRow | null | undefined) => {
+          if (!row || forecastMultiplier === 1) return row;
+          return {
+            ...row,
+            sales: row.sales * forecastMultiplier,
+            units: Math.round(row.units * forecastMultiplier),
+            refundsCount: Math.round(row.refundsCount * forecastMultiplier),
+            amazonFees: row.amazonFees * forecastMultiplier,
+            cogs: row.cogs * forecastMultiplier,
+            netProfit: row.netProfit * forecastMultiplier,
+            estimatedPayout: row.estimatedPayout * forecastMultiplier,
+            vatAmount: (row.vatAmount ?? 0) * forecastMultiplier,
+            adsSpend: row.adsSpend !== null ? row.adsSpend * forecastMultiplier : null,
+          };
+        };
+        const scaleShopifyRow = (row: typeof rawShopifyRow) => {
+          if (!row || forecastMultiplier === 1) return row;
+          return { sales: row.sales * forecastMultiplier, units: Math.round(row.units * forecastMultiplier), netProfit: row.netProfit * forecastMultiplier, adSpend: row.adSpend * forecastMultiplier };
+        };
+        const totalRow = scaleAmazonRow(rawTotalRow);
+        const shopifyRow = scaleShopifyRow(rawShopifyRow);
         const hasAny = totalRow != null || shopifyRow != null;
         const combinedSales = (totalRow?.sales ?? 0) + (shopifyRow?.sales ?? 0);
         const combinedUnits = (totalRow?.units ?? 0) + (shopifyRow?.units ?? 0);
@@ -255,13 +351,15 @@ export default function PeriodTiles() {
         const active = state.preset === preset;
         // Amazon-only on both sides (no Shopify comparison fetch, to keep
         // this addition to a single extra request per tile) — close enough
-        // for a directional badge, not meant to be penny-accurate.
-        const compareRow = state.compareMode !== "none" ? compareTotals[preset] : undefined;
+        // for a directional badge, not meant to be penny-accurate. The
+        // monthly set's fixedCompareRange tiles always compare regardless
+        // of the global "Confronto" mode.
+        const compareRow = tile.fixedCompareRange || state.compareMode !== "none" ? compareTotals[id] : undefined;
         const salesVariation = compareRow ? calculateVariation(totalRow?.sales ?? 0, compareRow.sales) : null;
         const profitVariation = compareRow ? calculateVariation(totalRow?.netProfit ?? 0, compareRow.netProfit) : null;
         return (
           <button
-            key={preset}
+            key={id}
             aria-label={label}
             aria-pressed={active}
             onClick={() => setPreset(preset)}
@@ -274,7 +372,7 @@ export default function PeriodTiles() {
                 <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/70 border border-white/80">
                   <Icon size={13} strokeWidth={2.2} />
                 </span>
-                <span className="truncate">{tileDateLabel(preset)}</span>
+                <span className="truncate">{tileDateLabel(tile)}</span>
               </div>
             </div>
             <div className="px-3.5 py-3 flex-1 flex flex-col gap-2.5">

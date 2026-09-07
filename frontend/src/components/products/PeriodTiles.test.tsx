@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { formatDateToIso, addDays } from "@/lib/periodUtils";
 import PeriodTiles, { sumAggregate } from "./PeriodTiles";
@@ -21,7 +21,7 @@ vi.mock("@/hooks/useAmazonAccount", () => ({
   useAmazonAccount: () => ({ selectedAccountId: mockSelectedAccountId }),
 }));
 
-const mockGet = vi.fn(async (_params: unknown) => ({
+const mockGet = vi.fn(async (_params: unknown): Promise<{ groups: { product: { id: string; name: string; brand: string | null }; rows: never[]; aggregate: ProductPerformanceRow }[] }> => ({
   groups: [{
     product: { id: "p1", name: "X", brand: null },
     rows: [],
@@ -270,6 +270,76 @@ describe("PeriodTiles", () => {
 
     expect(await screen.findByRole("button", { name: /^7 giorni$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /mese in corso/i })).not.toBeInTheDocument();
+  });
+
+  describe("monthly set — Proiezione mese (forecast) and always-on per-tile comparison", () => {
+    function fullRow(sales: number): ProductPerformanceRow {
+      return {
+        identifierId: "i1", asin: "", marketplace: "ALL", sku: null, units: 5, sales, promo: 0,
+        refundsAmount: 0, refundsCount: 0, refundPct: 0, adsSpend: 5, realAcos: 0.05, amazonFees: 15,
+        hasRealFees: true, hasRealCogs: true, cogs: 20, stock: 10, hasStockData: true,
+        grossProfit: 60, netProfit: sales, estimatedPayout: 80, margin: 0.6, roi: 3,
+        avgSellingPrice: 20, bsr: null, vatAmount: 12,
+      };
+    }
+    function groupsWith(sales: number) {
+      return { groups: [{ product: { id: "p1", name: "X", brand: null }, rows: [], aggregate: fullRow(sales) }] };
+    }
+
+    afterEach(() => { vi.useRealTimers(); });
+
+    it("adds a Proiezione mese tile projecting month-to-date run-rate to the full month", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.setSystemTime(new Date(2026, 8, 10)); // 10 September 2026 — 10 days elapsed, 30-day month
+      mockProducts.mockResolvedValue({ products: [], kpis: { totalGross: 0, totalNet: 0, totalAdSpend: 0 } });
+      mockGet.mockImplementation(async (params: any) => {
+        if (params.from === "2026-09-01" && params.to === "2026-09-10") return groupsWith(100);
+        return { groups: [] };
+      });
+
+      render(<PeriodTiles />);
+      fireEvent.click(screen.getByRole("button", { name: /mensile/i }));
+
+      // forecast = 100 (MTD sales) / 10 (days elapsed) * 30 (days in September) = 300
+      expect(await screen.findByRole("button", { name: /proiezione mese/i })).toBeInTheDocument();
+      await vi.waitFor(() => expect(screen.getAllByText("€ 300,00").length).toBeGreaterThan(0));
+    });
+
+    it("compares the forecast against last month's real total, even when compareMode is 'none'", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.setSystemTime(new Date(2026, 8, 10));
+      mockProducts.mockResolvedValue({ products: [], kpis: { totalGross: 0, totalNet: 0, totalAdSpend: 0 } });
+      mockGet.mockImplementation(async (params: any) => {
+        if (params.from === "2026-09-01" && params.to === "2026-09-10") return groupsWith(100); // MTD -> forecast 300
+        if (params.from === "2026-08-01" && params.to === "2026-08-31") return groupsWith(200); // last month actual
+        return { groups: [] };
+      });
+
+      render(<PeriodTiles />);
+      fireEvent.click(screen.getByRole("button", { name: /mensile/i }));
+      await screen.findByRole("button", { name: /proiezione mese/i });
+
+      // 300 vs 200 => +50.0%
+      await vi.waitFor(() => expect(screen.getAllByText("+50.0%").length).toBeGreaterThan(0));
+    });
+
+    it("always shows a comparison badge on Oggi vs Ieri in the monthly set, even when compareMode is 'none'", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.setSystemTime(new Date(2026, 8, 10));
+      mockProducts.mockResolvedValue({ products: [], kpis: { totalGross: 0, totalNet: 0, totalAdSpend: 0 } });
+      mockGet.mockImplementation(async (params: any) => {
+        if (params.from === "2026-09-10" && params.to === "2026-09-10") return groupsWith(150); // Oggi
+        if (params.from === "2026-09-09" && params.to === "2026-09-09") return groupsWith(100); // Ieri
+        return { groups: [] };
+      });
+
+      render(<PeriodTiles />);
+      fireEvent.click(screen.getByRole("button", { name: /mensile/i }));
+      await screen.findByRole("button", { name: /mese in corso/i });
+
+      // 150 vs 100 => +50.0%
+      await vi.waitFor(() => expect(screen.getAllByText("+50.0%").length).toBeGreaterThan(0));
+    });
   });
 
   it("resolves the 'last30' tile's range using local-timezone date math, not UTC", async () => {
