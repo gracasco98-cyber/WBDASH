@@ -1,15 +1,17 @@
 "use client";
 import { useState } from "react";
-import { Brain, LineChart } from "lucide-react";
+import { Brain, LineChart, Megaphone } from "lucide-react";
 import RedcareKeywordSearch from "@/components/marketing/RedcareKeywordSearch";
 import RedcareAddKeywordForm from "@/components/marketing/RedcareAddKeywordForm";
 import RedcareTrackedKeywords from "@/components/marketing/RedcareTrackedKeywords";
+import RedcareAdSpend from "@/components/marketing/RedcareAdSpend";
 
-type Tab = "cerebro" | "tracker";
+type Tab = "cerebro" | "tracker" | "ads";
 
 const TABS: { value: Tab; label: string; Icon: typeof Brain }[] = [
   { value: "cerebro", label: "Cerebro — Ricerca Keyword", Icon: Brain },
   { value: "tracker", label: "Keyword Tracker", Icon: LineChart },
+  { value: "ads", label: "Spesa Ads", Icon: Megaphone },
 ];
 
 export default function RedcareKeywordBiPage() {
@@ -20,9 +22,9 @@ export default function RedcareKeywordBiPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-white">Redcare — Keyword BI</h1>
+        <h1 className="text-xl font-bold text-white">Redcare — Marketing</h1>
         <p className="text-sm text-zinc-500 mt-1">
-          Posizione organica per keyword su redcare.it / shop-apotheke.com, con storico per i tuoi prodotti e i competitor che tracci.
+          Keyword, posizionamento e costi advertising giornalieri Redcare.
         </p>
       </div>
 
@@ -48,7 +50,9 @@ export default function RedcareKeywordBiPage() {
         })}
       </div>
 
-      {tab === "cerebro" ? (
+      {tab === "ads" ? (
+        <RedcareAdSpend />
+      ) : tab === "cerebro" ? (
         <RedcareKeywordSearch onTracked={bumpRefresh} />
       ) : (
         <>

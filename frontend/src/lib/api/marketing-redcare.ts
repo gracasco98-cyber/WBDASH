@@ -54,6 +54,18 @@ export interface MarketingKeywordWatch {
   latestSnapshot: MarketingKeywordSnapshot | null;
 }
 
+export interface MarketplaceAdSpendEntry {
+  id: string;
+  spendDate: string;
+  marketplace: "REDCARE_IT" | "REDCARE_DE";
+  amount: number;
+  currency: string;
+  source: string;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(apiUrl(path), {
     method: "POST", credentials: "include",
@@ -66,6 +78,15 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 async function del(path: string): Promise<void> {
   const res = await fetch(apiUrl(path), { method: "DELETE", credentials: "include" });
   if (!res.ok) throw new Error(`API error ${res.status}`);
+}
+
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(apiUrl(path), {
+    method: "PUT", credentials: "include",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
 }
 
 export const marketingRedcare = {
@@ -87,4 +108,15 @@ export const marketingRedcare = {
 
   checkNow: (data: { market: RedcareMarket; ean: string }) =>
     post<{ checked: number; errors: number }>("/api/marketing/redcare/watches/check-now", data),
+
+  listAdSpend: (params?: { from?: string; to?: string; marketplace?: "REDCARE_IT" | "REDCARE_DE" }) =>
+    get<{ entries: MarketplaceAdSpendEntry[]; total: number }>(
+      "/api/marketing/redcare/ad-spend",
+      params as Record<string, string> | undefined,
+    ),
+
+  saveAdSpend: (data: { spendDate: string; marketplace: "REDCARE_IT" | "REDCARE_DE"; amount: number; note?: string }) =>
+    put<MarketplaceAdSpendEntry>("/api/marketing/redcare/ad-spend", data),
+
+  deleteAdSpend: (id: string) => del(`/api/marketing/redcare/ad-spend/${id}`),
 };

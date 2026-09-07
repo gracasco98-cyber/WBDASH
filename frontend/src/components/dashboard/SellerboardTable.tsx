@@ -18,6 +18,7 @@ function nDaysAgoStr(n: number) {
 interface ShopifySlice {
   grossRevenue: number; netRevenue: number;
   orderCount:   number; refunds:    number;
+  adSpend:      number;
   pctChange:    number | null;
 }
 interface AmazonSlice {
@@ -76,7 +77,7 @@ export default function SellerboardCards({
       function sOv(k: keyof Omit<ShopifyOverview, "meta">): ShopifySlice | null {
         if (!ovS) return null;
         const p = ovS[k] as import("@/lib/api").ShopifyPeriodStats;
-        return { grossRevenue: p.grossRevenue, netRevenue: p.netRevenue, orderCount: p.orderCount, refunds: p.refunds, pctChange: p.pctChange };
+        return { grossRevenue: p.grossRevenue, netRevenue: p.netRevenue, orderCount: p.orderCount, refunds: p.refunds, adSpend: p.adSpend, pctChange: p.pctChange };
       }
       function aOv(k: keyof Omit<AmazonOverview, "meta">): AmazonSlice | null {
         if (!ovA) return null;
@@ -85,7 +86,7 @@ export default function SellerboardCards({
       }
       function sSm(s: Summary | null): ShopifySlice | null {
         if (!s) return null;
-        return { grossRevenue: s.totalRevenue, netRevenue: s.netRevenue, orderCount: s.orderCount, refunds: s.totalRefunds, pctChange: null };
+        return { grossRevenue: s.totalRevenue, netRevenue: s.netRevenue, orderCount: s.orderCount, refunds: s.totalRefunds, adSpend: s.adSpend, pctChange: null };
       }
       function aSm(a: AmazonSummary | null): AmazonSlice | null {
         if (!a) return null;
@@ -120,7 +121,11 @@ export default function SellerboardCards({
     const orders  = (s?.orderCount   ?? 0) + (a?.orderCount  ?? 0);
     const units   =  a?.unitsSold  ?? null;
     const refunds =  s?.refunds    ?? null;
-    const adSpend =  a?.adSpend    ?? null;
+    const adSpend = sourceTab === "amazon"
+      ? (a?.adSpend ?? null)
+      : sourceTab === "shopify"
+        ? (s?.adSpend ?? null)
+        : ((s?.adSpend ?? 0) + (a?.adSpend ?? 0));
     const payout  =  a?.estPayout  ?? null;
     const margin  = gross > 0 ? (net / gross) * 100 : null;
 

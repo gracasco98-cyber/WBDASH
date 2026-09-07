@@ -58,6 +58,43 @@ describe("GET /api/marketing/redcare/search", () => {
   });
 });
 
+describe("Redcare daily Ads spend", () => {
+  it("upserts, lists and deletes a daily marketplace cost", async () => {
+    const first = await request(app).put("/api/marketing/redcare/ad-spend").send({
+      spendDate: "2026-09-06", marketplace: "REDCARE_IT", amount: 14.25,
+    });
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({ spendDate: "2026-09-06", marketplace: "REDCARE_IT", amount: 14.25 });
+
+    const update = await request(app).put("/api/marketing/redcare/ad-spend").send({
+      spendDate: "2026-09-06", marketplace: "REDCARE_IT", amount: 18.5,
+    });
+    expect(update.status).toBe(200);
+    expect(update.body.id).toBe(first.body.id);
+
+    const list = await request(app).get("/api/marketing/redcare/ad-spend")
+      .query({ from: "2026-09-01", to: "2026-09-30", marketplace: "REDCARE_IT" });
+    expect(list.status).toBe(200);
+    expect(list.body.total).toBe(18.5);
+    expect(list.body.entries).toHaveLength(1);
+
+    const deleted = await request(app).delete(`/api/marketing/redcare/ad-spend/${first.body.id}`);
+    expect(deleted.status).toBe(204);
+  });
+
+  it("rejects invalid marketplace, date and negative spend", async () => {
+    const invalidMarketplace = await request(app).put("/api/marketing/redcare/ad-spend").send({
+      spendDate: "2026-09-06", marketplace: "TEMU_IT", amount: 10,
+    });
+    expect(invalidMarketplace.status).toBe(400);
+
+    const invalidAmount = await request(app).put("/api/marketing/redcare/ad-spend").send({
+      spendDate: "2026-09-06", marketplace: "REDCARE_IT", amount: -1,
+    });
+    expect(invalidAmount.status).toBe(400);
+  });
+});
+
 describe("watches CRUD + history", () => {
   it("creates a watch, lists it with no snapshot yet, then soft-deletes it", async () => {
     const create = await request(app).post("/api/marketing/redcare/watches")

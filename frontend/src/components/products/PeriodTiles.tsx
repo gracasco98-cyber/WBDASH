@@ -125,10 +125,9 @@ export default function PeriodTiles() {
   // endpoint: only Amazon channels narrow the scope, everything else is "all".
   const productMarketplace = isAmazonChannel(globalMarketplace) ? (amazonChannelCode(globalMarketplace) ?? "all") : "all";
   const [totals, setTotals] = useState<Partial<Record<PeriodPreset, ProductPerformanceRow | null>>>({});
-  // Shopify (Redcare/Temu/eBay/...) contribution to the tiles.  `netProfit`
-  // is the Shopify order net amount (after refunds); no fee/COGS/ads figure is
-  // fabricated because those costs are not tracked in the Shopify schema.
-  const [shopifyTotals, setShopifyTotals] = useState<Partial<Record<PeriodPreset, { sales: number; units: number; netProfit: number }>>>({});
+  // Shopify (Redcare/Temu/eBay/...) contribution to the tiles. Redcare Ads are
+  // marketplace/day costs; fee and COGS figures remain unavailable here.
+  const [shopifyTotals, setShopifyTotals] = useState<Partial<Record<PeriodPreset, { sales: number; units: number; netProfit: number; adSpend: number }>>>({});
   // Populated only when a "Confronto" mode is active (GlobalPeriodSelector) —
   // each tile's own comparison period (e.g. "Oggi" vs "Ieri" for
   // previous_period), fetched additively alongside its own range.
@@ -190,6 +189,7 @@ export default function PeriodTiles() {
               sales: kpis.totalGross,
               units: products.reduce((s, p) => s + p.unitsSold, 0),
               netProfit: kpis.totalNet,
+              adSpend: kpis.totalAdSpend ?? 0,
             }] as const;
           })
         );
@@ -250,6 +250,8 @@ export default function PeriodTiles() {
         const combinedSales = (totalRow?.sales ?? 0) + (shopifyRow?.sales ?? 0);
         const combinedUnits = (totalRow?.units ?? 0) + (shopifyRow?.units ?? 0);
         const combinedNetProfit = (totalRow?.netProfit ?? 0) + (shopifyRow?.netProfit ?? 0);
+        const combinedAdSpend = (totalRow?.adsSpend ?? 0) + (shopifyRow?.adSpend ?? 0);
+        const combinedCosts = (totalRow?.amazonFees ?? 0) + (totalRow?.cogs ?? 0) + combinedAdSpend;
         const active = state.preset === preset;
         // Amazon-only on both sides (no Shopify comparison fetch, to keep
         // this addition to a single extra request per tile) — close enough
@@ -289,7 +291,7 @@ export default function PeriodTiles() {
                 <div className={`text-[16px] font-bold tabular-nums mt-1 ${combinedNetProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}>{hasAny ? fmtEur(combinedNetProfit) : "—"}</div>
               </div>
               <div className="hidden sm:grid grid-cols-2 gap-2 border-t border-bg-border/70 pt-2">
-                <div className="rounded-md border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5"><div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">Costi</div><div className="text-[11px] font-semibold tabular-nums text-zinc-300">{totalRow ? fmtEur(totalRow.amazonFees + totalRow.cogs + (totalRow.adsSpend ?? 0)) : "—"}</div></div>
+                <div className="rounded-md border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5"><div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">Costi</div><div className="text-[11px] font-semibold tabular-nums text-zinc-300">{hasAny ? fmtEur(combinedCosts) : "—"}</div></div>
                 <div className="rounded-md border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5"><div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">VAT</div><div className="text-[11px] font-semibold tabular-nums text-zinc-300">{totalRow ? fmtEur(totalRow.vatAmount ?? 0) : "—"}</div></div>
               </div>
               <div className="grid grid-cols-2 gap-x-2 gap-y-2 text-[11px]">
@@ -303,7 +305,7 @@ export default function PeriodTiles() {
                 </div>
                 <div className="hidden sm:block pt-2 border-t border-bg-border">
                   <div className="text-zinc-500 text-[10px]">Ads</div>
-                  <div className="text-zinc-300 tabular-nums">{totalRow ? dash(totalRow.adsSpend, fmtEur) : "—"}</div>
+                  <div className="text-zinc-300 tabular-nums">{hasAny ? dash(combinedAdSpend, fmtEur) : "—"}</div>
                 </div>
                 <div className="hidden sm:block pt-2 border-t border-bg-border">
                   <div className="text-zinc-500 text-[10px]">Payout stimato</div>

@@ -15,6 +15,8 @@ import {
 } from "../repositories/shopify/orders.repo";
 import { findSyncState } from "../repositories/shopify/sync-state.repo";
 import { findRecentErrors } from "../repositories/shopify/error-log.repo";
+import { findDailyAdSpends } from "../repositories/marketing/marketplaceAdSpend.repo";
+import { italyDateString } from "../amazon/utils/datetime";
 
 const router = Router();
 
@@ -105,7 +107,12 @@ router.get("/summary", async (req: Request, res: Response) => {
     type LhRow  = { revenue: string; count: string };
 
     // 3 aggregation queries in parallel — DB does the heavy lifting, no JS reduce
-    const [totRows, mpRows, lhRows] = await Promise.all([
+    const spendFrom = new Date(`${italyDateString(dateRange.gte ?? new Date())}T00:00:00.000Z`);
+    const spendEndInstant = dateRange.lte
+      ?? (dateRange.lt ? new Date(dateRange.lt.getTime() - 1) : new Date());
+    const spendTo = new Date(`${italyDateString(spendEndInstant)}T00:00:00.000Z`);
+
+    const [totRows, mpRows, lhRows, adRows] = await Promise.all([
       prisma.$queryRawUnsafe<TotRow[]>(`
         SELECT
           COALESCE(SUM("totalAmount"),    0)::FLOAT8 AS "totalRevenue",
@@ -130,25 +137,41 @@ router.get("/summary", async (req: Request, res: Response) => {
         FROM "ShopifyOrder"
         WHERE ${WHERE} AND "createdAt" >= '${oneHourAgo}'::timestamp
       `),
+      findDailyAdSpends(prisma, {
+        from: spendFrom,
+        to: spendTo,
+        marketplace: marketplace && marketplace !== "all" ? marketplace : undefined,
+      }),
     ]);
 
     const tot        = totRows[0] ?? { totalRevenue: 0, netRevenue: 0, totalRefunds: 0, orderCount: 0 };
     const orderCount = Number(tot.orderCount);
 
-    const byMarketplace: Record<string, { count: number; revenue: number; net: number }> = {};
+    const byMarketplace: Record<string, { count: number; revenue: number; net: number; adSpend: number }> = {};
     for (const row of mpRows) {
       byMarketplace[row.marketplace] = {
         count:   Number(row.count),
         revenue: Number(row.revenue),
         net:     Number(row.net),
+        adSpend: 0,
       };
     }
+    const adSpendByMarketplace = new Map<string, number>();
+    for (const ad of adRows) {
+      adSpendByMarketplace.set(ad.marketplace, (adSpendByMarketplace.get(ad.marketplace) ?? 0) + Number(ad.amount));
+    }
+    for (const [mp, spend] of adSpendByMarketplace) {
+      const current = byMarketplace[mp] ?? { count: 0, revenue: 0, net: 0, adSpend: 0 };
+      byMarketplace[mp] = { ...current, net: current.net - spend, adSpend: spend };
+    }
+    const adSpend = adRows.reduce((sum, ad) => sum + Number(ad.amount), 0);
 
     const lh = lhRows[0] ?? { revenue: 0, count: 0 };
 
     res.json({
       totalRevenue:  Number(tot.totalRevenue),
-      netRevenue:    Number(tot.netRevenue),
+      netRevenue:    Number(tot.netRevenue) - adSpend,
+      adSpend,
       totalRefunds:  Number(tot.totalRefunds),
       orderCount,
       aov: orderCount > 0 ? Number(tot.totalRevenue) / orderCount : 0,
@@ -423,22 +446,41 @@ router.get("/overview", async (req: Request, res: Response) => {
     `);
     const row = rows[0] ?? {};
 
-    function buildStats(name: string) {
+    const wideSpendFrom = new Date(`${italyDateString(wideFrom)}T00:00:00.000Z`);
+    const wideSpendTo = new Date(`${italyDateString(wideTo)}T00:00:00.000Z`);
+    const adRows = await findDailyAdSpends(prisma, {
+      from: wideSpendFrom,
+      to: wideSpendTo,
+      marketplace: mpFilter ?? undefined,
+    });
+
+    function spendFor(from: Date, to: Date): number {
+      const fromDay = italyDateString(from);
+      const toDay = italyDateString(to);
+      return adRows.reduce((sum, ad) => {
+        const day = ad.spendDate.toISOString().slice(0, 10);
+        return day >= fromDay && day <= toDay ? sum + Number(ad.amount) : sum;
+      }, 0);
+    }
+
+    function buildStats(name: string, from: Date, to: Date) {
+      const adSpend = spendFor(from, to);
       return {
         grossRevenue: Number(row[`${name}_grossrevenue`] ?? 0),
-        netRevenue:   Number(row[`${name}_netrevenue`]   ?? 0),
+        netRevenue:   Number(row[`${name}_netrevenue`]   ?? 0) - adSpend,
         orderCount:   Number(row[`${name}_ordercount`]   ?? 0),
         refunds:      Number(row[`${name}_refunds`]      ?? 0),
+        adSpend,
       };
     }
 
-    const today     = buildStats("today");
-    const yesterday = buildStats("yesterday");
-    const dayBefore = buildStats("daybefore");
-    const mtd       = buildStats("mtd");
-    const lastMonth = buildStats("lastmonth");
-    const mtdLast   = buildStats("mtdlast");
-    const mbl       = buildStats("mbl");
+    const today     = buildStats("today", todayStart, todayEnd);
+    const yesterday = buildStats("yesterday", yesterdayStart, yesterdayEnd);
+    const dayBefore = buildStats("daybefore", dayBeforeStart, dayBeforeEnd);
+    const mtd       = buildStats("mtd", monthStart, wideTo);
+    const lastMonth = buildStats("lastmonth", lastMonthStart, lastMonthEnd);
+    const mtdLast   = buildStats("mtdlast", lastMonthStart, mtdLastEnd);
+    const mbl       = buildStats("mbl", mblStart, mblEnd);
 
     function pct(cur: number, prev: number): number | null {
       if (prev === 0) return null;
@@ -451,6 +493,7 @@ router.get("/overview", async (req: Request, res: Response) => {
       netRevenue:   fc(mtd.netRevenue),
       orderCount:   Math.round(fc(mtd.orderCount)),
       refunds:      fc(mtd.refunds),
+      adSpend:      fc(mtd.adSpend),
     };
 
     res.json({

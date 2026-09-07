@@ -103,9 +103,9 @@ interface CardKpi {
   orders:     number;   // shopify.orderCount + amazon.orderCount
   units:      number;   // amazon.unitsSold
   refundsAmt: number;   // shopify.refunds (euro amount)
-  advCost:    number;   // amazon.adSpend (negative representation)
+  advCost:    number;   // marketplace + Amazon advertising spend
   estPayout:  number;   // amazon.estPayout
-  netProfit:  number;   // (shopify.netRevenue + amazon.estPayout) - amazon.adSpend
+  netProfit:  number;   // Shopify net already includes marketplace Ads; Amazon Ads are separate
   marginPct:  number | null;
   pctChange:  number | null;
 }
@@ -119,6 +119,7 @@ function buildKpiTotal(
   const sNet      = s?.netRevenue   ?? 0;
   const sOrders   = s?.orderCount   ?? 0;
   const sRefunds  = s?.refunds      ?? 0;
+  const sAdSpend  = s?.adSpend      ?? 0;
   const aGross    = a?.grossRevenue ?? 0;
   const aOrders   = a?.orderCount   ?? 0;
   const aUnits    = a?.unitsSold    ?? 0;
@@ -138,7 +139,7 @@ function buildKpiTotal(
     sales, orders,
     units:      aUnits,
     refundsAmt: sRefunds,
-    advCost:    aAdSpend,
+    advCost:    sAdSpend + aAdSpend,
     estPayout:  aPayout,
     netProfit,
     marginPct,
@@ -155,7 +156,7 @@ function buildKpiShopify(s: ShopifyPeriodStats | null): CardKpi {
     orders:     s?.orderCount  ?? 0,
     units:      0,
     refundsAmt: s?.refunds     ?? 0,
-    advCost:    0,
+    advCost:    s?.adSpend ?? 0,
     estPayout:  0,
     netProfit:  net,
     marginPct:  margin,
@@ -192,6 +193,7 @@ function buildKpiFromSummary(
     netRevenue:   s.netRevenue,
     orderCount:   s.orderCount,
     refunds:      s.totalRefunds,
+    adSpend:      s.adSpend,
     pctChange:    null,
   } : null);
 
@@ -212,6 +214,7 @@ function buildKpiFromSummary(
     netRevenue:   s.netRevenue,
     orderCount:   s.orderCount,
     refunds:      s.totalRefunds,
+    adSpend:      s.adSpend,
     pctChange:    null,
   } : null;
   const aStats: AmazonPeriodStats | null = a ? {
@@ -277,7 +280,7 @@ function KpiCard({ period, kpi, loading, isActive, source, onClick }: CardProps)
     setExpanded(v => !v);
   };
 
-  const showAdvCost  = source !== "shopify";
+  const showAdvCost  = true;
   const showEstPayout = source !== "shopify";
   const showUnits    = source !== "shopify";
 

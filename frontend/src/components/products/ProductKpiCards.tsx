@@ -1,7 +1,7 @@
 "use client";
 import { ProductKpis } from "@/lib/api";
 import KpiCard from "@/components/dashboard/KpiCard";
-import { Package, TrendingUp, RotateCcw, ShoppingBag, Tag } from "lucide-react";
+import { Package, TrendingUp, RotateCcw, Megaphone, Tag } from "lucide-react";
 import { fmtEur, fmtNum } from "@/lib/fmt";
 
 export default function ProductKpiCards({ kpis, loading }: { kpis: ProductKpis | null; loading: boolean }) {
@@ -18,7 +18,7 @@ export default function ProductKpiCards({ kpis, loading }: { kpis: ProductKpis |
       <KpiCard
         label="Fatturato netto"
         value={kpis ? fmtEur(kpis.totalNet) : "—"}
-        sub={kpis ? `Rimborsi: ${fmtEur(kpis.totalRefunds)}` : ""}
+        sub={kpis ? `Ads: ${fmtEur(kpis.totalAdSpend)}` : ""}
         icon={<Tag size={14} />}
         accent="blue"
         loading={loading}
@@ -40,10 +40,10 @@ export default function ProductKpiCards({ kpis, loading }: { kpis: ProductKpis |
         loading={loading}
       />
       <KpiCard
-        label="Prodotti attivi"
-        value={kpis ? String(kpis.productCount) : "—"}
-        sub="Con vendite nel periodo"
-        icon={<ShoppingBag size={14} />}
+        label="Marketplace Ads"
+        value={kpis ? fmtEur(kpis.totalAdSpend) : "—"}
+        sub={kpis ? `${kpis.productCount} prodotti con vendite` : ""}
+        icon={<Megaphone size={14} />}
         accent="amber"
         loading={loading}
       />

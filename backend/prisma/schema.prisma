@@ -1273,6 +1273,26 @@ model MarketingKeywordSnapshot {
   @@index([watchId, checkedAt])
 }
 
+// Daily marketplace-level advertising cost. Redcare spend is entered from the
+// SA-Tech report because that platform does not expose a seller API usable by
+// WBDASH. One row per marketplace/day makes imports idempotent and keeps the
+// economic input auditable and reproducible.
+model MarketplaceAdSpend {
+  id          String   @id @default(cuid())
+  spendDate   DateTime @db.Date
+  marketplace String
+  amount      Decimal  @db.Decimal(14, 4)
+  currency    String   @default("EUR")
+  source      String   @default("MANUAL")
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([spendDate, marketplace])
+  @@index([marketplace, spendDate])
+  @@index([spendDate])
+}
+
 // ─── Bacheca / Task Manager module ─────────────────────────────────────────
 // Company-wide (no amazonAccountId) — task assignment between real User
 // accounts, and each user's own personal board layout.

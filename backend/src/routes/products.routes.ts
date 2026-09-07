@@ -20,6 +20,8 @@ import { findSnapshotsByProductId } from "../repositories/shopify/product-snapsh
 // amazon/routes/orders.routes.ts) — per la regola in CLAUDE.md di non avere
 // due implementazioni divergenti degli stessi confini data.
 import { getDateRange } from "../amazon/utils/datetime";
+import { italyDateString } from "../amazon/utils/datetime";
+import { findDailyAdSpends } from "../repositories/marketing/marketplaceAdSpend.repo";
 
 const router = Router();
 
@@ -89,6 +91,13 @@ router.get("/", async (req: Request, res: Response) => {
       })
     );
 
+    const adRows = await findDailyAdSpends(prisma, {
+      from: new Date(`${italyDateString(dateFrom)}T00:00:00.000Z`),
+      to: new Date(`${italyDateString(dateTo)}T00:00:00.000Z`),
+      marketplace: marketplace && marketplace !== "all" ? marketplace : undefined,
+    });
+    const totalAdSpend = adRows.reduce((sum, row) => sum + Number(row.amount), 0);
+
     const validSortKeys = ["grossRevenue", "netRevenue", "unitsSold", "orderCount", "refundedAmount"];
     const key = validSortKeys.includes(sortBy) ? sortBy : "grossRevenue";
     products.sort((a, b) =>
@@ -117,7 +126,8 @@ router.get("/", async (req: Request, res: Response) => {
       products,
       kpis: {
         totalGross:   Number(orderKpis[0]?.gross   ?? 0),
-        totalNet:     Number(orderKpis[0]?.net     ?? 0),
+        totalNet:     Number(orderKpis[0]?.net     ?? 0) - totalAdSpend,
+        totalAdSpend,
         totalUnits:   products.reduce((s, p) => s + p.unitsSold, 0),
         totalRefunds: Number(orderKpis[0]?.refunds ?? 0),
         productCount: products.length,
@@ -138,6 +148,11 @@ router.get("/channel-daily", async (req: Request, res: Response) => {
     const range = getDateRange(filter, from, to);
     const dateFrom = range.gte ?? new Date(Date.now() - 30 * 86400000);
     const dateTo = range.lte ?? new Date();
+    const adRows = await findDailyAdSpends(prisma, {
+      from: new Date(`${italyDateString(dateFrom)}T00:00:00.000Z`),
+      to: new Date(`${italyDateString(dateTo)}T00:00:00.000Z`),
+      marketplace: marketplace && marketplace !== "all" ? marketplace : undefined,
+    });
 
     // ── 1. Revenue + order count from ShopifyOrder (identical to main dashboard) ──
     type OrderRow = {
@@ -228,21 +243,49 @@ router.get("/channel-daily", async (req: Request, res: Response) => {
     }
 
     // ── 3. Merge: build final rows using ShopifyOrder as source of truth ──
+    const adSpendMap = new Map<string, number>();
+    for (const ad of adRows) {
+      const day = ad.spendDate.toISOString().slice(0, 10);
+      const key = `${day}|${ad.marketplace}`;
+      adSpendMap.set(key, (adSpendMap.get(key) ?? 0) + Number(ad.amount));
+    }
+
     const rows = orderRows.map((r) => {
       const gross = Number(r.grossRevenue);
       const refunded = Number(r.refundedAmount);
       const net = Number(r.netRevenue);
       const dateStr = r.date instanceof Date ? r.date.toISOString().split("T")[0] : String(r.date).split("T")[0];
+      const adSpend = adSpendMap.get(`${dateStr}|${r.marketplace}`) ?? 0;
+      adSpendMap.delete(`${dateStr}|${r.marketplace}`);
       return {
         date: dateStr,
         marketplace: r.marketplace,
         unitsSold: unitsMap.get(`${dateStr}|${r.marketplace}`) ?? 0,
         grossRevenue: gross,
         refundedAmount: refunded,
-        netRevenue: net,
+        netRevenue: net - adSpend,
+        adSpend,
+        margin: gross > 0 ? ((net - adSpend) / gross) * 100 : null,
         orderCount: Number(r.orderCount),
       };
     });
+
+    // Keep advertising-only days visible even when that marketplace had no sale.
+    for (const [key, adSpend] of adSpendMap) {
+      const [date, adMarketplace] = key.split("|");
+      rows.push({
+        date,
+        marketplace: adMarketplace,
+        unitsSold: 0,
+        grossRevenue: 0,
+        refundedAmount: 0,
+        netRevenue: -adSpend,
+        adSpend,
+        margin: null,
+        orderCount: 0,
+      });
+    }
+    rows.sort((a, b) => a.date.localeCompare(b.date) || a.marketplace.localeCompare(b.marketplace));
 
     // Unique sorted dates and marketplaces
     const dates = [...new Set(rows.map((r) => r.date))].sort();
@@ -263,15 +306,19 @@ router.get("/channel-daily", async (req: Request, res: Response) => {
     });
 
     // Totals per marketplace
-    const totals: Record<string, { unitsSold: number; grossRevenue: number; netRevenue: number; orderCount: number }> = {};
+    const totals: Record<string, { unitsSold: number; grossRevenue: number; netRevenue: number; orderCount: number; adSpend: number; margin: number | null }> = {};
     for (const row of rows) {
       if (!totals[row.marketplace]) {
-        totals[row.marketplace] = { unitsSold: 0, grossRevenue: 0, netRevenue: 0, orderCount: 0 };
+        totals[row.marketplace] = { unitsSold: 0, grossRevenue: 0, netRevenue: 0, orderCount: 0, adSpend: 0, margin: null };
       }
       totals[row.marketplace].unitsSold += row.unitsSold;
       totals[row.marketplace].grossRevenue += row.grossRevenue;
       totals[row.marketplace].netRevenue += row.netRevenue;
       totals[row.marketplace].orderCount += row.orderCount;
+      totals[row.marketplace].adSpend += row.adSpend;
+    }
+    for (const total of Object.values(totals)) {
+      total.margin = total.grossRevenue > 0 ? (total.netRevenue / total.grossRevenue) * 100 : null;
     }
 
     res.json({ rows, dates, marketplaces, chartData, totals });
