@@ -9,6 +9,7 @@ import type {
 import { api } from "@/lib/api";
 import { getMeta } from "@/lib/marketplaces";
 import MetricRow, { fmtEur } from "./MetricRow";
+import { renderMarkdown } from "@/components/ChatWidget";
 import {
   ChevronDown,
   ChevronRight,
@@ -21,6 +22,9 @@ import {
   Columns3,
   ShoppingCart,
   Package,
+  Sparkles,
+  Loader2,
+  RotateCcw,
 } from "lucide-react";
 
 export type GroupBy = "marketplace" | "product" | "brand" | "paese";
@@ -116,6 +120,9 @@ const COLUMN_GROUPS: { label: string; className: string; columns: string[] }[] =
       columns: ["BSR", "Stock"],
     },
   ];
+
+const INSIGHT_QUESTION =
+  "Analizza le performance dei prodotti in questo periodo: quali sono i migliori e i peggiori per fatturato e margine, ci sono resi anomali o prodotti senza dati di costo/margine? Dammi 2-3 suggerimenti concreti e azionabili.";
 
 const HIDDEN_COLUMNS_STORAGE_KEY = "products_table_hidden_columns_v1";
 
@@ -613,6 +620,10 @@ export default function ProductsPerformanceTable({
   const [viewMode, setViewMode] = useState<ViewMode>("product");
   const [orders, setOrders] = useState<AmazonOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [insightOpen, setInsightOpen] = useState(false);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightReply, setInsightReply] = useState<string | null>(null);
+  const [insightError, setInsightError] = useState<string | null>(null);
 
   const toggleColumn = (column: string) => {
     setHiddenColumns((prev) => {
@@ -654,6 +665,36 @@ export default function ProductsPerformanceTable({
         entry.children?.some((c) => c.label.toLowerCase().includes(q)),
     );
   })();
+
+  const buildInsightContext = () => {
+    const period = dateRange ? `${dateRange.from} → ${dateRange.to}` : "periodo corrente della dashboard";
+    const mp = marketplace && marketplace !== "all" ? marketplace : "tutti i marketplace";
+    const groupLabel = { marketplace: "Marketplace", product: "Prodotto", brand: "Brand", paese: "Paese" }[groupBy];
+    return `Tabella Prodotti — periodo ${period}, marketplace: ${mp}, raggruppamento: ${groupLabel}, ${filteredRows.length} righe visibili.`;
+  };
+
+  const fetchInsight = async () => {
+    setInsightLoading(true);
+    setInsightError(null);
+    try {
+      const { reply } = await api.chat.send(
+        [{ role: "user", content: INSIGHT_QUESTION }],
+        buildInsightContext(),
+      );
+      setInsightReply(reply);
+    } catch (err) {
+      console.error("[ProductsPerformanceTable] Insight AI failed:", err);
+      setInsightError(err instanceof Error ? err.message : "Errore sconosciuto");
+    } finally {
+      setInsightLoading(false);
+    }
+  };
+
+  const handleInsightToggle = () => {
+    const opening = !insightOpen;
+    setInsightOpen(opening);
+    if (opening && insightReply === null && !insightLoading) fetchInsight();
+  };
 
   const handleExport = () => {
     const csv = buildProductsCsv(filteredRows);
@@ -929,6 +970,41 @@ export default function ProductsPerformanceTable({
               </select>
             </label>
           )}
+          <div className="relative">
+            <button
+              onClick={handleInsightToggle}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-bg-border px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:bg-bg-hover transition-colors"
+            >
+              <Sparkles size={13} /> Insight AI
+            </button>
+            {insightOpen && (
+              <div className="absolute right-0 top-full mt-1 z-30 w-80 max-h-96 overflow-y-auto rounded-lg border border-bg-border bg-bg-card shadow-xl p-3 text-[11.5px] text-zinc-300">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">
+                    <Sparkles size={11} className="text-accent-primary" /> Insight AI
+                  </span>
+                  {!insightLoading && (insightReply || insightError) && (
+                    <button
+                      onClick={fetchInsight}
+                      title="Rigenera"
+                      className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-accent-primary transition-colors bg-transparent border-none cursor-pointer"
+                    >
+                      <RotateCcw size={11} /> Rigenera
+                    </button>
+                  )}
+                </div>
+                {insightLoading ? (
+                  <div className="flex items-center gap-1.5 text-zinc-500 py-4 justify-center">
+                    <Loader2 size={13} className="animate-spin text-accent-primary" /> Analizzando i dati…
+                  </div>
+                ) : insightError ? (
+                  <p className="text-accent-red">{insightError}</p>
+                ) : insightReply ? (
+                  <div className="space-y-0.5">{renderMarkdown(insightReply)}</div>
+                ) : null}
+              </div>
+            )}
+          </div>
           <button
             onClick={handleExport}
             className="inline-flex items-center gap-1.5 rounded-lg border border-bg-border px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:bg-bg-hover transition-colors"

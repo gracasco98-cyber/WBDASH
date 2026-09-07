@@ -64,6 +64,7 @@ export type {
 } from "./marketing-redcare";
 export type { Task, TaskStatus, AssignableUser } from "./tasks";
 export type { BoardWidget } from "./board";
+export type { ChatMessage, ChatResponse } from "./chat";
 
 // Import domain modules
 import { shopify } from "./shopify";
@@ -78,6 +79,7 @@ import { mirakl } from "./mirakl";
 import { marketingRedcare } from "./marketing-redcare";
 import { tasks } from "./tasks";
 import { board } from "./board";
+import { chat } from "./chat";
 
 // Compose the `api` object that all callers use via `import { api } from "@/lib/api"`
 export const api = {
@@ -120,4 +122,7 @@ export const api = {
   // ── Bacheca / Task Manager ────────────────────────────────────────────────
   tasks,
   board,
+
+  // ── Chat / Insight AI ─────────────────────────────────────────────────────
+  chat,
 };

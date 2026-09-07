@@ -35,7 +35,7 @@ const PAGE_CONTEXT: Record<string, string> = {
 
 // ─── Minimal markdown renderer ────────────────────────────────────────────────
 
-function renderMarkdown(text: string): React.ReactNode[] {
+export function renderMarkdown(text: string): React.ReactNode[] {
   const lines = text.split("\n");
   const nodes: React.ReactNode[] = [];
   let i = 0;

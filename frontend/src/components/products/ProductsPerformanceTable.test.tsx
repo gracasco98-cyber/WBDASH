@@ -9,6 +9,7 @@ const mockRename = vi.fn(async (_productId: string, _name: string) => undefined)
 const mockMoveIdentifier = vi.fn(async (_identifierId: string, _targetProductId: string) => undefined);
 const mockUpdateVatRate = vi.fn(async (_identifierId: string, _vatRate: number | null) => undefined);
 const mockAmazonOrders = vi.fn(async (_params: Record<string, string>): Promise<AmazonOrdersResponse> => ({ orders: [], total: 0, page: 1, limit: 100 }));
+const mockChatSend = vi.fn(async (_messages: { role: string; content: string }[], _pageContext: string) => ({ reply: "risposta", toolsUsed: [] as string[], ms: 100 }));
 
 vi.mock("@/lib/api", () => ({
   api: {
@@ -20,6 +21,9 @@ vi.mock("@/lib/api", () => ({
       rename: (productId: string, name: string) => mockRename(productId, name),
       moveIdentifier: (identifierId: string, targetProductId: string) => mockMoveIdentifier(identifierId, targetProductId),
       updateVatRate: (identifierId: string, vatRate: number | null) => mockUpdateVatRate(identifierId, vatRate),
+    },
+    chat: {
+      send: (messages: { role: string; content: string }[], pageContext: string) => mockChatSend(messages, pageContext),
     },
   },
 }));
@@ -451,6 +455,66 @@ describe("ProductsPerformanceTable — Visualizza per: Ordini", () => {
     render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} dateRange={{ from: "2026-09-01", to: "2026-09-07" }} marketplace="all" amazonAccountId="ALL" />);
     await user.click(screen.getByRole("button", { name: /^ordini$/i }));
     await vi.waitFor(() => expect(mockAmazonOrders).toHaveBeenCalledWith(expect.objectContaining({ amazonAccountId: "ALL" })));
+  });
+});
+
+describe("ProductsPerformanceTable — Insight AI", () => {
+  beforeEach(() => {
+    mockChatSend.mockClear();
+    mockChatSend.mockResolvedValue({ reply: "**Top prodotto**: Quercetina Forte 90cps", toolsUsed: ["get_top_products"], ms: 800 });
+  });
+
+  it("shows an 'Insight AI' button", () => {
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /insight ai/i })).toBeInTheDocument();
+  });
+
+  it("fetches and renders a real-data-grounded insight when opened, describing the current period/marketplace in pageContext", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} dateRange={{ from: "2026-09-01", to: "2026-09-07" }} marketplace="IT" />);
+
+    await user.click(screen.getByRole("button", { name: /insight ai/i }));
+
+    expect(await screen.findByText(/Quercetina Forte 90cps/)).toBeInTheDocument();
+    expect(mockChatSend).toHaveBeenCalledTimes(1);
+    const [messages, pageContext] = mockChatSend.mock.calls[0];
+    expect(messages[0].role).toBe("user");
+    expect(pageContext).toContain("2026-09-01");
+    expect(pageContext).toContain("2026-09-07");
+    expect(pageContext).toContain("IT");
+  });
+
+  it("does not refetch on a second open (caches the last answer)", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /insight ai/i }));
+    await screen.findByText(/Quercetina Forte 90cps/);
+
+    await user.click(screen.getByRole("button", { name: /insight ai/i })); // close
+    await user.click(screen.getByRole("button", { name: /insight ai/i })); // reopen
+
+    expect(mockChatSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("refetches when the 'Rigenera' action is used", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /insight ai/i }));
+    await screen.findByText(/Quercetina Forte 90cps/);
+
+    await user.click(screen.getByRole("button", { name: /rigenera/i }));
+
+    await vi.waitFor(() => expect(mockChatSend).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows an error message when the request fails", async () => {
+    mockChatSend.mockRejectedValue(new Error("Chatbot non configurato: OPENAI_API_KEY mancante"));
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /insight ai/i }));
+
+    expect(await screen.findByText(/OPENAI_API_KEY mancante/)).toBeInTheDocument();
   });
 });
 
