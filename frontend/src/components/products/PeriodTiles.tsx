@@ -576,7 +576,7 @@ export default function PeriodTiles() {
           Mensile
         </button>
       </div>
-      <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="flex w-full snap-x snap-mandatory gap-3 overflow-x-auto pb-2 scrollbar-hide sm:grid sm:grid-cols-3 sm:overflow-visible lg:grid-cols-5">
         {activeTiles.map((tile) => {
           const { id, preset, label, headerBg, accent, Icon, isForecast } =
             tile;
@@ -656,7 +656,7 @@ export default function PeriodTiles() {
               aria-label={label}
               aria-pressed={active}
               onClick={() => setPreset(preset)}
-              className={`group h-auto min-h-0 w-full min-w-0 text-left rounded-xl overflow-hidden p-0 cursor-pointer border transition-all bg-bg-card hover:shadow-md hover:-translate-y-0.5 flex flex-col ${
+              className={`group h-auto min-h-0 w-[calc(100vw-32px)] shrink-0 snap-start text-left rounded-xl overflow-hidden p-0 cursor-pointer border transition-all bg-bg-card hover:shadow-md hover:-translate-y-0.5 flex flex-col sm:w-auto sm:min-w-0 sm:shrink ${
                 active ? "border-accent-primary shadow-sm" : "border-bg-border"
               }`}
             >
@@ -705,7 +705,7 @@ export default function PeriodTiles() {
                     {hasAny ? fmtEur(combinedNetProfit) : "—"}
                   </div>
                 </div>
-                <div className="hidden sm:grid grid-cols-2 gap-2 border-t border-bg-border/70 pt-2">
+                <div className="grid grid-cols-2 gap-2 border-t border-bg-border/70 pt-2">
                   <div className="rounded-md border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
                       Costi
@@ -724,25 +724,25 @@ export default function PeriodTiles() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-2 gap-y-2 text-[11px]">
-                  <div className="hidden sm:block">
+                  <div>
                     <div className="text-zinc-500 text-[10px]">Unità</div>
                     <div className="text-zinc-300 tabular-nums">
                       {hasAny ? combinedUnits : "—"}
                     </div>
                   </div>
-                  <div className="hidden sm:block">
+                  <div>
                     <div className="text-zinc-500 text-[10px]">Resi</div>
                     <div className="text-zinc-300 tabular-nums">
                       {totalRow ? totalRow.refundsCount : "—"}
                     </div>
                   </div>
-                  <div className="hidden sm:block pt-2 border-t border-bg-border">
+                  <div className="pt-2 border-t border-bg-border">
                     <div className="text-zinc-500 text-[10px]">Ads</div>
                     <div className="text-zinc-300 tabular-nums">
                       {hasAny ? dash(combinedAdSpend, fmtEur) : "—"}
                     </div>
                   </div>
-                  <div className="hidden sm:block pt-2 border-t border-bg-border">
+                  <div className="pt-2 border-t border-bg-border">
                     <div className="text-zinc-500 text-[10px]">
                       Payout stimato
                     </div>
@@ -750,7 +750,7 @@ export default function PeriodTiles() {
                       {totalRow ? fmtEur(totalRow.estimatedPayout) : "—"}
                     </div>
                   </div>
-                  <div className="hidden sm:block">
+                  <div>
                     <div className="text-zinc-500 text-[10px]">Fee Amazon</div>
                     <div className="text-zinc-300 tabular-nums">
                       {totalRow ? fmtEur(totalRow.amazonFees) : "—"}
