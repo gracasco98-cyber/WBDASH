@@ -33,16 +33,18 @@ const mockProducts = vi.fn(async (_params: unknown) => ({
   kpis: { totalGross: 40, totalNet: 35, totalAdSpend: 99, redcareAdSpend: 6 },
 }));
 const mockTimeseries = vi.fn(async (_params: unknown) => [] as { time: string; revenue: number; count: number }[]);
+const mockRedcareList = vi.fn(async (_params: unknown): Promise<{ entries: unknown[]; total: number }> => { throw new Error("not configured"); });
 vi.mock("@/lib/api", () => ({
   api: {
     productPerformance: { get: (params: unknown) => mockGet(params) },
     products: (params: unknown) => mockProducts(params),
     amazon: { timeseries: (params: unknown) => mockTimeseries(params) },
+    marketingRedcare: { listAdSpend: (params: unknown) => mockRedcareList(params) },
   },
 }));
 
 describe("PeriodTiles", () => {
-  beforeEach(() => { mockGet.mockClear(); mockProducts.mockClear(); mockTimeseries.mockClear(); mockTimeseries.mockResolvedValue([]); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; mockCompareMode = "none"; });
+  beforeEach(() => { mockGet.mockClear(); mockProducts.mockClear(); mockRedcareList.mockClear(); mockRedcareList.mockRejectedValue(new Error("not configured")); mockTimeseries.mockClear(); mockTimeseries.mockResolvedValue([]); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; mockCompareMode = "none"; });
 
   it("fetches 5 fixed presets independently of the active period", async () => {
     render(<PeriodTiles />);
@@ -103,6 +105,14 @@ describe("PeriodTiles", () => {
     render(<PeriodTiles />);
     await vi.waitFor(() => expect(screen.getAllByText("€ 11,00")).toHaveLength(5));
     expect(screen.getAllByText("€ 46,00")).toHaveLength(5);
+  });
+
+  it("uses the daily Redcare Ads source when the aggregate KPI differs", async () => {
+    mockRedcareList.mockResolvedValue({ entries: [], total: 8 });
+    render(<PeriodTiles />);
+    await vi.waitFor(() => expect(screen.getAllByText("€ 13,00")).toHaveLength(5));
+    expect(screen.getAllByText("€ 93,00")).toHaveLength(5);
+    expect(mockRedcareList).toHaveBeenCalled();
   });
 
   it("fills the VAT tile with the real summed itemTax, one per period card", async () => {

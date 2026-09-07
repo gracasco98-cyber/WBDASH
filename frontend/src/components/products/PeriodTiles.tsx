@@ -453,7 +453,7 @@ export default function PeriodTiles() {
             // at a day boundary, attributing this card's combined profit
             // figure to the wrong calendar day (see PeriodTiles.test.tsx).
             const { from, to } = presetDateRange(preset);
-            const { products, kpis } = await api.products({
+            const productResult = await api.products({
               filter: "custom",
               from,
               to,
@@ -461,6 +461,46 @@ export default function PeriodTiles() {
                 ? { marketplace: shopifyMarketplace }
                 : {}),
             });
+
+            // Redcare Ads are stored as daily, marketplace-specific costs.
+            // Read that source explicitly for the tiles instead of relying only
+            // on the aggregate /api/products KPI (which may be served from a
+            // stale deployment or an older response shape).  A selected
+            // Redcare channel is scoped to itself; the unfiltered dashboard
+            // includes both Redcare IT and DE.  Other Shopify channels must not
+            // inherit Redcare costs.
+            const canLoadRedcareAds =
+              globalMarketplace === "all" ||
+              globalMarketplace === "REDCARE_IT" ||
+              globalMarketplace === "REDCARE_DE";
+            let directAdSpend: number | null = null;
+            const listAdSpend = api.marketingRedcare?.listAdSpend;
+            if (canLoadRedcareAds && listAdSpend) {
+              try {
+                const adResult = await listAdSpend({
+                  from,
+                  to,
+                  ...(globalMarketplace === "REDCARE_IT" ||
+                  globalMarketplace === "REDCARE_DE"
+                    ? { marketplace: globalMarketplace }
+                    : {}),
+                });
+                directAdSpend = Number(adResult.total);
+              } catch {
+                // Keep the aggregate KPI fallback below when the dedicated
+                // endpoint is temporarily unavailable.
+              }
+            }
+
+            const { products, kpis } = productResult;
+            const reportedAdSpend =
+              directAdSpend ?? kpis.redcareAdSpend ?? kpis.totalAdSpend ?? 0;
+            const netProfit =
+              directAdSpend === null
+                ? kpis.totalNet
+                : kpis.totalNet +
+                  (kpis.redcareAdSpend ?? kpis.totalAdSpend ?? 0) -
+                  directAdSpend;
             return [
               id,
               {
@@ -469,11 +509,8 @@ export default function PeriodTiles() {
                 // (shipping/discount adjustments and test-order exclusion).
                 sales: kpis.totalGross,
                 units: products.reduce((s, p) => s + p.unitsSold, 0),
-                netProfit: kpis.totalNet,
-                // /api/products returns Shopify/Redcare net after its daily
-                // MarketplaceAdSpend rows. Prefer the explicit Redcare field
-                // while retaining the fallback for older API deployments.
-                adSpend: kpis.redcareAdSpend ?? kpis.totalAdSpend ?? 0,
+                netProfit,
+                adSpend: reportedAdSpend,
               },
             ] as const;
           }),
