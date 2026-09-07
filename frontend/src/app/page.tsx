@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { api, Summary, TimePoint, Order, AmazonSummary, ProductPerformanceGroup } from "@/lib/api";
 import { getMeta, formatEUR, formatCompact } from "@/lib/marketplaces";
@@ -98,6 +98,11 @@ export default function DashboardPage() {
   const presetDateRange = periodState.preset !== "custom" ? getDateRangeForPreset(periodState.preset) : null;
   const apiFrom = presetDateRange?.from || from;
   const apiTo = presetDateRange?.to || to;
+  // Stable reference: passed as a prop to ProductsPerformanceTable, whose
+  // Ordini-view fetch effect depends on it — a fresh {from,to} literal on
+  // every render would reopen that effect (and refetch) on every unrelated
+  // re-render of this page.
+  const productsDateRange = useMemo(() => ({ from: apiFrom, to: apiTo }), [apiFrom, apiTo]);
 
   // Per-user section visibility — hydrated from localStorage after mount
   const [sections, setSections] = useState<Record<SectionId, boolean>>(SECTION_DEFAULTS);
@@ -380,8 +385,9 @@ export default function DashboardPage() {
       onMoved={loadProductGroups}
       onVatRateChanged={loadProductGroups}
       shopifyMarketplaceRows={shopifyMarketplaceRows}
-      dateRange={{ from: apiFrom, to: apiTo }}
+      dateRange={productsDateRange}
       marketplace={isAmazonMp ? (amazonMpCode ?? "all") : "all"}
+      amazonAccountId={productsAmazonAccountId}
     />
   );
   const productsBlock = sections.products && <div className="mt-2">{productsTable}</div>;

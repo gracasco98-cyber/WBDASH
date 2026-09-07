@@ -599,6 +599,7 @@ export default function ProductsPerformanceTable({
   shopifyMarketplaceRows,
   dateRange,
   marketplace,
+  amazonAccountId,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [movingId, setMovingId] = useState<string | null>(null);
@@ -689,15 +690,16 @@ export default function ProductsPerformanceTable({
     };
   }, [groups]);
 
+  const dateRangeFrom = dateRange?.from;
+  const dateRangeTo = dateRange?.to;
+
   useEffect(() => {
-    if (viewMode !== "orders" || !dateRange) return;
+    if (viewMode !== "orders" || !dateRangeFrom || !dateRangeTo) return;
     let cancelled = false;
     setOrdersLoading(true);
-    const params: Record<string, string> = {
-      from: dateRange.from,
-      to: dateRange.to,
-    };
+    const params: Record<string, string> = { from: dateRangeFrom, to: dateRangeTo };
     if (marketplace && marketplace !== "all") params.marketplace = marketplace;
+    if (amazonAccountId) params.amazonAccountId = amazonAccountId;
     api.amazon
       .orders(params)
       .then((res) => {
@@ -712,7 +714,10 @@ export default function ProductsPerformanceTable({
     return () => {
       cancelled = true;
     };
-  }, [viewMode, dateRange, marketplace]);
+    // dateRangeFrom/dateRangeTo (not the dateRange object) so a caller that
+    // passes a fresh {from,to} literal every render — like page.tsx's JSX —
+    // doesn't reopen this effect on every unrelated re-render.
+  }, [viewMode, dateRangeFrom, dateRangeTo, marketplace, amazonAccountId]);
 
   const toggle = (key: string) =>
     setExpanded((prev) => {

@@ -432,6 +432,26 @@ describe("ProductsPerformanceTable — Visualizza per: Ordini", () => {
 
     expect(screen.queryByLabelText(/raggruppa per/i)).not.toBeInTheDocument();
   });
+
+  it("does not refetch when the parent re-renders with a new-but-equal dateRange object (LOCK-IN: production bug 2026-09-07 — refired ~once/sec because page.tsx passed a fresh {from,to} literal every render)", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} dateRange={{ from: "2026-09-01", to: "2026-09-07" }} marketplace="all" />);
+    await user.click(screen.getByRole("button", { name: /^ordini$/i }));
+    await vi.waitFor(() => expect(mockAmazonOrders).toHaveBeenCalledTimes(1));
+
+    rerender(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} dateRange={{ from: "2026-09-01", to: "2026-09-07" }} marketplace="all" />);
+    rerender(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} dateRange={{ from: "2026-09-01", to: "2026-09-07" }} marketplace="all" />);
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockAmazonOrders).toHaveBeenCalledTimes(1);
+  });
+
+  it("includes amazonAccountId in the orders request when provided (backend requires it in scope — see amazon-account.middleware.ts)", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} dateRange={{ from: "2026-09-01", to: "2026-09-07" }} marketplace="all" amazonAccountId="ALL" />);
+    await user.click(screen.getByRole("button", { name: /^ordini$/i }));
+    await vi.waitFor(() => expect(mockAmazonOrders).toHaveBeenCalledWith(expect.objectContaining({ amazonAccountId: "ALL" })));
+  });
 });
 
 describe("buildProductsCsv", () => {
