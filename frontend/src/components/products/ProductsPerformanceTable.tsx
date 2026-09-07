@@ -4,9 +4,9 @@ import type { ProductPerformanceGroup, ProductPerformanceRow, ProductPerformance
 import { api } from "@/lib/api";
 import { getMeta } from "@/lib/marketplaces";
 import MetricRow, { fmtEur } from "./MetricRow";
-import { ChevronDown, ChevronRight, CornerDownRight, Pencil, SlidersHorizontal, Table2, PackageSearch } from "lucide-react";
+import { ChevronDown, ChevronRight, CornerDownRight, Pencil, Search, Download, Table2, PackageSearch } from "lucide-react";
 
-export type GroupBy = "marketplace" | "product";
+export type GroupBy = "marketplace" | "product" | "brand" | "paese";
 
 interface Props {
   groups: ProductPerformanceGroup[];
@@ -47,6 +47,23 @@ const EMPTY_COST_ROW: Omit<ProductPerformanceRow, "marketplace" | "sku" | "units
   promo: 0, refundsCount: 0, adsSpend: null, realAcos: null,
   amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0,
   margin: 0, roi: 0,
+};
+
+/** Known 2-letter Amazon marketplace/country codes — used to recognize a
+ *  country suffix on non-Amazon channel codes (e.g. "REDCARE_IT" -> "IT")
+ *  when grouping by Paese. A channel with no recognizable country (EBAY,
+ *  TIKTOK, SHOPIFY_DIRECT, ...) keeps its own bucket rather than being
+ *  fabricated into a guessed country. */
+const KNOWN_COUNTRY_CODES = new Set(["IT", "DE", "FR", "ES", "UK", "PL", "US", "CA", "NL", "SE", "BE"]);
+
+function countryOf(marketplaceCode: string): string {
+  if (KNOWN_COUNTRY_CODES.has(marketplaceCode)) return marketplaceCode;
+  const suffix = marketplaceCode.slice(marketplaceCode.lastIndexOf("_") + 1);
+  return KNOWN_COUNTRY_CODES.has(suffix) ? suffix : marketplaceCode;
+}
+
+const COUNTRY_LABEL: Record<string, string> = {
+  IT: "IT", DE: "DE", FR: "FR", ES: "ES", UK: "UK", PL: "PL", US: "US", CA: "CA", NL: "NL", SE: "SE", BE: "BE",
 };
 
 /**
@@ -153,6 +170,125 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
   });
 }
 
+function buildRowsByBrand(groups: ProductPerformanceGroup[]): RowEntry[] {
+  const byBrand = new Map<string, ProductPerformanceGroup[]>();
+  for (const g of groups) {
+    const brand = g.product.brand ?? "Senza marca";
+    const list = byBrand.get(brand) ?? [];
+    list.push(g);
+    byBrand.set(brand, list);
+  }
+  return [...byBrand.entries()].map(([brand, brandGroups]) => {
+    const sum = brandGroups.reduce(
+      (acc, g) => ({
+        units: acc.units + g.aggregate.units, sales: acc.sales + g.aggregate.sales, promo: acc.promo + g.aggregate.promo,
+        refundsAmount: acc.refundsAmount + g.aggregate.refundsAmount, refundsCount: acc.refundsCount + g.aggregate.refundsCount,
+        amazonFees: acc.amazonFees + g.aggregate.amazonFees, cogs: acc.cogs + g.aggregate.cogs, stock: acc.stock + g.aggregate.stock,
+        grossProfit: acc.grossProfit + g.aggregate.grossProfit, netProfit: acc.netProfit + g.aggregate.netProfit,
+        estimatedPayout: acc.estimatedPayout + g.aggregate.estimatedPayout,
+        adsSpend: g.aggregate.adsSpend !== null ? (acc.adsSpend ?? 0) + g.aggregate.adsSpend : acc.adsSpend,
+      }),
+      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0, adsSpend: null as number | null }
+    );
+    const aggregate: ProductPerformanceRow = {
+      identifierId: "", asin: "", marketplace: "ALL", sku: null, bsr: null,
+      hasRealFees: brandGroups.every((g) => g.aggregate.hasRealFees),
+      hasRealCogs: brandGroups.every((g) => g.aggregate.hasRealCogs),
+      hasStockData: brandGroups.every((g) => g.aggregate.hasStockData),
+      refundPct: sum.sales > 0 ? sum.refundsAmount / sum.sales : 0,
+      realAcos: sum.adsSpend !== null && sum.sales > 0 ? sum.adsSpend / sum.sales : null,
+      margin: sum.sales > 0 ? sum.netProfit / sum.sales : 0,
+      roi: sum.cogs > 0 ? sum.netProfit / sum.cogs : 0,
+      avgSellingPrice: sum.units > 0 ? sum.sales / sum.units : 0,
+      ...sum,
+    };
+    return {
+      key: `brand-${brand}`,
+      label: brand,
+      metrics: aggregate,
+      children: brandGroups.map((g) => ({ key: `brand-${brand}-${g.product.id}`, label: g.product.name, metrics: g.aggregate })),
+    };
+  });
+}
+
+/** Merges already marketplace/channel-grouped rows (Amazon marketplaces +
+ *  Shopify/Redcare channels) into one row per country, using the country
+ *  code embedded in each channel's own marketplace string. A channel with
+ *  no recognizable country (EBAY, TIKTOK, ...) keeps its own bucket. */
+function buildRowsByCountry(amazonMarketplaceRows: RowEntry[], shopifyRows: RowEntry[]): RowEntry[] {
+  const byCountry = new Map<string, RowEntry[]>();
+  for (const entry of [...amazonMarketplaceRows, ...shopifyRows]) {
+    const country = countryOf(entry.metrics.marketplace);
+    const list = byCountry.get(country) ?? [];
+    list.push(entry);
+    byCountry.set(country, list);
+  }
+  return [...byCountry.entries()].map(([country, entries]) => {
+    const sum = entries.reduce(
+      (acc, e) => ({
+        units: acc.units + e.metrics.units, sales: acc.sales + e.metrics.sales, promo: acc.promo + e.metrics.promo,
+        refundsAmount: acc.refundsAmount + e.metrics.refundsAmount, refundsCount: acc.refundsCount + e.metrics.refundsCount,
+        amazonFees: acc.amazonFees + e.metrics.amazonFees, cogs: acc.cogs + e.metrics.cogs, stock: acc.stock + e.metrics.stock,
+        grossProfit: acc.grossProfit + e.metrics.grossProfit, netProfit: acc.netProfit + e.metrics.netProfit,
+        estimatedPayout: acc.estimatedPayout + e.metrics.estimatedPayout,
+        adsSpend: e.metrics.adsSpend !== null ? (acc.adsSpend ?? 0) + e.metrics.adsSpend : acc.adsSpend,
+      }),
+      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, grossProfit: 0, netProfit: 0, estimatedPayout: 0, adsSpend: null as number | null }
+    );
+    const aggregate: ProductPerformanceRow = {
+      identifierId: "", asin: "", marketplace: country, sku: null, bsr: null,
+      hasRealFees: entries.every((e) => e.metrics.hasRealFees),
+      hasRealCogs: entries.every((e) => e.metrics.hasRealCogs),
+      hasStockData: entries.every((e) => e.metrics.hasStockData),
+      refundPct: sum.sales > 0 ? sum.refundsAmount / sum.sales : 0,
+      realAcos: sum.adsSpend !== null && sum.sales > 0 ? sum.adsSpend / sum.sales : null,
+      margin: sum.sales > 0 ? sum.netProfit / sum.sales : 0,
+      roi: sum.cogs > 0 ? sum.netProfit / sum.cogs : 0,
+      avgSellingPrice: sum.units > 0 ? sum.sales / sum.units : 0,
+      ...sum,
+    };
+    return {
+      key: `country-${country}`,
+      label: KNOWN_COUNTRY_CODES.has(country) ? country : getMeta(country).label,
+      metrics: aggregate,
+      children: entries.map((e) => ({ key: `country-${country}-${e.key}`, label: e.label, metrics: e.metrics })),
+    };
+  });
+}
+
+function csvField(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+/** CSV export of the top-level (parent) rows currently visible in the
+ *  table — matches the desktop table's own column set (COLUMNS). */
+export function buildProductsCsv(rows: RowEntry[]): string {
+  const lines = rows.map((entry) => {
+    const m = entry.metrics;
+    return [
+      entry.label,
+      String(m.units),
+      String(m.refundsCount),
+      m.sales.toFixed(2),
+      m.promo.toFixed(2),
+      m.adsSpend !== null ? m.adsSpend.toFixed(2) : "",
+      (m.refundPct * 100).toFixed(1),
+      m.amazonFees.toFixed(2),
+      m.cogs.toFixed(2),
+      m.grossProfit.toFixed(2),
+      m.netProfit.toFixed(2),
+      m.estimatedPayout.toFixed(2),
+      (m.margin * 100).toFixed(1),
+      m.roi.toFixed(2),
+      m.realAcos !== null ? (m.realAcos * 100).toFixed(1) : "",
+      m.avgSellingPrice.toFixed(2),
+      m.bsr !== null ? String(m.bsr) : "",
+      String(m.stock),
+    ].map(csvField).join(";");
+  });
+  return [COLUMNS.map(csvField).join(";"), ...lines].join("\n");
+}
+
 /** Inline-editable "IVA %" field for one identifier row — same crude-but-
  *  functional pattern as the existing "Sposta prodotto" affordance (no
  *  dedicated edit modal exists in this table yet). Commits on blur or Enter;
@@ -197,10 +333,35 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
   const [movingId, setMovingId] = useState<string | null>(null);
   const [targetProductId, setTargetProductId] = useState("");
   const [images, setImages] = useState<Record<string, string | null>>({});
+  const [search, setSearch] = useState("");
 
   const rows = groupBy === "product"
     ? buildRowsByProduct(groups)
+    : groupBy === "brand"
+    ? buildRowsByBrand(groups)
+    : groupBy === "paese"
+    ? buildRowsByCountry(buildRowsByMarketplace(groups), shopifyMarketplaceRows ?? [])
     : [...buildRowsByMarketplace(groups), ...(shopifyMarketplaceRows ?? [])];
+
+  const filteredRows = (() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((entry) =>
+      entry.label.toLowerCase().includes(q) ||
+      entry.children?.some((c) => c.label.toLowerCase().includes(q))
+    );
+  })();
+
+  const handleExport = () => {
+    const csv = buildProductsCsv(filteredRows);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "prodotti.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   useEffect(() => {
     const asins = [...new Set(groups.flatMap((g) => g.rows.map((r) => r.asin)).filter(Boolean))];
@@ -251,8 +412,23 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
     }
   };
 
-  const parentLabel = (entry: RowEntry, isOpen: boolean) => (
-    <>
+  const parentLabel = (entry: RowEntry, isOpen: boolean) => {
+    // Only the "product" grouping maps one top-level row to exactly one
+    // product with a stable representative ASIN — Marketplace/Paese/Brand
+    // rows are cross-product aggregates, so no single thumbnail applies.
+    const representativeAsin = groupBy === "product" ? entry.children?.[0]?.metrics.asin : undefined;
+    const thumb = representativeAsin
+      ? images[representativeAsin] ?? entry.children?.[0]?.metrics.imageUrl ?? null
+      : null;
+    return (
+    <span className="inline-flex items-center">
+      {groupBy === "product" && (
+        thumb ? (
+          <img src={thumb} alt="" className="w-[20px] h-[20px] rounded-[4px] object-cover shrink-0 mr-1.5" />
+        ) : (
+          <div className="w-[20px] h-[20px] rounded-[4px] bg-bg-hover shrink-0 mr-1.5" />
+        )
+      )}
       <button
         aria-label={`Espandi ${entry.label}`}
         onClick={() => toggle(entry.key)}
@@ -266,8 +442,9 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
           <Pencil size={11} />
         </button>
       )}
-    </>
-  );
+    </span>
+    );
+  };
 
   const childLabel = (child: { key: string; label: string; metrics: ProductPerformanceRow }) => {
     // Righe Amazon: cercate per ASIN nella mappa caricata da catalogImages().
@@ -315,18 +492,37 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
           <span className="flex items-center gap-2 text-xs font-semibold text-zinc-600"><Table2 size={14} className="text-accent-blue" />Prodotti</span>
           <span className="hidden sm:inline text-[10px] text-zinc-500">Performance per canale e prodotto</span>
         </div>
-        <label className="text-xs text-zinc-400">
-          <span className="mr-1.5">Raggruppa per</span>
-          <select
-            aria-label="Raggruppa per"
-            value={groupBy}
-            onChange={(e) => onGroupByChange(e.target.value as GroupBy)}
-            className="bg-bg-card border border-bg-border rounded-lg px-2 py-1 text-zinc-700 shadow-sm focus:outline-none focus:border-accent-primary"
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Cerca..."
+              className="h-8 w-40 rounded-lg border border-bg-border bg-bg-base pl-7 pr-2 text-xs text-zinc-300 outline-none focus:border-accent-primary"
+            />
+          </div>
+          <label className="text-xs text-zinc-400">
+            <span className="mr-1.5">Raggruppa per</span>
+            <select
+              aria-label="Raggruppa per"
+              value={groupBy}
+              onChange={(e) => onGroupByChange(e.target.value as GroupBy)}
+              className="bg-bg-card border border-bg-border rounded-lg px-2 py-1 text-zinc-700 shadow-sm focus:outline-none focus:border-accent-primary"
+            >
+              <option value="marketplace">Marketplace</option>
+              <option value="product">Prodotto</option>
+              <option value="brand">Brand</option>
+              <option value="paese">Paese</option>
+            </select>
+          </label>
+          <button
+            onClick={handleExport}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-bg-border px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:bg-bg-hover transition-colors"
           >
-            <option value="marketplace">Marketplace</option>
-            <option value="product">Prodotto</option>
-          </select>
-        </label>
+            <Download size={13} /> Esporta
+          </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-b-lg">
@@ -346,7 +542,7 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {filteredRows.length === 0 ? (
               <tr>
                 <td colSpan={COLUMNS.length} className="py-14 text-center">
                   <PackageSearch size={26} className="mx-auto mb-2 text-zinc-400" />
@@ -354,7 +550,7 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
                   <p className="mt-1 text-[11px] text-zinc-500">Prova a cambiare periodo o marketplace.</p>
                 </td>
               </tr>
-            ) : rows.map((entry) => {
+            ) : filteredRows.map((entry) => {
               const isOpen = expanded.has(entry.key);
               return (
                 <Fragment key={entry.key}>

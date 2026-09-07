@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ProductsPerformanceTable, { buildShopifyMarketplaceRows } from "./ProductsPerformanceTable";
+import ProductsPerformanceTable, { buildShopifyMarketplaceRows, buildProductsCsv } from "./ProductsPerformanceTable";
 import type { ProductPerformanceGroup, ProductPerformance } from "@/lib/api";
 
 const mockCatalogImages = vi.fn(async (_asins: string[]) => ({}) as Record<string, string | null>);
@@ -247,5 +247,113 @@ describe("ProductsPerformanceTable", () => {
     await user.keyboard("{Enter}");
 
     await vi.waitFor(() => expect(onVatRateChanged).toHaveBeenCalled());
+  });
+
+  it("filters rows by search text, case-insensitively", async () => {
+    const user = userEvent.setup();
+    const twoGroups: ProductPerformanceGroup[] = [
+      groups[0],
+      { product: { id: "p2", name: "Vitamina C", brand: null }, rows: [{ ...baseRow, marketplace: "DE" }], aggregate: baseRow },
+    ];
+    render(<ProductsPerformanceTable groups={twoGroups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    expect(screen.getByText("Resveratrolo 500mg")).toBeInTheDocument();
+    expect(screen.getByText("Vitamina C")).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText(/cerca/i), "vitamina");
+
+    expect(screen.queryByText("Resveratrolo 500mg")).not.toBeInTheDocument();
+    expect(screen.getByText("Vitamina C")).toBeInTheDocument();
+  });
+
+  it("groups products by Brand, with each product as a child row", async () => {
+    const user = userEvent.setup();
+    const brandGroups: ProductPerformanceGroup[] = [
+      { product: { id: "p1", name: "Resveratrolo 500mg", brand: "Naturplan" }, rows: [baseRow], aggregate: baseRow },
+      { product: { id: "p2", name: "Vitamina C", brand: "Naturplan" }, rows: [{ ...baseRow, units: 5, sales: 50 }], aggregate: { ...baseRow, units: 5, sales: 50 } },
+    ];
+    render(<ProductsPerformanceTable groups={brandGroups} groupBy="brand" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    expect(screen.getByText("Naturplan")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /espandi naturplan/i }));
+    // Each child's label shares a span with " — <asin>", so match by regex
+    // (substring) rather than exact string — same pattern the marketplace
+    // grouping tests above already use for the identical DOM shape.
+    expect(screen.getByText(/Resveratrolo 500mg/)).toBeInTheDocument();
+    expect(screen.getByText(/Vitamina C/)).toBeInTheDocument();
+  });
+
+  it("buckets products with no brand under 'Senza marca' when grouping by Brand", () => {
+    render(<ProductsPerformanceTable groups={groups} groupBy="brand" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    expect(screen.getByText("Senza marca")).toBeInTheDocument();
+  });
+
+  it("groups Amazon.it and Redcare IT under the same 'IT' country bucket when grouping by Paese", async () => {
+    const user = userEvent.setup();
+    const redcareProduct: ProductPerformance = {
+      shopifyProductId: "gid://shopify/Product/1", productTitle: "Naturplan VENAVIL", sku: "VENAVIL",
+      imageUrl: null, marketplace: "REDCARE_IT", unitsSold: 4, grossRevenue: 45.22, refundedAmount: 0,
+      netRevenue: 45.22, orderCount: 4, avgUnitPrice: 11.3, totalDiscount: 0,
+    };
+    const shopifyMarketplaceRows = buildShopifyMarketplaceRows([redcareProduct]);
+    render(
+      <ProductsPerformanceTable
+        groups={groups} groupBy="paese" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()}
+        shopifyMarketplaceRows={shopifyMarketplaceRows}
+      />
+    );
+    // One merged "IT" row, not two separate Amazon.it / Redcare IT rows.
+    expect(screen.getAllByText(/^IT$/).length).toBe(1);
+    await user.click(screen.getByRole("button", { name: /espandi it/i }));
+    expect(screen.getByText(/amazon\.it/i)).toBeInTheDocument();
+    expect(screen.getByText(/redcare it/i)).toBeInTheDocument();
+  });
+
+  it("keeps a channel with no recognizable country code (e.g. eBay) in its own bucket when grouping by Paese", () => {
+    const ebayProduct: ProductPerformance = {
+      shopifyProductId: "gid://shopify/Product/2", productTitle: "Naturplan ABC", sku: "ABC",
+      imageUrl: null, marketplace: "EBAY", unitsSold: 1, grossRevenue: 10, refundedAmount: 0,
+      netRevenue: 10, orderCount: 1, avgUnitPrice: 10, totalDiscount: 0,
+    };
+    const shopifyMarketplaceRows = buildShopifyMarketplaceRows([ebayProduct]);
+    render(
+      <ProductsPerformanceTable
+        groups={[]} groupBy="paese" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()}
+        shopifyMarketplaceRows={shopifyMarketplaceRows}
+      />
+    );
+    expect(screen.getByText(/ebay/i)).toBeInTheDocument();
+  });
+
+  it("shows a thumbnail on the product-mode parent row for a resolved ASIN", async () => {
+    mockCatalogImages.mockResolvedValue({ B0ABC123: "https://example.com/img.jpg" });
+    const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    await vi.waitFor(() => expect(container.querySelector("img")).toBeInTheDocument());
+    expect(container.querySelector("img")).toHaveAttribute("src", "https://example.com/img.jpg");
+  });
+
+  it("downloads a CSV of the visible rows when Esporta is clicked", () => {
+    const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+    const revokeObjectURLSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /esporta/i }));
+
+    expect(createObjectURLSpy).toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalled();
+    createObjectURLSpy.mockRestore();
+    revokeObjectURLSpy.mockRestore();
+    clickSpy.mockRestore();
+  });
+});
+
+describe("buildProductsCsv", () => {
+  it("builds a header row and one data row per entry, with the entry's own metrics", () => {
+    const csv = buildProductsCsv([
+      { key: "p1", label: "Resveratrolo 500mg", metrics: baseRow },
+    ]);
+    const lines = csv.split("\n");
+    expect(lines[0]).toContain("Ricavi");
+    expect(lines[1]).toContain("Resveratrolo 500mg");
+    expect(lines[1]).toContain("200.00");
   });
 });
