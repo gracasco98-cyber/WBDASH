@@ -32,15 +32,17 @@ const mockProducts = vi.fn(async (_params: unknown) => ({
   products: [{ grossRevenue: 40, unitsSold: 2 }],
   kpis: { totalGross: 40, totalNet: 35, totalAdSpend: 6 },
 }));
+const mockTimeseries = vi.fn(async (_params: unknown) => [] as { time: string; revenue: number; count: number }[]);
 vi.mock("@/lib/api", () => ({
   api: {
     productPerformance: { get: (params: unknown) => mockGet(params) },
     products: (params: unknown) => mockProducts(params),
+    amazon: { timeseries: (params: unknown) => mockTimeseries(params) },
   },
 }));
 
 describe("PeriodTiles", () => {
-  beforeEach(() => { mockGet.mockClear(); mockProducts.mockClear(); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; mockCompareMode = "none"; });
+  beforeEach(() => { mockGet.mockClear(); mockProducts.mockClear(); mockTimeseries.mockClear(); mockTimeseries.mockResolvedValue([]); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; mockCompareMode = "none"; });
 
   it("fetches 5 fixed presets independently of the active period", async () => {
     render(<PeriodTiles />);
@@ -270,6 +272,42 @@ describe("PeriodTiles", () => {
 
     expect(await screen.findByRole("button", { name: /^7 giorni$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /mese in corso/i })).not.toBeInTheDocument();
+  });
+
+  describe("sparklines", () => {
+    it("fetches a daily timeseries for multi-day tiles but not for single-day ones (Oggi/Ieri)", async () => {
+      render(<PeriodTiles />);
+      await screen.findAllByText(/€/);
+      await vi.waitFor(() => expect(mockTimeseries).toHaveBeenCalled());
+
+      // 3 multi-day tiles in the default "days" set: 7/14/30 giorni.
+      expect(mockTimeseries).toHaveBeenCalledTimes(3);
+      for (const [params] of mockTimeseries.mock.calls as [any][]) {
+        expect(params.from).not.toBe(params.to);
+      }
+    });
+
+    it("renders a sparkline for a multi-day tile once its timeseries resolves", async () => {
+      mockTimeseries.mockResolvedValue([
+        { time: "2026-09-01", revenue: 10, count: 1 },
+        { time: "2026-09-02", revenue: 20, count: 2 },
+      ]);
+      const { container } = render(<PeriodTiles />);
+      await screen.findAllByText(/€/);
+      await vi.waitFor(() => expect(container.querySelector("[data-sparkline]")).toBeInTheDocument());
+    });
+
+    it("does not render a sparkline for single-day tiles (Oggi/Ieri)", async () => {
+      mockTimeseries.mockResolvedValue([
+        { time: "2026-09-01", revenue: 10, count: 1 },
+        { time: "2026-09-02", revenue: 20, count: 2 },
+      ]);
+      const { container } = render(<PeriodTiles />);
+      await screen.findAllByText(/€/);
+      await vi.waitFor(() => expect(mockTimeseries).toHaveBeenCalled());
+      const oggiTile = screen.getByRole("button", { name: /^oggi$/i });
+      expect(oggiTile.querySelector("[data-sparkline]")).not.toBeInTheDocument();
+    });
   });
 
   describe("monthly set — Proiezione mese (forecast) and always-on per-tile comparison", () => {

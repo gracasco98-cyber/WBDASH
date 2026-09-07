@@ -4,7 +4,7 @@ import type { ProductPerformanceGroup, ProductPerformanceRow, ProductPerformance
 import { api } from "@/lib/api";
 import { getMeta } from "@/lib/marketplaces";
 import MetricRow, { fmtEur } from "./MetricRow";
-import { ChevronDown, ChevronRight, CornerDownRight, Pencil, Search, Download, Table2, PackageSearch } from "lucide-react";
+import { ChevronDown, ChevronRight, CornerDownRight, Pencil, Search, Download, Table2, PackageSearch, Columns3 } from "lucide-react";
 
 export type GroupBy = "marketplace" | "product" | "brand" | "paese";
 
@@ -32,6 +32,30 @@ const COLUMNS = [
   "Fee Amazon", "COGS", "Profitto lordo", "Profitto netto", "Payout stimato",
   "Margine", "ROI", "ACOS reale", "Prezzo medio", "BSR", "Stock",
 ];
+
+/** Mirrors the thead's group-header colSpan grouping — used to shrink (or
+ *  hide entirely) a group header when the "Colonne" picker hides one or
+ *  more of its member columns. */
+const COLUMN_GROUPS: { label: string; className: string; columns: string[] }[] = [
+  { label: "Volume", className: "", columns: ["Unità", "Resi", "Ricavi"] },
+  { label: "Vendite", className: "text-accent-blue/80", columns: ["Promo", "Ads", "% Resi"] },
+  { label: "Costi", className: "text-accent-red/80", columns: ["Fee Amazon", "COGS"] },
+  { label: "Risultato", className: "text-accent-primary/90", columns: ["Profitto lordo", "Profitto netto", "Payout stimato", "Margine"] },
+  { label: "Efficienza", className: "text-accent-purple/80", columns: ["ROI", "ACOS reale", "Prezzo medio"] },
+  { label: "Inventario", className: "text-accent-amber/90", columns: ["BSR", "Stock"] },
+];
+
+const HIDDEN_COLUMNS_STORAGE_KEY = "products_table_hidden_columns_v1";
+
+function loadHiddenColumns(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
 
 export interface RowEntry {
   key: string;
@@ -334,6 +358,17 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
   const [targetProductId, setTargetProductId] = useState("");
   const [images, setImages] = useState<Record<string, string | null>>({});
   const [search, setSearch] = useState("");
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => loadHiddenColumns());
+  const [columnsPickerOpen, setColumnsPickerOpen] = useState(false);
+
+  const toggleColumn = (column: string) => {
+    setHiddenColumns((prev) => {
+      const next = new Set(prev);
+      next.has(column) ? next.delete(column) : next.add(column);
+      try { window.localStorage.setItem(HIDDEN_COLUMNS_STORAGE_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   const rows = groupBy === "product"
     ? buildRowsByProduct(groups)
@@ -522,6 +557,29 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
           >
             <Download size={13} /> Esporta
           </button>
+          <div className="relative">
+            <button
+              onClick={() => setColumnsPickerOpen((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-bg-border px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:bg-bg-hover transition-colors"
+            >
+              <Columns3 size={13} /> Colonne
+            </button>
+            {columnsPickerOpen && (
+              <div className="absolute right-0 top-full mt-1 z-30 w-56 max-h-72 overflow-y-auto rounded-lg border border-bg-border bg-bg-card shadow-xl p-2 space-y-1">
+                {COLUMNS.slice(1).map((c) => (
+                  <label key={c} className="flex items-center gap-2 px-2 py-1 text-xs text-zinc-300 rounded hover:bg-bg-hover cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!hiddenColumns.has(c)}
+                      onChange={() => toggleColumn(c)}
+                      aria-label={c}
+                    />
+                    {c}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -530,21 +588,22 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
           <thead>
             <tr className="text-[9px] uppercase tracking-wider text-zinc-500 text-left bg-bg-hover/80 border-b border-bg-border">
               <th className="sticky left-0 z-20 bg-bg-hover/95 px-2.5 py-1.5 font-semibold text-zinc-500" rowSpan={2}>Identità</th>
-              <th className="px-2.5 py-1.5 text-center font-semibold" colSpan={3}>Volume</th>
-              <th className="px-2.5 py-1.5 text-center font-semibold text-accent-blue/80" colSpan={3}>Vendite</th>
-              <th className="px-2.5 py-1.5 text-center font-semibold text-accent-red/80" colSpan={2}>Costi</th>
-              <th className="px-2.5 py-1.5 text-center font-semibold text-accent-primary/90" colSpan={4}>Risultato</th>
-              <th className="px-2.5 py-1.5 text-center font-semibold text-accent-purple/80" colSpan={3}>Efficienza</th>
-              <th className="px-2.5 py-1.5 text-center font-semibold text-accent-amber/90" colSpan={2}>Inventario</th>
+              {COLUMN_GROUPS.map(({ label, className, columns }) => {
+                const visibleCount = columns.filter((c) => !hiddenColumns.has(c)).length;
+                if (visibleCount === 0) return null;
+                return (
+                  <th key={label} className={`px-2.5 py-1.5 text-center font-semibold ${className}`} colSpan={visibleCount}>{label}</th>
+                );
+              })}
             </tr>
             <tr className="text-zinc-500 text-left bg-bg-hover border-b border-bg-border">
-              {COLUMNS.slice(1).map((c) => <th key={c} className="px-2.5 py-2.5 font-medium">{c}</th>)}
+              {COLUMNS.slice(1).filter((c) => !hiddenColumns.has(c)).map((c) => <th key={c} className="px-2.5 py-2.5 font-medium">{c}</th>)}
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={COLUMNS.length} className="py-14 text-center">
+                <td colSpan={COLUMNS.length - hiddenColumns.size} className="py-14 text-center">
                   <PackageSearch size={26} className="mx-auto mb-2 text-zinc-400" />
                   <p className="text-sm font-medium text-zinc-600">Nessun dato nel periodo selezionato</p>
                   <p className="mt-1 text-[11px] text-zinc-500">Prova a cambiare periodo o marketplace.</p>
@@ -554,9 +613,9 @@ export default function ProductsPerformanceTable({ groups, groupBy, onGroupByCha
               const isOpen = expanded.has(entry.key);
               return (
                 <Fragment key={entry.key}>
-                  <MetricRow label={parentLabel(entry, isOpen)} metrics={entry.metrics} />
+                  <MetricRow label={parentLabel(entry, isOpen)} metrics={entry.metrics} hiddenColumns={hiddenColumns} />
                   {isOpen && entry.children?.map((child) => (
-                    <MetricRow key={child.key} label={childLabel(child)} metrics={child.metrics} isChild />
+                    <MetricRow key={child.key} label={childLabel(child)} metrics={child.metrics} isChild hiddenColumns={hiddenColumns} />
                   ))}
                 </Fragment>
               );

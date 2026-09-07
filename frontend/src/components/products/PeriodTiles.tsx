@@ -277,6 +277,24 @@ function VariationBadge({
   );
 }
 
+/** Plain SVG polyline — the whole daily trend for a multi-day tile is a
+ *  handful of points, not worth pulling in a charting library for. */
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  if (values.length < 2) return null;
+  const w = 100, h = 24;
+  const max = Math.max(...values, 0);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const points = values
+    .map((v, i) => `${(i / (values.length - 1)) * w},${h - ((v - min) / range) * h}`)
+    .join(" ");
+  return (
+    <svg data-sparkline width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block">
+      <polyline points={points} fill="none" stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
 /** Exported for direct unit testing: the hasRealFees / hasRealCogs / hasStockData
  *  flags it computes are not surfaced in this component's UI, so they are
  *  otherwise unobservable. */
@@ -506,6 +524,34 @@ export default function PeriodTiles() {
     };
   }, [productMarketplace, amazonAccountId, state.compareMode, activeTiles]);
 
+  // Daily revenue trend for multi-day tiles only — a single-day tile (Oggi,
+  // Ieri) has nothing to draw a line across. Amazon-only (this endpoint has
+  // no Shopify equivalent), same tradeoff as the comparison badges above.
+  const [sparklines, setSparklines] = useState<Record<string, number[]>>({});
+  useEffect(() => {
+    const multiDayTiles = activeTiles.filter((t) => {
+      const { from, to } = presetDateRange(t.preset);
+      return from !== to;
+    });
+    if (multiDayTiles.length === 0) { setSparklines({}); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const results = await Promise.all(
+          multiDayTiles.map(async ({ id, preset }) => {
+            const { from, to } = presetDateRange(preset);
+            const points = await api.amazon.timeseries({ marketplace: productMarketplace, from, to });
+            return [id, points.map((p) => p.revenue)] as const;
+          })
+        );
+        if (!cancelled) setSparklines(Object.fromEntries(results));
+      } catch (err) {
+        if (!cancelled) console.error("[PeriodTiles] Failed to load sparklines:", err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [productMarketplace, activeTiles]);
+
   return (
     <div className="space-y-2.5">
       <div className="flex items-center gap-1 justify-end">
@@ -646,6 +692,7 @@ export default function PeriodTiles() {
                     </span>
                     <span>{hasAny ? `${combinedUnits} unità` : "—"}</span>
                   </div>
+                  {sparklines[id] && <div className="mt-1.5"><Sparkline values={sparklines[id]} color={accent} /></div>}
                 </div>
                 <div className="px-1">
                   <div className="flex items-center justify-between text-zinc-500 text-[10px] uppercase tracking-[0.08em]">

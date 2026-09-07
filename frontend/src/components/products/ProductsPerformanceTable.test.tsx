@@ -346,6 +346,48 @@ describe("ProductsPerformanceTable", () => {
   });
 });
 
+describe("ProductsPerformanceTable — column visibility (Colonne)", () => {
+  beforeEach(() => {
+    mockCatalogImages.mockClear();
+    mockCatalogImages.mockResolvedValue({});
+    localStorage.clear();
+  });
+
+  it("hides a column's header and cells once unchecked in the Colonne picker", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    expect(screen.getByRole("columnheader", { name: "BSR" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /colonne/i }));
+    await user.click(screen.getByRole("checkbox", { name: "BSR" }));
+
+    expect(screen.queryByRole("columnheader", { name: "BSR" })).not.toBeInTheDocument();
+  });
+
+  it("shrinks the group header's colSpan when one of its columns is hidden", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    const inventarioHeader = () => Array.from(container.querySelectorAll("thead tr:first-child th")).find((th) => th.textContent === "Inventario")!;
+    expect(inventarioHeader().getAttribute("colSpan")).toBe("2");
+
+    await user.click(screen.getByRole("button", { name: /colonne/i }));
+    await user.click(screen.getByRole("checkbox", { name: "BSR" }));
+
+    expect(inventarioHeader().getAttribute("colSpan")).toBe("1");
+  });
+
+  it("persists hidden columns across remounts (localStorage)", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /colonne/i }));
+    await user.click(screen.getByRole("checkbox", { name: "BSR" }));
+    unmount();
+
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    expect(screen.queryByRole("columnheader", { name: "BSR" })).not.toBeInTheDocument();
+  });
+});
+
 describe("buildProductsCsv", () => {
   it("builds a header row and one data row per entry, with the entry's own metrics", () => {
     const csv = buildProductsCsv([

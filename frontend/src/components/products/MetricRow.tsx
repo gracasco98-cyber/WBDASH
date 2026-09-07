@@ -42,6 +42,10 @@ interface MetricRowProps {
   label: React.ReactNode;
   metrics: ProductPerformanceRow;
   isChild?: boolean;
+  /** Column names (matching COLUMNS in ProductsPerformanceTable, e.g.
+   *  "Fee Amazon") to omit from this row — driven by the "Colonne" picker.
+   *  The label cell is never hideable. */
+  hiddenColumns?: Set<string>;
 }
 
 /**
@@ -51,60 +55,47 @@ interface MetricRowProps {
  */
 const NO_COST_DATA_TITLE = "Costi non tracciati per questo canale";
 
-export default function MetricRow({ label, metrics: m, isChild = false }: MetricRowProps) {
+export default function MetricRow({ label, metrics: m, isChild = false, hiddenColumns }: MetricRowProps) {
   const estimated = isEstimated(m);
   // Distinct from "estimated": for non-Amazon channels there is no fee/COGS
   // tracking at all yet, so showing a computed profit (fees/cogs=0) would be
   // a fabricated 100%-margin figure, not a real estimate.
   const hasCostData = m.costDataAvailable !== false;
+  const noCost = <span title={NO_COST_DATA_TITLE}>—</span>;
+
+  const cells: { column: string; node: React.ReactNode }[] = [
+    { column: "Unità", node: m.units },
+    { column: "Resi", node: fmtEur(m.refundsAmount) },
+    { column: "Ricavi", node: fmtEur(m.sales) },
+    { column: "Promo", node: fmtEur(m.promo) },
+    { column: "Ads", node: dash(m.adsSpend, fmtEur) },
+    { column: "% Resi", node: fmtPct(m.refundPct) },
+    {
+      column: "Fee Amazon",
+      node: hasCostData ? (<>{fmtEur(m.amazonFees)}{!m.hasRealFees && <EstimateBadge title="Stimato — settlement non ancora disponibile" />}</>) : noCost,
+    },
+    {
+      column: "COGS",
+      node: hasCostData ? (<>{fmtEur(m.cogs)}{!m.hasRealCogs && <EstimateBadge title="Stimato — nessun COGS configurato per questo ASIN" />}</>) : noCost,
+    },
+    { column: "Profitto lordo", node: hasCostData ? <><span className={`font-semibold ${profitClass(m.grossProfit)}`}>{fmtEur(m.grossProfit)}</span>{estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}</> : noCost },
+    { column: "Profitto netto", node: hasCostData ? <><span className={`font-semibold ${profitClass(m.netProfit)}`}>{fmtEur(m.netProfit)}</span>{estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}</> : noCost },
+    { column: "Payout stimato", node: hasCostData ? fmtEur(m.estimatedPayout) : noCost },
+    { column: "Margine", node: hasCostData ? <><span className={`font-semibold ${profitClass(m.margin)}`}>{fmtPct(m.margin)}</span>{estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}</> : noCost },
+    { column: "ROI", node: hasCostData ? <><span className={`font-semibold ${profitClass(m.roi)}`}>{fmtPct(m.roi)}</span>{estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}</> : noCost },
+    { column: "ACOS reale", node: dash(m.realAcos, fmtPct) },
+    { column: "Prezzo medio", node: fmtEur(m.avgSellingPrice) },
+    { column: "BSR", node: dash(m.bsr, (n) => String(n)) },
+    // stock 0 with no inventory row means "unknown", not "zero units"
+    { column: "Stock", node: m.hasStockData ? m.stock : "—" },
+  ];
+
   return (
     <tr className={isChild ? "bg-bg-hover/50" : "border-b border-bg-border/60"}>
       <MetricCell className="sticky left-0 z-10 bg-bg-card border-r border-bg-border/70 font-medium">{label}</MetricCell>
-      <MetricCell>{m.units}</MetricCell>
-      <MetricCell>{fmtEur(m.refundsAmount)}</MetricCell>
-      <MetricCell>{fmtEur(m.sales)}</MetricCell>
-      <MetricCell>{fmtEur(m.promo)}</MetricCell>
-      <MetricCell>{dash(m.adsSpend, fmtEur)}</MetricCell>
-      <MetricCell>{fmtPct(m.refundPct)}</MetricCell>
-      {hasCostData ? (
-        <>
-          <MetricCell>
-            {fmtEur(m.amazonFees)}
-            {!m.hasRealFees && <EstimateBadge title="Stimato — settlement non ancora disponibile" />}
-          </MetricCell>
-          <MetricCell>
-            {fmtEur(m.cogs)}
-            {!m.hasRealCogs && <EstimateBadge title="Stimato — nessun COGS configurato per questo ASIN" />}
-          </MetricCell>
-          <ProfitCell value={m.grossProfit} fmt={fmtEur} estimated={estimated} />
-          <ProfitCell value={m.netProfit} fmt={fmtEur} estimated={estimated} />
-        </>
-      ) : (
-        <>
-          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
-          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
-          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
-          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
-        </>
-      )}
-      {hasCostData ? (
-        <>
-          <MetricCell>{fmtEur(m.estimatedPayout)}</MetricCell>
-          <ProfitCell value={m.margin} fmt={fmtPct} estimated={estimated} />
-          <ProfitCell value={m.roi} fmt={fmtPct} estimated={estimated} />
-        </>
-      ) : (
-        <>
-          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
-          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
-          <MetricCell><span title={NO_COST_DATA_TITLE}>—</span></MetricCell>
-        </>
-      )}
-      <MetricCell>{dash(m.realAcos, fmtPct)}</MetricCell>
-      <MetricCell>{fmtEur(m.avgSellingPrice)}</MetricCell>
-      <MetricCell>{dash(m.bsr, (n) => String(n))}</MetricCell>
-      {/* stock 0 with no inventory row means "unknown", not "zero units" */}
-      <MetricCell>{m.hasStockData ? m.stock : "—"}</MetricCell>
+      {cells.filter((c) => !hiddenColumns?.has(c.column)).map((c) => (
+        <MetricCell key={c.column}>{c.node}</MetricCell>
+      ))}
     </tr>
   );
 }
