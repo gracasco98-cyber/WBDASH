@@ -553,11 +553,11 @@ export default function PeriodTiles() {
   }, [productMarketplace, activeTiles]);
 
   return (
-    <div className="space-y-2.5">
-      <div className="flex items-center gap-1 justify-end px-1">
+    <div className="space-y-2">
+      <div className="flex items-center gap-1 justify-end px-1 pb-0.5">
         <button
           onClick={() => setTileSet("days")}
-          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+          className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
             tileSet === "days"
               ? "bg-accent-primary/15 text-accent-primary"
               : "text-zinc-500 hover:text-zinc-300"
@@ -567,7 +567,7 @@ export default function PeriodTiles() {
         </button>
         <button
           onClick={() => setTileSet("monthly")}
-          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+          className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
             tileSet === "monthly"
               ? "bg-accent-primary/15 text-accent-primary"
               : "text-zinc-500 hover:text-zinc-300"
@@ -674,8 +674,8 @@ export default function PeriodTiles() {
                   <span className="truncate">{tileDateLabel(tile)}</span>
                 </div>
               </div>
-              <div className="flex w-full flex-none flex-col gap-1.5 px-2 py-2">
-                <div className="rounded-[9px] border border-bg-border/70 bg-accent-blue/10 px-2.5 py-2">
+              <div className="flex w-full flex-none flex-col gap-2 px-2.5 py-2.5">
+                <div className="rounded-[9px] border border-bg-border/70 bg-accent-blue/10 px-2.5 py-2.5">
                   <div
                     className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.1em]"
                     style={{ color: accent }}
@@ -694,7 +694,7 @@ export default function PeriodTiles() {
                   </div>
                   {sparklines[id] && <div className="mt-1.5"><Sparkline values={sparklines[id]} color={accent} /></div>}
                 </div>
-                <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
+                <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2.5">
                   <div className="flex items-center justify-between text-zinc-500 text-[10px] uppercase tracking-[0.08em]">
                     <span>Profitto netto</span>
                     <VariationBadge variation={profitVariation} dark />
@@ -705,8 +705,8 @@ export default function PeriodTiles() {
                     {hasAny ? fmtEur(combinedNetProfit) : "—"}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
                       Costi
                     </div>
@@ -714,7 +714,7 @@ export default function PeriodTiles() {
                       {hasAny ? fmtEur(combinedCosts) : "—"}
                     </div>
                   </div>
-                  <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2 py-1.5">
+                  <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
                       VAT
                     </div>
@@ -723,7 +723,7 @@ export default function PeriodTiles() {
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] px-0.5">
                   <div>
                     <div className="text-zinc-500 text-[10px]">Unità</div>
                     <div className="text-zinc-300 tabular-nums">
