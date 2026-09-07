@@ -22,6 +22,7 @@ import { usePeriodFilter } from "@/hooks/usePeriodFilter";
 import { getDateRangeForPreset } from "@/lib/periodUtils";
 import {
   RefreshCw, Eye, EyeOff, ChevronDown, RotateCcw, Activity,
+  MessageCircle, Warehouse, ListChecks, Box, MoreHorizontal, LayoutGrid,
 } from "lucide-react";
 import AppHeader from "@/components/layout/AppHeader";
 import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
@@ -417,13 +418,13 @@ export default function DashboardPage() {
         <GlobalSidebar />
         <div className="flex-1 min-w-0">
 
-      <main className="max-w-[1600px] px-4 md:px-6 py-4 md:py-6 space-y-4 md:space-y-6 overflow-x-hidden">
+      <main className="max-w-[1600px] px-3 md:px-6 pt-3 pb-20 md:py-6 space-y-4 md:space-y-6 overflow-x-hidden">
 
         <StuckOrdersBanner />
 
         {/* ── Filter Bar ─────────────────────────────────────────────────────── */}
         <section className="rounded-2xl border border-bg-border bg-bg-card shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-bg-border/70">
+          <div className="hidden md:flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-bg-border/70">
             <div className="flex items-center gap-2.5">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent-primary/10 text-accent-primary">
                 <Activity size={16} />
@@ -438,7 +439,7 @@ export default function DashboardPage() {
               {loading ? "Aggiornamento in corso" : `Aggiornato alle ${clockTime ? lastRefresh.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "--:--"}`}
             </div>
           </div>
-          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 px-4 py-3 bg-bg-hover/35 rounded-b-2xl">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 px-2 py-2 md:px-4 md:py-3 bg-bg-hover/35 rounded-b-2xl">
             <FilterBar
               marketplace={marketplace} setMarketplace={setMarketplace}
               status={status} setStatus={setStatus}
@@ -612,6 +613,28 @@ export default function DashboardPage() {
 
         </div>{/* end flex-1 content wrapper */}
       </div>{/* end flex sidebar layout */}
+
+      {/* Mobile quick navigation mirrors the approved dashboard composition and
+          keeps the primary modules reachable without opening the drawer. */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[60px] items-center justify-around border-t border-bg-border bg-bg-card/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
+        {[
+          { href: "/", label: "Dashboard", Icon: LayoutGrid },
+          { href: "/chat", label: "Chat", Icon: MessageCircle },
+          { href: "/amazon/inventory", label: "Magazzino", Icon: Warehouse },
+          { href: "/acquisti/anagrafiche", label: "Anagrafica", Icon: ListChecks },
+          { href: "/amazon/cogs", label: "COGS", Icon: Box },
+          { href: "/task-manager", label: "Altro", Icon: MoreHorizontal },
+        ].map(({ href, label, Icon }, index) => (
+          <Link
+            key={href}
+            href={href}
+            className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 py-1 text-[9px] font-medium ${index === 0 ? "text-accent-amber" : "text-zinc-500"}`}
+          >
+            <Icon size={18} strokeWidth={index === 0 ? 2.4 : 1.8} />
+            <span className="truncate">{label}</span>
+          </Link>
+        ))}
+      </nav>
 
       {/* ── Hourly channel breakdown modal ──────────────────────────────── */}
       <HourChannelModal

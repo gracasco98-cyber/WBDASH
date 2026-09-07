@@ -38,9 +38,9 @@ export default function FilterBar({
   selectedProduct, onSelectProduct,
 }: Props) {
   return (
-    <div className="flex flex-wrap items-center gap-2 w-full max-w-full flex-1" aria-label="Filtri dashboard">
+    <div className="flex flex-nowrap items-center gap-2 w-full max-w-full flex-1 overflow-x-auto scrollbar-hide sm:flex-wrap" aria-label="Filtri dashboard">
       {/* Marketplace select — grouped: Amazon / Sito */}
-      <label className="relative flex items-center min-w-0 w-full sm:w-auto">
+      <label className="relative flex items-center min-w-0 w-[170px] shrink-0 sm:w-auto">
         <ShoppingBag size={14} className="absolute left-3 text-accent-primary pointer-events-none" />
         <select
           value={marketplace}
@@ -75,7 +75,7 @@ export default function FilterBar({
       </label>
 
       {/* Status select */}
-      <label className="relative flex items-center min-w-0 w-full sm:w-auto">
+      <label className="relative flex items-center min-w-0 w-[145px] shrink-0 sm:w-auto">
         <CheckCircle size={14} className="absolute left-3 text-accent-primary pointer-events-none" />
         <select
           value={status}
@@ -90,7 +90,7 @@ export default function FilterBar({
 
       {/* Product search — positioned on the right */}
       {onSelectProduct && (
-        <div className="ml-auto min-w-0 w-full sm:w-auto">
+        <div className="ml-auto min-w-0 w-[170px] shrink-0 sm:w-auto">
           <ProductSearchBar
             onSelect={onSelectProduct}
             selected={selectedProduct ?? null}
