@@ -175,7 +175,7 @@ export default function GlobalPeriodSelector() {
       {/* Main button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 rounded-lg border border-bg-border bg-bg-card text-white hover:bg-white/[0.02] transition-colors"
+        className="hidden w-full items-center justify-center gap-2 rounded-lg border border-bg-border bg-bg-card px-4 py-2 text-white transition-colors hover:bg-white/[0.02] md:flex md:w-auto"
       >
         <Calendar size={14} />
         <span className="text-xs font-medium">{currentLabel}</span>
