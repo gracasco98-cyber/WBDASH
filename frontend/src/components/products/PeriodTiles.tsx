@@ -470,7 +470,10 @@ export default function PeriodTiles() {
                 sales: kpis.totalGross,
                 units: products.reduce((s, p) => s + p.unitsSold, 0),
                 netProfit: kpis.totalNet,
-                adSpend: kpis.totalAdSpend ?? 0,
+                // /api/products returns Shopify/Redcare net after its daily
+                // MarketplaceAdSpend rows. Prefer the explicit Redcare field
+                // while retaining the fallback for older API deployments.
+                adSpend: kpis.redcareAdSpend ?? kpis.totalAdSpend ?? 0,
               },
             ] as const;
           }),

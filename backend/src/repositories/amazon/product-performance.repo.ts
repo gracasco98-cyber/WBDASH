@@ -56,8 +56,12 @@ function deriveMetrics(base: {
   sales: number; refundsAmount: number; amazonFees: number; cogs: number; adsSpend: number | null; units: number;
 }): { grossProfit: number; netProfit: number; estimatedPayout: number; margin: number; roi: number; avgSellingPrice: number } {
   const ads = base.adsSpend ?? 0;
-  const grossProfit = base.sales - base.refundsAmount - base.amazonFees - base.cogs - ads;
-  const netProfit = grossProfit; // Expenses feature not built in this phase — netto = lordo (spec §Scope)
+  // Gross profit stops at marketplace fees and COGS. Advertising is a selling
+  // expense and belongs only in net profit; subtracting it from both values
+  // made the product table understate gross margin and then effectively count
+  // Ads twice when the dashboard combined channels.
+  const grossProfit = base.sales - base.refundsAmount - base.amazonFees - base.cogs;
+  const netProfit = grossProfit - ads;
   const estimatedPayout = base.sales - base.refundsAmount - base.amazonFees - ads;
   const margin = base.sales > 0 ? netProfit / base.sales : 0;
   const roi = base.cogs > 0 ? netProfit / base.cogs : 0;

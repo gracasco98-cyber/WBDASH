@@ -128,6 +128,10 @@ router.get("/", async (req: Request, res: Response) => {
         totalGross:   Number(orderKpis[0]?.gross   ?? 0),
         totalNet:     Number(orderKpis[0]?.net     ?? 0) - totalAdSpend,
         totalAdSpend,
+        // All manually maintained MarketplaceAdSpend rows currently represent
+        // Redcare (IT/DE). Keep the explicit field so dashboard consumers can
+        // distinguish this daily channel cost from future ad sources.
+        redcareAdSpend: totalAdSpend,
         totalUnits:   products.reduce((s, p) => s + p.unitsSold, 0),
         totalRefunds: Number(orderKpis[0]?.refunds ?? 0),
         productCount: products.length,
