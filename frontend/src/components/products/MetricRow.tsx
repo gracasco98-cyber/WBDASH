@@ -42,6 +42,8 @@ interface MetricRowProps {
   label: React.ReactNode;
   metrics: ProductPerformanceRow;
   isChild?: boolean;
+  /** Optional inline VAT-rate editor rendered beside the COGS value. */
+  vatEditor?: React.ReactNode;
   /** Column names (matching COLUMNS in ProductsPerformanceTable, e.g.
    *  "Fee Amazon") to omit from this row — driven by the "Colonne" picker.
    *  The label cell is never hideable. */
@@ -55,7 +57,13 @@ interface MetricRowProps {
  */
 const NO_COST_DATA_TITLE = "Costi non tracciati per questo canale";
 
-export default function MetricRow({ label, metrics: m, isChild = false, hiddenColumns }: MetricRowProps) {
+export default function MetricRow({
+  label,
+  metrics: m,
+  isChild = false,
+  hiddenColumns,
+  vatEditor,
+}: MetricRowProps) {
   const estimated = isEstimated(m);
   // Distinct from "estimated": for non-Amazon channels there is no fee/COGS
   // tracking at all yet, so showing a computed profit (fees/cogs=0) would be
@@ -72,17 +80,87 @@ export default function MetricRow({ label, metrics: m, isChild = false, hiddenCo
     { column: "% Resi", node: fmtPct(m.refundPct) },
     {
       column: "Fee Amazon",
-      node: hasCostData ? (<>{fmtEur(m.amazonFees)}{!m.hasRealFees && <EstimateBadge title="Stimato — settlement non ancora disponibile" />}</>) : noCost,
+      node: hasCostData ? (
+        <>
+          {fmtEur(m.amazonFees)}
+          {!m.hasRealFees && (
+            <EstimateBadge title="Stimato — settlement non ancora disponibile" />
+          )}
+        </>
+      ) : (
+        noCost
+      ),
     },
     {
       column: "COGS",
-      node: hasCostData ? (<>{fmtEur(m.cogs)}{!m.hasRealCogs && <EstimateBadge title="Stimato — nessun COGS configurato per questo ASIN" />}</>) : noCost,
+      node: hasCostData ? (
+        <>
+          {fmtEur(m.cogs)}
+          {!m.hasRealCogs && (
+            <EstimateBadge title="Stimato — nessun COGS configurato per questo ASIN" />
+          )}
+          {vatEditor}
+        </>
+      ) : (
+        noCost
+      ),
     },
-    { column: "Profitto lordo", node: hasCostData ? <><span className={`font-semibold ${profitClass(m.grossProfit)}`}>{fmtEur(m.grossProfit)}</span>{estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}</> : noCost },
-    { column: "Profitto netto", node: hasCostData ? <><span className={`font-semibold ${profitClass(m.netProfit)}`}>{fmtEur(m.netProfit)}</span>{estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}</> : noCost },
-    { column: "Payout stimato", node: hasCostData ? fmtEur(m.estimatedPayout) : noCost },
-    { column: "Margine", node: hasCostData ? <><span className={`font-semibold ${profitClass(m.margin)}`}>{fmtPct(m.margin)}</span>{estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}</> : noCost },
-    { column: "ROI", node: hasCostData ? <><span className={`font-semibold ${profitClass(m.roi)}`}>{fmtPct(m.roi)}</span>{estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}</> : noCost },
+    {
+      column: "Profitto lordo",
+      node: hasCostData ? (
+        <>
+          <span className={`font-semibold ${profitClass(m.grossProfit)}`}>
+            {fmtEur(m.grossProfit)}
+          </span>
+          {estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}
+        </>
+      ) : (
+        noCost
+      ),
+    },
+    {
+      column: "Profitto netto",
+      node: hasCostData ? (
+        <>
+          <span className={`font-semibold ${profitClass(m.netProfit)}`}>
+            {fmtEur(m.netProfit)}
+          </span>
+          {estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}
+        </>
+      ) : (
+        noCost
+      ),
+    },
+    {
+      column: "Payout stimato",
+      node: hasCostData ? fmtEur(m.estimatedPayout) : noCost,
+    },
+    {
+      column: "Margine",
+      node: hasCostData ? (
+        <>
+          <span className={`font-semibold ${profitClass(m.margin)}`}>
+            {fmtPct(m.margin)}
+          </span>
+          {estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}
+        </>
+      ) : (
+        noCost
+      ),
+    },
+    {
+      column: "ROI",
+      node: hasCostData ? (
+        <>
+          <span className={`font-semibold ${profitClass(m.roi)}`}>
+            {fmtPct(m.roi)}
+          </span>
+          {estimated && <EstimateBadge title={DERIVED_ESTIMATE_TITLE} />}
+        </>
+      ) : (
+        noCost
+      ),
+    },
     { column: "ACOS reale", node: dash(m.realAcos, fmtPct) },
     { column: "Prezzo medio", node: fmtEur(m.avgSellingPrice) },
     { column: "BSR", node: dash(m.bsr, (n) => String(n)) },
