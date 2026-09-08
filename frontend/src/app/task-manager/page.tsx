@@ -222,10 +222,10 @@ export default function TaskManagerPage() {
                   <Sparkles size={13} /> Workspace operativo
                 </div>
                 <h1 className="text-2xl font-bold text-white mt-1">
-                  Cose da migliorare
+                  Task Manager
                 </h1>
                 <p className="text-xs text-zinc-500 mt-1">
-                  Raccogliamo qui le idee e i problemi da sistemare nella dashboard.
+                  Organizza attività, assegnazioni e scadenze del team.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -239,7 +239,7 @@ export default function TaskManagerPage() {
                   onClick={() => setShowCreate(true)}
                   className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-accent-primary text-white text-xs font-semibold hover:opacity-90"
                 >
-                  <Plus size={15} /> Segnala un miglioramento
+                  <Plus size={15} /> Nuova attività
                 </button>
               </div>
             </div>
@@ -264,7 +264,7 @@ export default function TaskManagerPage() {
                   color: "text-accent-primary",
                 },
                 {
-                  label: "Totale segnalazioni",
+                  label: "Totale attività",
                   value: filtered.length,
                   icon: ListTodo,
                   color: "text-accent-purple",
@@ -293,8 +293,8 @@ export default function TaskManagerPage() {
             <section className="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 border-b border-bg-border">
                 <div>
-                  <h2 className="text-base font-semibold text-white">Cose da migliorare</h2>
-                  <p className="text-xs text-zinc-500 mt-1">Bacheca condivisa: ogni utente può aggiungere una segnalazione e marcarla con ✓ quando è risolta.</p>
+                  <h2 className="text-base font-semibold text-white">Attività del team</h2>
+                  <p className="text-xs text-zinc-500 mt-1">Bacheca condivisa: assegna attività, aggiungi scadenze e aggiorna lo stato.</p>
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-zinc-500">
                   <span className="inline-flex items-center gap-1.5"><X size={13} className="text-accent-amber" /> Aperta</span>
@@ -319,7 +319,7 @@ export default function TaskManagerPage() {
                     </div>
                   </div>
                 ))}
-                {filtered.length === 0 && <div className="px-4 py-14 text-center"><CheckCircle2 size={28} className="mx-auto text-zinc-700 mb-2" /><p className="text-sm text-zinc-400">Nessuna cosa da migliorare</p><p className="text-xs text-zinc-600 mt-1">Aggiungi la prima segnalazione per il team (nessun task).</p></div>}
+                {filtered.length === 0 && <div className="px-4 py-14 text-center"><CheckCircle2 size={28} className="mx-auto text-zinc-700 mb-2" /><p className="text-sm text-zinc-400">Nessuna attività</p><p className="text-xs text-zinc-600 mt-1">Crea la prima attività per il team.</p></div>}
               </div>
             </section>
             {showLegacyTaskLayout && selected && (<div>
@@ -600,7 +600,7 @@ export default function TaskManagerPage() {
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="w-full max-w-lg rounded-2xl bg-bg-card border border-bg-border shadow-2xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-white">Segnala un miglioramento</h2>
+              <h2 className="text-base font-semibold text-white">Nuova attività</h2>
               <button onClick={() => setShowCreate(false)}>
                 <X size={16} className="text-zinc-500" />
               </button>
@@ -609,7 +609,7 @@ export default function TaskManagerPage() {
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Titolo del miglioramento"
+              placeholder="Titolo dell'attività"
               className="w-full px-3 py-2 rounded-lg border border-bg-border bg-bg-hover text-sm text-white mb-2"
             />
             <textarea
@@ -660,7 +660,7 @@ export default function TaskManagerPage() {
               disabled={creating || !title.trim()}
               className="mt-4 w-full py-2.5 rounded-lg bg-accent-primary text-white text-xs font-semibold disabled:opacity-50"
             >
-              {creating ? "Salvataggio..." : "Aggiungi segnalazione"}
+              {creating ? "Salvataggio..." : "Crea attività"}
             </button>
           </div>
         </div>
