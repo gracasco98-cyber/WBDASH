@@ -33,6 +33,7 @@ import { purchaseOrdersRouter } from "./purchasing/routes/purchase-orders.routes
 import { goodsReceiptsRouter } from "./purchasing/routes/goods-receipts.routes";
 import { dashboardRouter } from "./purchasing/routes/dashboard.routes";
 import { paymentDuesRouter } from "./purchasing/routes/payment-dues.routes";
+import { supplierInvoicesRouter } from "./purchasing/routes/supplier-invoices.routes";
 import { businessContactsRouter } from "./purchasing/routes/business-contacts.routes";
 import { bankMovementsRouter } from "./purchasing/routes/bank-movements.routes";
 import miraklRouter from "./routes/mirakl.routes";
@@ -175,6 +176,7 @@ app.use("/api/purchasing", requireAuth, purchaseOrdersRouter);
 app.use("/api/purchasing", requireAuth, goodsReceiptsRouter);
 app.use("/api/purchasing", requireAuth, dashboardRouter);
 app.use("/api/purchasing", requireAuth, paymentDuesRouter);
+app.use("/api/purchasing", requireAuth, supplierInvoicesRouter);
 app.use("/api/mirakl",     requireAuth, miraklRouter);
 app.use("/api/marketing/redcare", requireAuth, marketingRedcareRouter);
 app.use("/api/tasks", requireAuth, tasksRouter);
