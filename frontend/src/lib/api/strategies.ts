@@ -15,6 +15,6 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
 }
 export const strategies = {
   list: () => get<{ strategies: Strategy[] }>("/api/strategies"),
-  analyze: (data: { title: string; fileName: string; mimeType: string; fileSize: number; content: string }) => post<Strategy>("/api/strategies", data),
+  analyze: (data: { title: string; fileName: string; mimeType: string; fileSize: number; content?: string; fileData?: string }) => post<Strategy>("/api/strategies", data),
   setObjectiveDone: (id: string, index: number, completed: boolean) => patch<Strategy>(`/api/strategies/${id}/objectives/${index}`, { completed }),
 };
