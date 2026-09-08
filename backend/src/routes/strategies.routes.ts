@@ -6,6 +6,7 @@ import { prisma } from "../db";
 const router = Router();
 const MAX_TEXT = 180_000;
 let openai: OpenAI | null = null;
+const analysisInFlight = new Set<string>();
 
 function aiClient() {
   if (!openai && process.env.OPENAI_API_KEY) openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -13,13 +14,17 @@ function aiClient() {
 }
 
 function serialize(row: any) {
-  return { ...row, fileSize: Number(row.fileSize), objectives: Array.isArray(row.objectives) ? row.objectives : [], pillars: Array.isArray(row.pillars) ? row.pillars : [], risks: Array.isArray(row.risks) ? row.risks : [], kpis: Array.isArray(row.kpis) ? row.kpis : [], monthlyPlan: Array.isArray(row.monthlyPlan) ? row.monthlyPlan : [] };
+  const { sourceText: _sourceText, ...safeRow } = row;
+  return { ...safeRow, fileSize: Number(row.fileSize), objectives: Array.isArray(row.objectives) ? row.objectives : [], pillars: Array.isArray(row.pillars) ? row.pillars : [], risks: Array.isArray(row.risks) ? row.risks : [], kpis: Array.isArray(row.kpis) ? row.kpis : [], monthlyPlan: Array.isArray(row.monthlyPlan) ? row.monthlyPlan : [] };
 }
 
 async function analyzeStrategy(id: string, title: string, content: string) {
+  if (analysisInFlight.has(id)) return;
+  analysisInFlight.add(id);
   const client = aiClient();
   if (!client) {
     await prisma.strategy.update({ where: { id }, data: { status: "ERROR", analysisError: "OPENAI_API_KEY non configurata sul server." } });
+    analysisInFlight.delete(id);
     return;
   }
   try {
@@ -33,12 +38,15 @@ async function analyzeStrategy(id: string, title: string, content: string) {
   } catch (err) {
     console.error(`[Strategies] AI analysis failed for ${id}:`, err instanceof Error ? err.message : err);
     await prisma.strategy.update({ where: { id }, data: { status: "ERROR", analysisError: err instanceof Error ? err.message.slice(0, 500) : "Errore durante l'analisi AI." } });
+  } finally {
+    analysisInFlight.delete(id);
   }
 }
 
 router.get("/", async (_req: Request, res: Response) => {
   try {
-    const rows = await prisma.strategy.findMany({ orderBy: { updatedAt: "desc" }, select: { id: true, title: true, fileName: true, mimeType: true, fileSize: true, summary: true, coreConcept: true, objectives: true, pillars: true, risks: true, kpis: true, monthlyPlan: true, analysisError: true, status: true, createdAt: true, updatedAt: true } });
+    const rows = await prisma.strategy.findMany({ orderBy: { updatedAt: "desc" }, select: { id: true, title: true, fileName: true, mimeType: true, fileSize: true, sourceText: true, summary: true, coreConcept: true, objectives: true, pillars: true, risks: true, kpis: true, monthlyPlan: true, analysisError: true, status: true, createdAt: true, updatedAt: true } });
+    rows.filter(row => row.status === "PROCESSING").forEach(row => void analyzeStrategy(row.id, row.title, row.sourceText));
     res.json({ strategies: rows.map(serialize) });
   } catch (err) { res.status(500).json({ error: "Impossibile recuperare le strategie." }); }
 });
