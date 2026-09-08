@@ -33,7 +33,7 @@ const GROUPS: readonly Group[] = [
       { href: "/acquisti/anagrafiche", label: "Anagrafiche" },
       { href: "/acquisti/ordini", label: "Ordini Fornitore" },
       { href: "/acquisti/ordini", label: "Ricezioni / DDT" },
-      { href: "/task-manager", label: "Cose da migliorare" },
+      { label: "Fatture Fornitore", comingSoon: true },
       { href: "/acquisti/magazzini", label: "Magazzini" },
       { href: "/acquisti/banche", label: "Banche" },
       { href: "/acquisti/condizioni-pagamento", label: "Condizioni pagamento" },
