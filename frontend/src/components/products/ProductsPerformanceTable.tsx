@@ -298,7 +298,11 @@ export function buildShopifyMarketplaceRows(
           : null,
         ...(isRedcare ? redcareMetrics({ sales, refundsAmount, adsSpend: adSpendByMarketplace[mp] ?? null, vatAmount: items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0) }) : {}),
       },
-      children: items.map((p) => ({
+      children: items.map((p) => {
+        const productAds = sales > 0
+          ? (adSpendByMarketplace[mp] ?? 0) * p.grossRevenue / sales
+          : (p.adSpend ?? 0);
+        return {
         key: `shopify-${mp}-${p.shopifyProductId}`,
         label: p.productTitle,
         metrics: {
@@ -310,11 +314,11 @@ export function buildShopifyMarketplaceRows(
           refundsAmount: p.refundedAmount,
           refundPct: p.grossRevenue > 0 ? p.refundedAmount / p.grossRevenue : 0,
           avgSellingPrice: p.avgUnitPrice,
-          adsSpend: p.adSpend ?? null,
-          ...(isRedcare ? redcareMetrics({ sales: p.grossRevenue, refundsAmount: p.refundedAmount, adsSpend: p.adSpend ?? null, vatAmount: p.vatAmount ?? 0 }) : {}),
+          adsSpend: isRedcare ? productAds : (p.adSpend ?? null),
+          ...(isRedcare ? redcareMetrics({ sales: p.grossRevenue, refundsAmount: p.refundedAmount, adsSpend: productAds, vatAmount: p.vatAmount ?? 0 }) : {}),
           imageUrl: p.imageUrl,
         },
-      })),
+      }; }),
     };
   });
 }
@@ -697,7 +701,7 @@ export default function ProductsPerformanceTable({
 
   const rows =
     groupBy === "product"
-      ? buildRowsByProduct(groups)
+      ? [...buildRowsByProduct(groups), ...(shopifyMarketplaceRows ?? [])]
       : groupBy === "brand"
         ? buildRowsByBrand(groups)
         : groupBy === "paese"
