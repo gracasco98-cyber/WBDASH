@@ -25,7 +25,7 @@ interface Group {
   items: readonly GroupItem[];
 }
 
-const GROUPS = [
+const GROUPS: readonly Group[] = [
   {
     key: "amministrazione", label: "GESTIONALE", icon: ShoppingBag,
     items: [
@@ -33,7 +33,7 @@ const GROUPS = [
       { href: "/acquisti/anagrafiche", label: "Anagrafiche" },
       { href: "/acquisti/ordini", label: "Ordini Fornitore" },
       { href: "/acquisti/ordini", label: "Ricezioni / DDT" },
-      { label: "Fatture Fornitore", comingSoon: true },
+      { href: "/task-manager", label: "Cose da migliorare" },
       { href: "/acquisti/magazzini", label: "Magazzini" },
       { href: "/acquisti/banche", label: "Banche" },
       { href: "/acquisti/condizioni-pagamento", label: "Condizioni pagamento" },
@@ -61,7 +61,7 @@ const GROUPS = [
   {
     key: "supporto", label: "SUPPORTO", icon: LifeBuoy,
     items: [
-      { href: "/task-manager", label: "Cose da migliorare" },
+      { href: "/task-manager", label: "Segnalazioni condivise" },
     ],
   },
   {
@@ -72,7 +72,7 @@ const GROUPS = [
       { href: "/account/security", label: "Sicurezza" },
     ],
   },
-] as const satisfies readonly Group[];
+];
 
 type GroupKey = (typeof GROUPS)[number]["key"];
 

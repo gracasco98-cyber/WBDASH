@@ -58,13 +58,12 @@ describe("GlobalSidebar", () => {
     expect(screen.queryByRole("link", { name: "Pagamenti" })).not.toBeInTheDocument();
   });
 
-  it("renders 'Prossimamente' items as disabled, non-navigating", () => {
+  it("replaces the old supplier-invoice placeholder with the shared improvements board", () => {
     render(<GlobalSidebar />);
     expect(screen.queryByText("Content Hub")).not.toBeInTheDocument();
     expect(screen.queryByText("Calendario promo")).not.toBeInTheDocument();
-    const supplierInvoices = screen.getByText("Fatture Fornitore").closest("button, a");
-    expect(supplierInvoices?.tagName).toBe("BUTTON");
-    expect(supplierInvoices).toBeDisabled();
+    expect(screen.queryByText("Fatture Fornitore")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Cose da migliorare" })[0]).toHaveAttribute("href", "/task-manager");
   });
 
   it("adds the Redcare Keyword BI link to the MARKETING group", () => {
