@@ -21,8 +21,8 @@ export function PaymentHeader({
   return (
     <div className="flex items-start justify-between gap-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Pagamenti Amazon</h1>
-        <p className="mt-1 text-sm text-zinc-500">Seller Central &middot; Cicli di liquidazione EU</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Pagamenti</h1>
+        <p className="mt-1 text-sm text-zinc-500">Soldi in arrivo da Amazon, Redcare e altri canali</p>
       </div>
       <div className="flex items-center gap-2">
         <button
