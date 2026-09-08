@@ -18,12 +18,27 @@ function serialize(row: any) {
   return { ...safeRow, fileSize: Number(row.fileSize), objectives: Array.isArray(row.objectives) ? row.objectives : [], pillars: Array.isArray(row.pillars) ? row.pillars : [], risks: Array.isArray(row.risks) ? row.risks : [], kpis: Array.isArray(row.kpis) ? row.kpis : [], monthlyPlan: Array.isArray(row.monthlyPlan) ? row.monthlyPlan : [] };
 }
 
+function localAnalysis(title: string, content: string) {
+  const lines = content.split(/\r?\n/).map(line => line.replace(/^\s*[-*•]\s*/, "").replace(/^\s*#+\s*/, "").trim()).filter(Boolean);
+  const bullets = lines.filter(line => line.length > 20).slice(0, 10);
+  const numeric = lines.filter(line => /\d+([.,]\d+)?\s*%?|€\s*\d+|\bKPI\b|\bROI\b|\bROAS\b/i.test(line)).slice(0, 8);
+  const summary = (bullets.slice(0, 4).join(" ") || content.trim().slice(0, 1200)).slice(0, 1200);
+  const coreConcept = (lines.find(line => line.length > 40) || title).slice(0, 800);
+  const objectives = bullets.slice(0, 6).map((line, index) => ({ title: line.slice(0, 120), description: line.slice(0, 400), horizonMonths: Math.min(12, index + 1), priority: index < 2 ? "HIGH" : index < 4 ? "MEDIUM" : "LOW", metric: numeric[index] ?? "Verifica manuale" }));
+  const pillars = lines.filter(line => line.length <= 100).slice(0, 4).map((line, index) => ({ name: line, rationale: "Sezione rilevata nel documento", actions: bullets.slice(index, index + 2) }));
+  const kpis = numeric.slice(0, 6).map((line, index) => ({ name: `Indicatore ${index + 1}`, target: line.slice(0, 160), cadence: "Da definire" }));
+  const risks = lines.filter(line => /risch|problema|critic|attenzion|dipenden|minaccia/i.test(line)).slice(0, 4).map(line => ({ risk: line.slice(0, 220), signal: "Monitorare gli indicatori collegati", mitigation: "Definire una contromisura e una soglia di allerta" }));
+  const monthlyPlan = Array.from({ length: Math.min(3, Math.max(1, objectives.length)) }, (_, index) => ({ month: `Mese ${index + 1}`, focus: objectives[index]?.title ?? "Validazione strategia", actions: objectives[index] ? [objectives[index].description] : [], expectedOutcome: "Avanzamento verificabile dell'obiettivo" }));
+  return { summary, coreConcept, objectives, pillars, risks, kpis, monthlyPlan };
+}
+
 async function analyzeStrategy(id: string, title: string, content: string) {
   if (analysisInFlight.has(id)) return;
   analysisInFlight.add(id);
   const client = aiClient();
   if (!client) {
-    await prisma.strategy.update({ where: { id }, data: { status: "ERROR", analysisError: "OPENAI_API_KEY non configurata sul server." } });
+    const analysis = localAnalysis(title, content);
+    await prisma.strategy.update({ where: { id }, data: { ...analysis, status: "READY", analysisError: "Analisi locale: OPENAI_API_KEY non configurata. Verifica i dati e completa gli obiettivi manualmente." } });
     analysisInFlight.delete(id);
     return;
   }
