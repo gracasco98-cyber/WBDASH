@@ -76,6 +76,8 @@ export interface ProductPerformance {
   totalDiscount: number;
   /** Marketplace-level Ads allocated to this row for the selected period. */
   adSpend?: number;
+  /** VAT included in Redcare gross prices, calculated at the configured 10% rate. */
+  vatAmount?: number;
 }
 
 export interface ProductKpis {
@@ -84,6 +86,7 @@ export interface ProductKpis {
   totalAdSpend: number;
   /** Daily Redcare Ads included in totalNet for the requested range. */
   redcareAdSpend?: number;
+  redcareVat?: number;
   totalUnits: number;
   totalRefunds: number;
   productCount: number;

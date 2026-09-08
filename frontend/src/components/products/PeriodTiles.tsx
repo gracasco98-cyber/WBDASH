@@ -387,9 +387,17 @@ export default function PeriodTiles() {
   const [shopifyTotals, setShopifyTotals] = useState<
     Record<
       string,
-      { sales: number; units: number; netProfit: number; adSpend: number }
+      { sales: number; units: number; netProfit: number; adSpend: number; vatAmount: number }
     >
   >({});
+  // Redcare Ads and orders can arrive after the page was opened. Refresh the
+  // marketplace slice periodically so today's VAT, spend and margin are not
+  // frozen at the initial render.
+  const [liveTick, setLiveTick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setLiveTick((tick) => tick + 1), 300_000);
+    return () => window.clearInterval(timer);
+  }, []);
   // Populated for any tile that needs a comparison: either the global
   // "Confronto" mode (GlobalPeriodSelector) for the daily set, or a tile's
   // own fixedCompareRange for the monthly set (always on, e.g. "Oggi" vs
@@ -511,6 +519,7 @@ export default function PeriodTiles() {
                 units: products.reduce((s, p) => s + p.unitsSold, 0),
                 netProfit,
                 adSpend: reportedAdSpend,
+                vatAmount: Number(kpis.redcareVat ?? 0),
               },
             ] as const;
           }),
@@ -524,7 +533,7 @@ export default function PeriodTiles() {
     return () => {
       cancelled = true;
     };
-  }, [globalMarketplace, activeTiles]);
+  }, [globalMarketplace, activeTiles, liveTick]);
 
   useEffect(() => {
     const tilesNeedingCompare = activeTiles.filter(
@@ -657,6 +666,7 @@ export default function PeriodTiles() {
               units: Math.round(row.units * forecastMultiplier),
               netProfit: row.netProfit * forecastMultiplier,
               adSpend: row.adSpend * forecastMultiplier,
+              vatAmount: row.vatAmount * forecastMultiplier,
             };
           };
           const totalRow = scaleAmazonRow(rawTotalRow);
@@ -670,6 +680,8 @@ export default function PeriodTiles() {
             (totalRow?.netProfit ?? 0) + (shopifyRow?.netProfit ?? 0);
           const combinedAdSpend =
             (totalRow?.adsSpend ?? 0) + (shopifyRow?.adSpend ?? 0);
+          const combinedVat =
+            (totalRow?.vatAmount ?? 0) + (shopifyRow?.vatAmount ?? 0);
           const combinedCosts =
             (totalRow?.amazonFees ?? 0) +
             (totalRow?.cogs ?? 0) +
@@ -759,7 +771,7 @@ export default function PeriodTiles() {
                       VAT
                     </div>
                     <div className="text-[11px] font-semibold tabular-nums text-zinc-300">
-                      {totalRow ? fmtEur(totalRow.vatAmount ?? 0) : "—"}
+                      {hasAny ? fmtEur(combinedVat) : "—"}
                     </div>
                   </div>
                 </div>

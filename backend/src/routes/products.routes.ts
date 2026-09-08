@@ -74,6 +74,7 @@ router.get("/", async (req: Request, res: Response) => {
         });
         const grossRevenue = g._sum.lineTotal ?? 0;
         const refundedAmount = g._sum.refundedAmount ?? 0;
+        const vatAmount = g.marketplace.startsWith("REDCARE_") ? grossRevenue * (10 / 110) : 0;
         return {
           shopifyProductId: g.shopifyProductId,
           productTitle: sample?.productTitle ?? "Unknown",
@@ -87,6 +88,7 @@ router.get("/", async (req: Request, res: Response) => {
           orderCount: distinctMap.get(`${g.shopifyProductId}|${g.marketplace}`) ?? g._count.id,
           avgUnitPrice: g._avg.unitPrice ?? 0,
           totalDiscount: g._sum.totalDiscount ?? 0,
+          vatAmount,
         };
       })
     );
@@ -97,6 +99,7 @@ router.get("/", async (req: Request, res: Response) => {
       marketplace: marketplace && marketplace !== "all" ? marketplace : undefined,
     });
     const totalAdSpend = adRows.reduce((sum, row) => sum + Number(row.amount), 0);
+    const redcareVat = products.reduce((sum, row) => sum + Number((row as any).vatAmount ?? 0), 0);
 
     const validSortKeys = ["grossRevenue", "netRevenue", "unitsSold", "orderCount", "refundedAmount"];
     const key = validSortKeys.includes(sortBy) ? sortBy : "grossRevenue";
@@ -126,6 +129,7 @@ router.get("/", async (req: Request, res: Response) => {
         orderCount: 0,
         avgUnitPrice: 0,
         totalDiscount: 0,
+        vatAmount: 0,
         adSpend,
       } as (typeof products)[number]);
     }
@@ -156,8 +160,9 @@ router.get("/", async (req: Request, res: Response) => {
       products,
       kpis: {
         totalGross:   Number(orderKpis[0]?.gross   ?? 0),
-        totalNet:     Number(orderKpis[0]?.net     ?? 0) - totalAdSpend,
+        totalNet:     Number(orderKpis[0]?.net     ?? 0) - totalAdSpend - redcareVat,
         totalAdSpend,
+        redcareVat,
         // All manually maintained MarketplaceAdSpend rows currently represent
         // Redcare (IT/DE). Keep the explicit field so dashboard consumers can
         // distinguish this daily channel cost from future ad sources.
