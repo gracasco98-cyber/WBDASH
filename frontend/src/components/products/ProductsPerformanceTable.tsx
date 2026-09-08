@@ -272,6 +272,7 @@ export function buildShopifyMarketplaceRows(
         adsSpend: Object.prototype.hasOwnProperty.call(adSpendByMarketplace, mp)
           ? adSpendByMarketplace[mp]
           : null,
+        vatAmount: items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0),
       },
       children: items.map((p) => ({
         key: `shopify-${mp}-${p.shopifyProductId}`,
@@ -286,6 +287,7 @@ export function buildShopifyMarketplaceRows(
           refundPct: p.grossRevenue > 0 ? p.refundedAmount / p.grossRevenue : 0,
           avgSellingPrice: p.avgUnitPrice,
           adsSpend: p.adSpend ?? null,
+          vatAmount: p.vatAmount ?? 0,
           imageUrl: p.imageUrl,
         },
       })),
@@ -336,6 +338,7 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
         grossProfit: acc.grossProfit + r.grossProfit,
         netProfit: acc.netProfit + r.netProfit,
         estimatedPayout: acc.estimatedPayout + r.estimatedPayout,
+        vatAmount: (acc.vatAmount ?? 0) + (r.vatAmount ?? 0),
         adsSpend:
           r.adsSpend !== null ? (acc.adsSpend ?? 0) + r.adsSpend : acc.adsSpend,
       }),
@@ -351,6 +354,7 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
         grossProfit: 0,
         netProfit: 0,
         estimatedPayout: 0,
+        vatAmount: 0,
         adsSpend: null as number | null,
       },
     );
