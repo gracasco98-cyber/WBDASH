@@ -41,23 +41,23 @@ export default function ProductDetailModal({ product, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 px-4 pb-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-8 px-0 sm:px-4 pb-0 sm:pb-4 overflow-hidden">
       {/* Backdrop */}
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative w-full max-w-4xl bg-bg-card border border-bg-border rounded-2xl shadow-2xl z-10">
+      <div className="relative w-full max-w-4xl h-[100dvh] sm:h-auto sm:max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain bg-bg-card border border-bg-border rounded-t-2xl sm:rounded-2xl shadow-2xl z-10">
         {/* Header */}
-        <div className="flex items-start gap-4 p-6 border-b border-bg-border">
-          <div className="w-16 h-16 rounded-xl overflow-hidden bg-bg-base border border-bg-border flex-shrink-0 flex items-center justify-center">
+        <div className="sticky top-0 z-20 flex items-start gap-3 sm:gap-4 p-4 sm:p-6 bg-bg-card/95 backdrop-blur border-b border-bg-border">
+          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-bg-base border border-bg-border flex-shrink-0 flex items-center justify-center">
             {product.imageUrl ? (
               <img src={product.imageUrl} alt={product.productTitle} className="w-full h-full object-cover" />
             ) : (
-              <ImageIcon size={24} className="text-zinc-600" />
+              <ImageIcon size={20} className="text-zinc-600 sm:w-6 sm:h-6" />
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-semibold text-white leading-tight">{product.productTitle}</h2>
+            <h2 className="text-base sm:text-lg font-semibold text-white leading-tight break-words">{product.productTitle}</h2>
             <div className="flex flex-wrap items-center gap-2 mt-1.5">
               {product.sku && (
                 <span className="text-xs font-mono text-zinc-400 bg-bg-base px-2 py-0.5 rounded border border-bg-border">
@@ -72,34 +72,34 @@ export default function ProductDetailModal({ product, onClose }: Props) {
               </span>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-bg-base text-zinc-400 hover:text-white transition-colors flex-shrink-0">
+          <button aria-label="Chiudi dettaglio prodotto" onClick={onClose} className="p-2 -mr-1 rounded-lg hover:bg-bg-base text-zinc-400 hover:text-white transition-colors flex-shrink-0">
             <X size={18} />
           </button>
         </div>
 
         {/* KPI mini cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-6 border-b border-bg-border">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 p-4 sm:p-6 border-b border-bg-border">
           {[
             { label: "Unità vendute", value: fmtNum(product.unitsSold), icon: <Package size={14} />, color: "text-purple-400" },
             { label: "Fatturato lordo", value: fmtEur(product.grossRevenue), icon: <TrendingUp size={14} />, color: "text-green-400" },
             { label: "Fatturato netto", value: fmtEur(product.netRevenue), icon: <TrendingUp size={14} />, color: "text-accent-primary" },
             { label: "Rimborsi", value: fmtEur(product.refundedAmount), icon: <RotateCcw size={14} />, color: product.refundedAmount > 0 ? "text-red-400" : "text-zinc-500" },
           ].map(({ label, value, icon, color }) => (
-            <div key={label} className="bg-bg-base rounded-xl p-4 border border-bg-border">
+            <div key={label} className="bg-bg-base rounded-xl p-3 sm:p-4 border border-bg-border min-w-0">
               <div className={`flex items-center gap-2 mb-2 ${color}`}>{icon}<span className="text-xs text-zinc-400">{label}</span></div>
-              <div className="text-lg font-bold text-white font-mono">{value}</div>
+              <div className="text-base sm:text-lg font-bold text-white font-mono truncate">{value}</div>
             </div>
           ))}
         </div>
 
         {/* Granularity tabs */}
-        <div className="flex items-center gap-2 px-6 pt-4">
-          <span className="text-xs text-zinc-500">Vista:</span>
+        <div className="flex items-center gap-2 px-4 sm:px-6 pt-4 overflow-x-auto scrollbar-none">
+          <span className="text-xs text-zinc-500 shrink-0">Vista:</span>
           {(["daily", "weekly", "monthly"] as const).map((g) => (
             <button
               key={g}
               onClick={() => setGranularity(g)}
-              className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${
+              className={`px-3 py-1.5 text-xs rounded-lg border transition-all shrink-0 ${
                 granularity === g
                   ? "border-accent-primary/40 bg-accent-primary/10 text-accent-primary"
                   : "border-bg-border text-zinc-500 hover:text-zinc-300"
@@ -111,7 +111,7 @@ export default function ProductDetailModal({ product, onClose }: Props) {
         </div>
 
         {/* Charts */}
-        <div className="p-6 space-y-6">
+        <div className="p-4 sm:p-6 space-y-6 min-w-0">
           {loading ? (
             <div className="h-48 bg-bg-base animate-pulse rounded-xl" />
           ) : history.length === 0 ? (
@@ -121,9 +121,9 @@ export default function ProductDetailModal({ product, onClose }: Props) {
           ) : (
             <>
               {/* Revenue chart */}
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-zinc-400 font-medium mb-3 uppercase tracking-wide">Andamento Fatturato</p>
-                <div style={{ height: 200 }}>
+                <div className="w-full min-w-0" style={{ height: 200 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={history}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
@@ -143,9 +143,9 @@ export default function ProductDetailModal({ product, onClose }: Props) {
               </div>
 
               {/* Units chart */}
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-zinc-400 font-medium mb-3 uppercase tracking-wide">Unità Vendute</p>
-                <div style={{ height: 160 }}>
+                <div className="w-full min-w-0" style={{ height: 160 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={history}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
