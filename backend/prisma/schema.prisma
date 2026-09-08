@@ -682,6 +682,7 @@ model User {
   purchaseOrdersAsBuyer      PurchaseOrder[]
   purchaseOrderStatusChanges PurchaseOrderStatusHistory[]
   goodsReceiptsReceived      GoodsReceipt[]
+  supplierInvoicesCreated    SupplierInvoice[]
   tasksCreated               Task[]                       @relation("TaskCreatedBy")
   tasksAssigned              Task[]                       @relation("TaskAssignee")
   boardLayout                UserBoardLayout?
@@ -984,9 +985,10 @@ model Supplier {
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
 
-  contacts       SupplierContact[]
-  products       SupplierProduct[]
-  purchaseOrders PurchaseOrder[]
+  contacts         SupplierContact[]
+  products         SupplierProduct[]
+  purchaseOrders   PurchaseOrder[]
+  supplierInvoices SupplierInvoice[]
 
   @@index([isActive])
   @@index([vatNumber])
@@ -1089,8 +1091,8 @@ enum PurchaseOrderLogisticStatus {
 
 enum PurchaseOrderFinancialStatus {
   OPEN
-  PARTIALLY_INVOICED // not reachable yet — FASE G (supplier invoices)
-  INVOICED // not reachable yet — FASE G
+  PARTIALLY_INVOICED
+  INVOICED
   PARTIALLY_PAID // not reachable yet — FASE M (payment reconciliation)
   PAID // not reachable yet — FASE M
 }
@@ -1120,10 +1122,11 @@ model PurchaseOrder {
   createdAt            DateTime                     @default(now())
   updatedAt            DateTime                     @updatedAt
 
-  lines         PurchaseOrderLine[]
-  statusHistory PurchaseOrderStatusHistory[]
-  goodsReceipts GoodsReceipt[]
-  paymentDues   SupplierPaymentDue[]
+  lines            PurchaseOrderLine[]
+  statusHistory    PurchaseOrderStatusHistory[]
+  goodsReceipts    GoodsReceipt[]
+  paymentDues      SupplierPaymentDue[]
+  supplierInvoices SupplierInvoice[]
 
   @@index([supplierId])
   @@index([logisticStatus])
@@ -1172,6 +1175,39 @@ model PurchaseOrderStatusHistory {
 
   @@index([purchaseOrderId])
   @@index([changedById])
+}
+
+enum SupplierInvoiceSource {
+  MANUAL
+  SDI // riservato per la futura integrazione Agenzia delle Entrate/SDI — non usato in questa fase
+}
+
+// Registro fatture fornitore (FASE G). Nessuna cancellazione reale: si
+// annulla (voidedAt), mai DELETE — documento fiscale, storico da conservare.
+model SupplierInvoice {
+  id              String                @id @default(cuid())
+  invoiceNumber   String
+  supplierId      String
+  supplier        Supplier              @relation(fields: [supplierId], references: [id])
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder?        @relation(fields: [purchaseOrderId], references: [id])
+  invoiceDate     DateTime
+  receivedDate    DateTime              @default(now())
+  taxableAmount   Decimal               @db.Decimal(14, 4)
+  vatAmount       Decimal               @db.Decimal(14, 4)
+  totalAmount     Decimal               @db.Decimal(14, 4)
+  currency        String                @default("EUR")
+  source          SupplierInvoiceSource @default(MANUAL)
+  notes           String?
+  voidedAt        DateTime?
+  createdById     String
+  createdBy       User                  @relation(fields: [createdById], references: [id])
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([supplierId, invoiceNumber])
+  @@index([supplierId])
+  @@index([purchaseOrderId])
 }
 
 // ─── Purchasing module — FASE E1: goods receipts (DDT) ─────────────────────────
