@@ -375,7 +375,9 @@ export default function PeriodTiles() {
   // endpoint: only Amazon channels narrow the scope, everything else is "all".
   const productMarketplace = isAmazonChannel(globalMarketplace)
     ? (amazonChannelCode(globalMarketplace) ?? "all")
-    : "all";
+    : globalMarketplace.startsWith("REDCARE_")
+      ? globalMarketplace
+      : "all";
   // Keyed by tile.id, not tile.preset — the monthly set's "Proiezione mese"
   // tile shares its preset (month_to_date) with "Mese in corso" but needs
   // its own comparison target, so preset alone is no longer a unique key.
