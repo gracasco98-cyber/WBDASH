@@ -165,6 +165,12 @@ router.get("/summary", async (req: Request, res: Response) => {
       byMarketplace[mp] = { ...current, net: current.net - spend, adSpend: spend };
     }
     const adSpend = adRows.reduce((sum, ad) => sum + Number(ad.amount), 0);
+    const redcareVat = mpRows
+      .filter((row) => row.marketplace === "REDCARE_IT")
+      .reduce((sum, row) => sum + Number(row.revenue) * (10 / 110), 0);
+    if (byMarketplace.REDCARE_IT) {
+      byMarketplace.REDCARE_IT.net -= redcareVat;
+    }
 
     // I costi manuali dei lanci sono spese reali di marketing/avviamento: non
     // entrano nel fatturato, ma devono ridurre il profitto del periodo scelto.
@@ -184,8 +190,9 @@ router.get("/summary", async (req: Request, res: Response) => {
 
     res.json({
       totalRevenue:  Number(tot.totalRevenue),
-      netRevenue:    Number(tot.netRevenue) - adSpend - launchCost,
+      netRevenue:    Number(tot.netRevenue) - adSpend - launchCost - redcareVat,
       adSpend,
+      redcareVat,
       launchCost,
       totalRefunds:  Number(tot.totalRefunds),
       orderCount,
