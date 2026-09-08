@@ -1,7 +1,7 @@
 import { apiUrl, get } from "./client";
 
-export interface StrategyObjective { title: string; description: string; horizonMonths: number; priority: "LOW" | "MEDIUM" | "HIGH"; completed?: boolean; }
-export interface Strategy { id: string; title: string; fileName: string; mimeType: string; fileSize: number; summary: string | null; coreConcept: string | null; objectives: StrategyObjective[]; status: "PROCESSING" | "READY" | "ERROR"; createdAt: string; updatedAt: string; }
+export interface StrategyObjective { title: string; description: string; horizonMonths: number; priority: "LOW" | "MEDIUM" | "HIGH"; metric?: string; completed?: boolean; }
+export interface Strategy { id: string; title: string; fileName: string; mimeType: string; fileSize: number; summary: string | null; coreConcept: string | null; objectives: StrategyObjective[]; pillars: Array<{ name: string; rationale: string; actions: string[] }>; risks: Array<{ risk: string; signal: string; mitigation: string }>; kpis: Array<{ name: string; target: string; cadence: string }>; monthlyPlan: Array<{ month: string; focus: string; actions: string[]; expectedOutcome: string }>; analysisError?: string | null; status: "PROCESSING" | "READY" | "ERROR"; createdAt: string; updatedAt: string; }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(apiUrl(path), { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

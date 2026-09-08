@@ -1401,6 +1401,11 @@ model Strategy {
   summary     String?  @db.Text
   coreConcept String?  @db.Text
   objectives  Json?
+  pillars     Json?
+  risks       Json?
+  kpis        Json?
+  monthlyPlan Json?
+  analysisError String? @db.Text
   status      String   @default("PROCESSING") // PROCESSING | READY | ERROR
   createdById String?
   createdAt   DateTime @default(now())

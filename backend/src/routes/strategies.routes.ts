@@ -13,12 +13,32 @@ function aiClient() {
 }
 
 function serialize(row: any) {
-  return { ...row, fileSize: Number(row.fileSize), objectives: Array.isArray(row.objectives) ? row.objectives : [] };
+  return { ...row, fileSize: Number(row.fileSize), objectives: Array.isArray(row.objectives) ? row.objectives : [], pillars: Array.isArray(row.pillars) ? row.pillars : [], risks: Array.isArray(row.risks) ? row.risks : [], kpis: Array.isArray(row.kpis) ? row.kpis : [], monthlyPlan: Array.isArray(row.monthlyPlan) ? row.monthlyPlan : [] };
+}
+
+async function analyzeStrategy(id: string, title: string, content: string) {
+  const client = aiClient();
+  if (!client) {
+    await prisma.strategy.update({ where: { id }, data: { status: "ERROR", analysisError: "OPENAI_API_KEY non configurata sul server." } });
+    return;
+  }
+  try {
+    const completion = await client.chat.completions.create({
+      model: process.env.OPENAI_STRATEGY_MODEL ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+      response_format: { type: "json_object" },
+      messages: [{ role: "system", content: "Sei il responsabile strategico di un e-commerce. Analizza il documento in italiano e restituisci SOLO JSON valido con: summary (sintesi operativa 1200 caratteri), coreConcept (tesi centrale 800 caratteri), pillars (array 3-6 oggetti {name, rationale, actions:[string]}), objectives (array 5-10 oggetti {title, description, horizonMonths da 1 a 12, priority LOW|MEDIUM|HIGH, metric}), risks (array 3-6 oggetti {risk, signal, mitigation}), kpis (array 4-8 oggetti {name, target, cadence}), monthlyPlan (array 3-12 oggetti {month, focus, actions:[string], expectedOutcome}). Non inventare numeri non presenti; distingui i dati del documento dalle deduzioni e rendi gli obiettivi verificabili." }, { role: "user", content: `Titolo: ${title}\n\nDOCUMENTO:\n${content}` }],
+    });
+    const analysis = JSON.parse(completion.choices[0]?.message?.content ?? "{}");
+    await prisma.strategy.update({ where: { id }, data: { summary: String(analysis.summary ?? ""), coreConcept: String(analysis.coreConcept ?? ""), objectives: Array.isArray(analysis.objectives) ? analysis.objectives : [], pillars: Array.isArray(analysis.pillars) ? analysis.pillars : [], risks: Array.isArray(analysis.risks) ? analysis.risks : [], kpis: Array.isArray(analysis.kpis) ? analysis.kpis : [], monthlyPlan: Array.isArray(analysis.monthlyPlan) ? analysis.monthlyPlan : [], analysisError: null, status: "READY" } });
+  } catch (err) {
+    console.error(`[Strategies] AI analysis failed for ${id}:`, err instanceof Error ? err.message : err);
+    await prisma.strategy.update({ where: { id }, data: { status: "ERROR", analysisError: err instanceof Error ? err.message.slice(0, 500) : "Errore durante l'analisi AI." } });
+  }
 }
 
 router.get("/", async (_req: Request, res: Response) => {
   try {
-    const rows = await prisma.strategy.findMany({ orderBy: { updatedAt: "desc" }, select: { id: true, title: true, fileName: true, mimeType: true, fileSize: true, summary: true, coreConcept: true, objectives: true, status: true, createdAt: true, updatedAt: true } });
+    const rows = await prisma.strategy.findMany({ orderBy: { updatedAt: "desc" }, select: { id: true, title: true, fileName: true, mimeType: true, fileSize: true, summary: true, coreConcept: true, objectives: true, pillars: true, risks: true, kpis: true, monthlyPlan: true, analysisError: true, status: true, createdAt: true, updatedAt: true } });
     res.json({ strategies: rows.map(serialize) });
   } catch (err) { res.status(500).json({ error: "Impossibile recuperare le strategie." }); }
 });
@@ -37,22 +57,8 @@ router.post("/", async (req: Request, res: Response) => {
   if (!extractedText.trim()) return res.status(400).json({ error: "Il documento non contiene testo leggibile." });
   if (extractedText.length > MAX_TEXT) return res.status(413).json({ error: "Il documento è troppo grande (massimo 180.000 caratteri)." });
   const row = await prisma.strategy.create({ data: { title: title.trim(), fileName, mimeType: typeof mimeType === "string" ? mimeType : "text/plain", fileSize: Number.isFinite(Number(fileSize)) ? Number(fileSize) : extractedText.length, sourceText: extractedText, createdById: req.user?.id ?? null } });
-  const client = aiClient();
-  if (!client) return res.status(201).json(serialize({ ...row, status: "ERROR", summary: "Analisi AI non disponibile: OPENAI_API_KEY non configurata.", objectives: [] }));
-  try {
-    const completion = await client.chat.completions.create({
-      model: process.env.OPENAI_STRATEGY_MODEL ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini",
-      response_format: { type: "json_object" },
-      messages: [{ role: "system", content: "Sei un consulente strategico. Leggi il documento e restituisci JSON valido con: summary (sintesi in italiano, massimo 700 caratteri), coreConcept (concetto guida, massimo 500 caratteri), objectives (array di 4-8 oggetti con title, description, horizonMonths da 1 a 12, priority LOW|MEDIUM|HIGH). Non inventare dati non presenti; rendi gli obiettivi concreti e verificabili." }, { role: "user", content: `Titolo: ${title}\n\nDOCUMENTO:\n${extractedText}` }],
-    });
-    const raw = completion.choices[0]?.message?.content ?? "{}";
-    const analysis = JSON.parse(raw);
-    const updated = await prisma.strategy.update({ where: { id: row.id }, data: { summary: String(analysis.summary ?? ""), coreConcept: String(analysis.coreConcept ?? ""), objectives: Array.isArray(analysis.objectives) ? analysis.objectives : [], status: "READY" } });
-    res.status(201).json(serialize(updated));
-  } catch (err) {
-    const updated = await prisma.strategy.update({ where: { id: row.id }, data: { status: "ERROR", summary: "Analisi non completata. Puoi riprovare il caricamento." } });
-    res.status(201).json(serialize(updated));
-  }
+  void analyzeStrategy(row.id, row.title, row.sourceText);
+  res.status(202).json(serialize(row));
 });
 
 router.patch("/:id/objectives/:index", async (req: Request, res: Response) => {
