@@ -169,4 +169,25 @@ describe("supplier-invoices.repo", () => {
       taxableAmount: 10, vatAmount: 2, totalAmount: 12,
     }, userId)).rejects.toThrow();
   });
+
+  it("createSupplierInvoice rejects a purchaseOrderId that belongs to a different supplier, and leaves the order untouched", async () => {
+    const otherSupplier = await db.prisma.supplier.create({
+      data: { legalName: "Other Srl", internalCode: "FORN-003", supplierType: "Produttore", country: "IT" },
+    });
+    const otherPo = await db.prisma.purchaseOrder.create({
+      data: {
+        poNumber: "PO-2026-000002", supplierId: otherSupplier.id, orderDate: new Date("2026-03-01"), currency: "EUR",
+        buyerId: userId, warehouseId, paymentTermId,
+        lines: { create: [{ productId, description: "Widget", orderedQty: 10, unitOfMeasure: "PZ", unitPrice: 10, taxableAmount: 100, vatAmount: 22, totalAmount: 122 }] },
+      },
+    });
+
+    await expect(createSupplierInvoice(db.prisma, {
+      supplierId, purchaseOrderId: otherPo.id, invoiceNumber: "FT-015", invoiceDate: new Date("2026-03-05"),
+      taxableAmount: 100, vatAmount: 22, totalAmount: 122,
+    }, userId)).rejects.toThrow();
+
+    const untouched = await db.prisma.purchaseOrder.findUniqueOrThrow({ where: { id: otherPo.id } });
+    expect(untouched.financialStatus).toBe("OPEN");
+  });
 });

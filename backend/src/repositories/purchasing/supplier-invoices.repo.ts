@@ -57,6 +57,15 @@ export async function createSupplierInvoice(
   createdById: string
 ): Promise<SupplierInvoiceWithRelations> {
   return prisma.$transaction(async (tx) => {
+    if (input.purchaseOrderId) {
+      const order = await tx.purchaseOrder.findUniqueOrThrow({
+        where: { id: input.purchaseOrderId },
+        select: { supplierId: true },
+      });
+      if (order.supplierId !== input.supplierId) {
+        throw new Error("PURCHASE_ORDER_SUPPLIER_MISMATCH");
+      }
+    }
     const invoice = await tx.supplierInvoice.create({
       data: {
         supplierId: input.supplierId,

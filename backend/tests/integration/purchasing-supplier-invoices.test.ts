@@ -134,4 +134,38 @@ describe("supplier-invoices routes", () => {
     const notFound = await request(app).post("/api/purchasing/supplier-invoices/does-not-exist/void");
     expect(notFound.status).toBe(404);
   });
+
+  it("POST /supplier-invoices with a supplierId that doesn't exist returns 404, not 500", async () => {
+    const res = await request(app).post("/api/purchasing/supplier-invoices").send({
+      supplierId: "does-not-exist", invoiceNumber: "FT-008", invoiceDate: "2026-08-10",
+      taxableAmount: 10, vatAmount: 2, totalAmount: 12,
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /supplier-invoices with a purchaseOrderId belonging to a different supplier returns 400", async () => {
+    const otherSupplier = await db.prisma.supplier.create({
+      data: { legalName: "Other Srl", internalCode: "F2", supplierType: "Produttore", country: "IT" },
+    });
+    const otherPo = await db.prisma.purchaseOrder.create({
+      data: {
+        poNumber: "PO-2026-000002",
+        supplierId: otherSupplier.id, orderDate: new Date("2026-08-08"), currency: "EUR",
+        logisticStatus: "CONFIRMED",
+        buyerId: userId, warehouseId, paymentTermId,
+        lines: {
+          create: [{
+            productId, description: "Widget", orderedQty: 10, unitOfMeasure: "PZ",
+            unitPrice: 5, taxableAmount: 50, vatAmount: 11, totalAmount: 61,
+          }],
+        },
+      },
+    });
+
+    const res = await request(app).post("/api/purchasing/supplier-invoices").send({
+      supplierId, purchaseOrderId: otherPo.id, invoiceNumber: "FT-009", invoiceDate: "2026-08-10",
+      taxableAmount: 50, vatAmount: 11, totalAmount: 61,
+    });
+    expect(res.status).toBe(400);
+  });
 });
