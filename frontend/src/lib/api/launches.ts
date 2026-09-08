@@ -46,6 +46,13 @@ export interface Launch {
   totals: { fakeRevenue: number; launchCost: number; netImpact: number; reviews: number };
 }
 
+export interface LaunchCatalogProduct {
+  id: string;
+  name: string;
+  brand: string | null;
+  identifiers: Array<{ asin: string | null; sku: string | null; marketplace: string }>;
+}
+
 export interface LaunchDayInput {
   fakeRevenue?: number; fakeOrders?: number; reviewCount?: number; reviewRating?: number | null;
   adsCost?: number; reviewCost?: number; couponCost?: number; giveawayCost?: number;
@@ -58,6 +65,7 @@ export interface LaunchKeywordInput {
 }
 
 export const launches = {
+  catalog: () => get<{ products: LaunchCatalogProduct[] }>("/api/launches/catalog"),
   list: () => get<{ launches: Launch[] }>("/api/launches"),
   get: (id: string) => get<Launch>(`/api/launches/${encodeURIComponent(id)}`),
   create: (data: { name: string; productName: string; productId?: string; sku?: string; marketplace?: string; startedOn: string; notes?: string }) =>

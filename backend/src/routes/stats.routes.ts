@@ -166,12 +166,27 @@ router.get("/summary", async (req: Request, res: Response) => {
     }
     const adSpend = adRows.reduce((sum, ad) => sum + Number(ad.amount), 0);
 
+    // I costi manuali dei lanci sono spese reali di marketing/avviamento: non
+    // entrano nel fatturato, ma devono ridurre il profitto del periodo scelto.
+    const launchDays = await prisma.launchDay.findMany({
+      where: {
+        day: {
+          ...(dateRange.gte ? { gte: dateRange.gte } : {}),
+          ...(dateRange.lte ? { lte: dateRange.lte } : {}),
+          ...(dateRange.lt ? { lt: dateRange.lt } : {}),
+        },
+      },
+      select: { adsCost: true, reviewCost: true, couponCost: true, giveawayCost: true, logisticsCost: true, otherCost: true },
+    });
+    const launchCost = launchDays.reduce((sum, day) => sum + [day.adsCost, day.reviewCost, day.couponCost, day.giveawayCost, day.logisticsCost, day.otherCost].reduce((subtotal, value) => subtotal + Number(value ?? 0), 0), 0);
+
     const lh = lhRows[0] ?? { revenue: 0, count: 0 };
 
     res.json({
       totalRevenue:  Number(tot.totalRevenue),
-      netRevenue:    Number(tot.netRevenue) - adSpend,
+      netRevenue:    Number(tot.netRevenue) - adSpend - launchCost,
       adSpend,
+      launchCost,
       totalRefunds:  Number(tot.totalRefunds),
       orderCount,
       aov: orderCount > 0 ? Number(tot.totalRevenue) / orderCount : 0,

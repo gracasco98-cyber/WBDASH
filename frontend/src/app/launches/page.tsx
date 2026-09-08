@@ -7,6 +7,7 @@ import GlobalSidebar from "@/components/layout/GlobalSidebar";
 import {
   api,
   type Launch,
+  type LaunchCatalogProduct,
   type LaunchDay,
   type LaunchKeywordDay,
 } from "@/lib/api";
@@ -44,6 +45,7 @@ type Form = Record<string, string>;
 
 export default function LaunchesPage() {
   const [items, setItems] = useState<Launch[]>([]);
+  const [catalog, setCatalog] = useState<LaunchCatalogProduct[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [date, setDate] = useState(today());
   const [dayForm, setDayForm] = useState<Form>(emptyDay);
@@ -51,8 +53,9 @@ export default function LaunchesPage() {
   const [message, setMessage] = useState("");
   const load = useCallback(async () => {
     try {
-      const result = await api.launches.list();
+      const [result, catalogResult] = await Promise.all([api.launches.list(), api.launches.catalog()]);
       setItems(result.launches);
+      setCatalog(catalogResult.products);
       setSelected((old) => old ?? result.launches[0]?.id ?? null);
     } catch {
       setMessage("Impossibile caricare i lanci");
@@ -119,17 +122,21 @@ export default function LaunchesPage() {
     }
   };
   const create = async () => {
-    const product = window.prompt("Nome prodotto");
-    if (!product?.trim()) return;
+    const options = catalog.length ? `\n\nProdotti disponibili:\n${catalog.map((item) => `${item.id} · ${item.name}`).join("\n")}` : "";
+    const productId = window.prompt(`Inserisci l'ID del prodotto esistente (lascia vuoto per prodotto manuale).${options}`) || undefined;
+    const linked = productId ? catalog.find((item) => item.id === productId) : undefined;
+    const product = linked?.name || window.prompt("Nome prodotto")?.trim();
+    if (!product) return;
     try {
       await api.launches.create({
-        name: `Lancio ${product.trim()}`,
-        productName: product.trim(),
+        name: `Lancio ${product}`,
+        productName: product,
+        productId,
         startedOn: today(),
         marketplace: "all",
       });
       await load();
-      setMessage("Lancio creato");
+      setMessage(linked ? "Lancio collegato al prodotto esistente" : "Lancio creato");
     } catch {
       setMessage("Creazione non riuscita");
     }

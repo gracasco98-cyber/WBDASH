@@ -55,6 +55,22 @@ function serializeLaunch(launch: any) {
 
 const dayInclude = { keywords: { orderBy: { keyword: "asc" as const } } };
 
+// Catalogo prodotti esistenti: usato dalla scheda lancio per mantenere il
+// collegamento con l'anagrafica invece di creare un prodotto parallelo.
+router.get("/catalog", async (_req, res) => {
+  try {
+    const products = await prisma.product.findMany({
+      where: { status: "ACTIVE" },
+      select: { id: true, name: true, brand: true, identifiers: { select: { asin: true, sku: true, marketplace: true } } },
+      orderBy: { name: "asc" },
+    });
+    res.json({ products });
+  } catch (err) {
+    console.error("[Launches] catalog:", err);
+    res.status(500).json({ error: "Impossibile recuperare il catalogo prodotti." });
+  }
+});
+
 router.get("/summary", async (req: Request, res: Response) => {
   try {
     const from = req.query.from ? dateOnly(req.query.from) : null;

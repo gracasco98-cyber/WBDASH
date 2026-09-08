@@ -65,7 +65,7 @@ export type {
 export type { Task, TaskStatus, AssignableUser } from "./tasks";
 export type { BoardWidget } from "./board";
 export type { ChatMessage, ChatResponse } from "./chat";
-export type { Launch, LaunchDay, LaunchKeywordDay, LaunchDayInput, LaunchKeywordInput } from "./launches";
+export type { Launch, LaunchCatalogProduct, LaunchDay, LaunchKeywordDay, LaunchDayInput, LaunchKeywordInput } from "./launches";
 
 // Import domain modules
 import { shopify } from "./shopify";
