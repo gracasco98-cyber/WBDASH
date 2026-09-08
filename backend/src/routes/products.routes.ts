@@ -77,7 +77,8 @@ router.get("/", async (req: Request, res: Response) => {
         // Only Redcare IT uses this marketplace rule. Prices are VAT-inclusive,
         // therefore the 10% VAT component is gross / 11 (10 / 110), not 10%
         // of the displayed gross amount. Amazon keeps its real itemTax path.
-        const vatAmount = g.marketplace === "REDCARE_IT" ? grossRevenue * (10 / 110) : 0;
+        const taxableRevenue = Math.max(0, grossRevenue - Number(refundedAmount));
+        const vatAmount = g.marketplace === "REDCARE_IT" ? taxableRevenue * (10 / 110) : 0;
         return {
           shopifyProductId: g.shopifyProductId,
           productTitle: sample?.productTitle ?? "Unknown",
@@ -102,7 +103,6 @@ router.get("/", async (req: Request, res: Response) => {
       marketplace: marketplace && marketplace !== "all" ? marketplace : undefined,
     });
     const totalAdSpend = adRows.reduce((sum, row) => sum + Number(row.amount), 0);
-    const redcareVat = products.reduce((sum, row) => sum + Number((row as any).vatAmount ?? 0), 0);
 
     const validSortKeys = ["grossRevenue", "netRevenue", "unitsSold", "orderCount", "refundedAmount"];
     const key = validSortKeys.includes(sortBy) ? sortBy : "grossRevenue";
@@ -142,7 +142,14 @@ router.get("/", async (req: Request, res: Response) => {
     );
 
     // ── KPIs from ShopifyOrder (matches Overview dashboard revenue) ──
-    type OrderKpiRow = { gross: string | number; net: string | number; refunds: string | number; orderCount: string | number };
+    type OrderKpiRow = {
+      gross: string | number;
+      net: string | number;
+      refunds: string | number;
+      orderCount: string | number;
+      redcareGross: string | number;
+      redcareRefunds: string | number;
+    };
     const mpCondition = marketplace && marketplace !== "all"
       ? Prisma.sql`AND "marketplaceDetected" = ${marketplace}`
       : Prisma.sql``;
@@ -151,13 +158,22 @@ router.get("/", async (req: Request, res: Response) => {
         SUM("totalAmount")::FLOAT8    AS gross,
         SUM("netAmount")::FLOAT8      AS net,
         SUM("refundedAmount")::FLOAT8 AS refunds,
-        COUNT(*)::INTEGER             AS "orderCount"
+        COUNT(*)::INTEGER             AS "orderCount",
+        SUM(CASE WHEN "marketplaceDetected" = 'REDCARE_IT' THEN "totalAmount" ELSE 0 END)::FLOAT8 AS "redcareGross",
+        SUM(CASE WHEN "marketplaceDetected" = 'REDCARE_IT' THEN "refundedAmount" ELSE 0 END)::FLOAT8 AS "redcareRefunds"
       FROM "ShopifyOrder"
       WHERE "createdAt" >= ${dateFrom}::timestamp
         AND "createdAt" <= ${dateTo}::timestamp
         AND "isTest" = false
         ${mpCondition}
     `;
+
+    // Redcare prices include VAT (10/110). Calculate this KPI from the live
+    // order totals, not the product line-item grouping, so today's card also
+    // includes orders synced moments ago. Refunds reduce the taxable base.
+    const redcareGross = Number(orderKpis[0]?.redcareGross ?? 0);
+    const redcareRefunds = Number(orderKpis[0]?.redcareRefunds ?? 0);
+    const redcareVat = Math.max(0, redcareGross - redcareRefunds) * (10 / 110);
 
     res.json({
       products,
