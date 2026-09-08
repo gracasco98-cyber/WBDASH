@@ -79,7 +79,7 @@ export default function MetricRow({
     { column: "Ads", node: dash(m.adsSpend, fmtEur) },
     { column: "% Resi", node: fmtPct(m.refundPct) },
     {
-      column: "Fee Amazon",
+      column: m.marketplace.startsWith("REDCARE_") ? "Fee Redcare (12%)" : "Fee Amazon",
       node: hasCostData ? (
         <>
           {fmtEur(m.amazonFees)}
@@ -104,6 +104,10 @@ export default function MetricRow({
       ) : (
         noCost
       ),
+    },
+    {
+      column: "IVA",
+      node: hasCostData ? fmtEur(m.vatAmount ?? 0) : noCost,
     },
     {
       column: "Profitto lordo",

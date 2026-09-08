@@ -220,6 +220,11 @@ export default function DashboardPage() {
     loadShopifyMarketplaceRows();
   }, [loadShopifyMarketplaceRows]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => { void loadShopifyMarketplaceRows(); }, 300_000);
+    return () => window.clearInterval(timer);
+  }, [loadShopifyMarketplaceRows]);
+
   const load = useCallback(async () => {
     try {
       const p = params();

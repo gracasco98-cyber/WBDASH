@@ -97,7 +97,7 @@ const COLUMN_GROUPS: { label: string; className: string; columns: string[] }[] =
     {
       label: "Costi",
       className: "text-accent-red/80",
-      columns: ["Fee Amazon", "COGS"],
+      columns: ["Fee Amazon", "Fee Redcare (12%)", "COGS", "IVA"],
     },
     {
       label: "Risultato",
@@ -226,6 +226,27 @@ export function buildShopifyMarketplaceRows(
   products: ProductPerformance[],
   adSpendByMarketplace: Record<string, number> = {},
 ): RowEntry[] {
+  const redcareMetrics = (base: { sales: number; refundsAmount: number; adsSpend: number | null; vatAmount?: number }) => {
+    const vatAmount = base.vatAmount ?? 0;
+    const fees = base.sales * 0.12;
+    const ads = base.adsSpend ?? 0;
+    const grossProfit = base.sales - base.refundsAmount - vatAmount - fees;
+    const netProfit = grossProfit - ads;
+    return {
+      vatAmount,
+      amazonFees: fees,
+      cogs: 0,
+      grossProfit,
+      netProfit,
+      estimatedPayout: base.sales - base.refundsAmount - vatAmount - fees - ads,
+      margin: base.sales > 0 ? netProfit / base.sales : 0,
+      roi: fees > 0 ? netProfit / fees : 0,
+      realAcos: base.sales > 0 ? ads / base.sales : null,
+      costDataAvailable: true,
+      hasRealFees: false,
+      hasRealCogs: false,
+    };
+  };
   const byMarketplace = new Map<string, ProductPerformance[]>();
   for (const p of products) {
     const list = byMarketplace.get(p.marketplace) ?? [];
@@ -257,6 +278,7 @@ export function buildShopifyMarketplaceRows(
     const units = items.reduce((s, p) => s + p.unitsSold, 0);
     const sales = items.reduce((s, p) => s + p.grossRevenue, 0);
     const refundsAmount = items.reduce((s, p) => s + p.refundedAmount, 0);
+    const isRedcare = mp.startsWith("REDCARE_");
     return {
       key: `shopify-${mp}`,
       label: getMeta(mp).label,
@@ -272,7 +294,7 @@ export function buildShopifyMarketplaceRows(
         adsSpend: Object.prototype.hasOwnProperty.call(adSpendByMarketplace, mp)
           ? adSpendByMarketplace[mp]
           : null,
-        vatAmount: items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0),
+        ...(isRedcare ? redcareMetrics({ sales, refundsAmount, adsSpend: adSpendByMarketplace[mp] ?? null, vatAmount: items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0) }) : {}),
       },
       children: items.map((p) => ({
         key: `shopify-${mp}-${p.shopifyProductId}`,
@@ -287,7 +309,7 @@ export function buildShopifyMarketplaceRows(
           refundPct: p.grossRevenue > 0 ? p.refundedAmount / p.grossRevenue : 0,
           avgSellingPrice: p.avgUnitPrice,
           adsSpend: p.adSpend ?? null,
-          vatAmount: p.vatAmount ?? 0,
+          ...(isRedcare ? redcareMetrics({ sales: p.grossRevenue, refundsAmount: p.refundedAmount, adsSpend: p.adSpend ?? null, vatAmount: p.vatAmount ?? 0 }) : {}),
           imageUrl: p.imageUrl,
         },
       })),
