@@ -55,7 +55,7 @@ describe("GlobalSidebar", () => {
     expect(screen.getByRole("link", { name: /gestione utenti/i })).toHaveAttribute("href", "/admin/users");
     expect(screen.getByRole("link", { name: "Prima Nota" })).toHaveAttribute("href", "/acquisti/prima-nota");
     expect(screen.queryByRole("link", { name: "P&L" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Pagamenti" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Pagamenti" })).toHaveAttribute("href", "/amazon/payments");
   });
 
   it("renders 'Prossimamente' items as disabled, non-navigating", () => {
