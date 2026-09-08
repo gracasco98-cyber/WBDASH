@@ -391,7 +391,7 @@ export default function PeriodTiles() {
   const [shopifyTotals, setShopifyTotals] = useState<
     Record<
       string,
-      { sales: number; units: number; netProfit: number; adSpend: number; vatAmount: number }
+      { sales: number; units: number; netProfit: number; adSpend: number; vatAmount: number; redcareFee: number }
     >
   >({});
   // Redcare Ads and orders can arrive after the page was opened. Refresh the
@@ -532,6 +532,7 @@ export default function PeriodTiles() {
                 netProfit,
                 adSpend: reportedAdSpend,
                 vatAmount: Number(kpis.redcareVat ?? 0),
+                redcareFee: Number(kpis.redcareFee ?? 0),
               },
             ] as const;
           }),
@@ -710,6 +711,7 @@ export default function PeriodTiles() {
               netProfit: row.netProfit * forecastMultiplier,
               adSpend: row.adSpend * forecastMultiplier,
               vatAmount: row.vatAmount * forecastMultiplier,
+              redcareFee: row.redcareFee * forecastMultiplier,
             };
           };
           const totalRow = scaleAmazonRow(rawTotalRow);
@@ -740,7 +742,8 @@ export default function PeriodTiles() {
           const combinedCosts =
             (totalRow?.amazonFees ?? 0) +
             (totalRow?.cogs ?? 0) +
-            combinedAdSpend;
+            combinedAdSpend +
+            (shopifyRow?.redcareFee ?? 0);
           const active = state.preset === preset;
           // Amazon-only on both sides (no Shopify comparison fetch, to keep
           // this addition to a single extra request per tile) — close enough

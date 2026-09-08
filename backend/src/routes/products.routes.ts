@@ -174,14 +174,16 @@ router.get("/", async (req: Request, res: Response) => {
     const redcareGross = Number(orderKpis[0]?.redcareGross ?? 0);
     const redcareRefunds = Number(orderKpis[0]?.redcareRefunds ?? 0);
     const redcareVat = Math.max(0, redcareGross - redcareRefunds) * (10 / 110);
+    const redcareFee = Math.max(0, redcareGross - redcareRefunds) * 0.15;
 
     res.json({
       products,
       kpis: {
         totalGross:   Number(orderKpis[0]?.gross   ?? 0),
-        totalNet:     Number(orderKpis[0]?.net     ?? 0) - totalAdSpend - redcareVat,
+        totalNet:     Number(orderKpis[0]?.net     ?? 0) - totalAdSpend - redcareVat - redcareFee,
         totalAdSpend,
         redcareVat,
+        redcareFee,
         // All manually maintained MarketplaceAdSpend rows currently represent
         // Redcare (IT/DE). Keep the explicit field so dashboard consumers can
         // distinguish this daily channel cost from future ad sources.

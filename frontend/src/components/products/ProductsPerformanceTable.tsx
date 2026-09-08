@@ -71,7 +71,7 @@ const COLUMNS = [
   "Ads",
   "% Resi",
   "Fee Amazon",
-  "Fee Redcare (12%)",
+  "Fee Redcare (15%)",
   "COGS",
   "IVA",
   "Profitto lordo",
@@ -99,7 +99,7 @@ const COLUMN_GROUPS: { label: string; className: string; columns: string[] }[] =
     {
       label: "Costi",
       className: "text-accent-red/80",
-      columns: ["Fee Amazon", "Fee Redcare (12%)", "COGS", "IVA"],
+      columns: ["Fee Amazon", "Fee Redcare (15%)", "COGS", "IVA"],
     },
     {
       label: "Risultato",
@@ -230,7 +230,7 @@ export function buildShopifyMarketplaceRows(
 ): RowEntry[] {
   const redcareMetrics = (base: { sales: number; refundsAmount: number; adsSpend: number | null; vatAmount?: number }) => {
     const vatAmount = base.vatAmount ?? 0;
-    const fees = base.sales * 0.12;
+    const fees = base.sales * 0.15;
     const ads = base.adsSpend ?? 0;
     const grossProfit = base.sales - base.refundsAmount - vatAmount - fees;
     const netProfit = grossProfit - ads;

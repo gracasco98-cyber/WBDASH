@@ -87,6 +87,8 @@ export interface ProductKpis {
   /** Daily Redcare Ads included in totalNet for the requested range. */
   redcareAdSpend?: number;
   redcareVat?: number;
+  /** Redcare marketplace fee (15% of net-of-refunds revenue). */
+  redcareFee?: number;
   totalUnits: number;
   totalRefunds: number;
   productCount: number;
