@@ -74,7 +74,10 @@ router.get("/", async (req: Request, res: Response) => {
         });
         const grossRevenue = g._sum.lineTotal ?? 0;
         const refundedAmount = g._sum.refundedAmount ?? 0;
-        const vatAmount = g.marketplace.startsWith("REDCARE_") ? grossRevenue * (10 / 110) : 0;
+        // Only Redcare IT uses this marketplace rule. Prices are VAT-inclusive,
+        // therefore the 10% VAT component is gross / 11 (10 / 110), not 10%
+        // of the displayed gross amount. Amazon keeps its real itemTax path.
+        const vatAmount = g.marketplace === "REDCARE_IT" ? grossRevenue * (10 / 110) : 0;
         return {
           shopifyProductId: g.shopifyProductId,
           productTitle: sample?.productTitle ?? "Unknown",

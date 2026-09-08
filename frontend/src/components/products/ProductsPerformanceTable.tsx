@@ -280,7 +280,7 @@ export function buildShopifyMarketplaceRows(
     const units = items.reduce((s, p) => s + p.unitsSold, 0);
     const sales = items.reduce((s, p) => s + p.grossRevenue, 0);
     const refundsAmount = items.reduce((s, p) => s + p.refundedAmount, 0);
-    const isRedcare = mp.startsWith("REDCARE_");
+    const isRedcare = mp === "REDCARE_IT";
     return {
       key: `shopify-${mp}`,
       label: getMeta(mp).label,
