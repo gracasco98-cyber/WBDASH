@@ -684,6 +684,18 @@ export default function PeriodTiles() {
             (totalRow?.adsSpend ?? 0) + (shopifyRow?.adSpend ?? 0);
           const combinedVat =
             (totalRow?.vatAmount ?? 0) + (shopifyRow?.vatAmount ?? 0);
+          const vatLabel =
+            globalMarketplace === "REDCARE_IT"
+              ? "IVA Redcare"
+              : isAmazonChannel(globalMarketplace)
+                ? "IVA Amazon"
+                : "VAT totale";
+          const vatDisplay =
+            globalMarketplace === "REDCARE_IT"
+              ? shopifyRow?.vatAmount ?? 0
+              : isAmazonChannel(globalMarketplace)
+                ? totalRow?.vatAmount ?? 0
+                : combinedVat;
           const combinedCosts =
             (totalRow?.amazonFees ?? 0) +
             (totalRow?.cogs ?? 0) +
@@ -770,10 +782,10 @@ export default function PeriodTiles() {
                   </div>
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
-                      VAT
+                      {vatLabel}
                     </div>
                     <div className="text-[11px] font-semibold tabular-nums text-zinc-300">
-                      {hasAny ? fmtEur(combinedVat) : "—"}
+                      {hasAny ? fmtEur(vatDisplay) : "—"}
                     </div>
                   </div>
                 </div>
