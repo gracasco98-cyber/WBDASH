@@ -1389,6 +1389,27 @@ model Task {
   @@index([createdById])
 }
 
+// Strategic documents uploaded by the team. The extracted text is kept so the
+// AI analysis can be reproduced without depending on ephemeral file storage.
+model Strategy {
+  id          String   @id @default(cuid())
+  title       String
+  fileName    String
+  mimeType    String
+  fileSize    Int
+  sourceText  String   @db.Text
+  summary     String?  @db.Text
+  coreConcept String?  @db.Text
+  objectives  Json?
+  status      String   @default("PROCESSING") // PROCESSING | READY | ERROR
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
 // One row per user — the whole board is a single JSON blob of widget
 // instances ({ i, type, x, y, w, h, config? }), not normalized into rows.
 // A user's personal sticky-note text lives inline in a "note" widget's

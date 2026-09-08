@@ -63,6 +63,7 @@ export type {
   MarketingKeywordSnapshot, MarketingKeywordWatch,
 } from "./marketing-redcare";
 export type { Task, TaskStatus, AssignableUser } from "./tasks";
+export type { Strategy, StrategyObjective } from "./strategies";
 export type { BoardWidget } from "./board";
 export type { ChatMessage, ChatResponse } from "./chat";
 export type { Launch, LaunchCatalogProduct, LaunchDay, LaunchKeywordDay, LaunchDayInput, LaunchKeywordInput } from "./launches";
@@ -82,6 +83,7 @@ import { tasks } from "./tasks";
 import { board } from "./board";
 import { chat } from "./chat";
 import { launches } from "./launches";
+import { strategies } from "./strategies";
 
 // Compose the `api` object that all callers use via `import { api } from "@/lib/api"`
 export const api = {
@@ -128,4 +130,5 @@ export const api = {
   // ── Chat / Insight AI ─────────────────────────────────────────────────────
   chat,
   launches,
+  strategies,
 };

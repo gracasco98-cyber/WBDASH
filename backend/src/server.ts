@@ -40,6 +40,7 @@ import marketingRedcareRouter from "./routes/marketingRedcare.routes";
 import { tasksRouter } from "./routes/tasks.routes";
 import { boardRouter } from "./routes/board.routes";
 import launchesRouter from "./routes/launches.routes";
+import strategiesRouter from "./routes/strategies.routes";
 import { startRedcareKeywordTrackingSchedule } from "./jobs/redcareKeywordTracking.job";
 import { addSSEClient, sseClientCount } from "./sse/sse";
 
@@ -178,6 +179,7 @@ app.use("/api/purchasing", requireAuth, paymentDuesRouter);
 app.use("/api/mirakl",     requireAuth, miraklRouter);
 app.use("/api/marketing/redcare", requireAuth, marketingRedcareRouter);
 app.use("/api/tasks", requireAuth, tasksRouter);
+app.use("/api/strategies", requireAuth, strategiesRouter);
 app.use("/api/board", requireAuth, boardRouter);
 app.use("/api/launches", requireAuth, launchesRouter);
 

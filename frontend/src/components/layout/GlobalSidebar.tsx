@@ -200,6 +200,18 @@ export default function GlobalSidebar() {
         </Link>
 
         <Link
+          href="/strategie"
+          className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+            pathname.startsWith("/strategie")
+              ? "bg-accent-primary/12 border-accent-primary/25 text-accent-primary"
+              : "border-transparent text-zinc-400 hover:text-white hover:bg-white/5"
+          }`}
+        >
+          <Target size={15} className="shrink-0" />
+          Strategie
+        </Link>
+
+        <Link
           href="/task-manager"
           className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
             pathname.startsWith("/task-manager")
