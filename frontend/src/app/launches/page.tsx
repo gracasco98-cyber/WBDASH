@@ -163,7 +163,7 @@ export default function LaunchesPage() {
               </div>
               <button
                 onClick={create}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#172033] px-4 py-3 text-sm font-semibold text-white"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#e4c35a] bg-[#f8e9b5] px-4 py-3 text-sm font-semibold text-[#705300] shadow-sm transition hover:bg-[#f3df96]"
               >
                 <Plus size={17} />
                 Nuovo lancio
@@ -626,7 +626,7 @@ function Empty({ onCreate }: { onCreate: () => void }) {
       </p>
       <button
         onClick={onCreate}
-        className="mt-5 rounded-xl bg-[#172033] px-4 py-2.5 text-sm font-semibold text-white"
+        className="mt-5 rounded-xl border border-[#e4c35a] bg-[#f8e9b5] px-4 py-2.5 text-sm font-semibold text-[#705300] shadow-sm transition hover:bg-[#f3df96]"
       >
         <Plus size={15} className="mr-2 inline" />
         Nuovo lancio
