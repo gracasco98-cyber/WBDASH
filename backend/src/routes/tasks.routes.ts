@@ -22,11 +22,13 @@ tasksRouter.get("/assignable-users", async (_req: Request, res: Response) => {
 });
 
 tasksRouter.get("/", async (req: Request, res: Response) => {
-  const scope = req.query.scope === "created" ? "created" : "assigned";
+  const scope = req.query.scope === "created" ? "created" : req.query.scope === "all" ? "all" : "assigned";
   try {
     const tasks = scope === "created"
       ? await listTasks(prisma, { createdById: req.user!.id })
-      : await listTasks(prisma, { assigneeId: req.user!.id });
+      : scope === "all"
+        ? await listTasks(prisma, {})
+        : await listTasks(prisma, { assigneeId: req.user!.id });
     res.json({ tasks });
   } catch (err) {
     await logError("tasks-list", err);
@@ -40,14 +42,12 @@ tasksRouter.post("/", async (req: Request, res: Response) => {
     relatedType?: string; relatedLabel?: string; relatedUrl?: string;
   };
   if (!title || !title.trim()) return res.status(400).json({ error: "title è obbligatorio." });
-  if (!assigneeId) return res.status(400).json({ error: "assigneeId è obbligatorio." });
-
   try {
     const task = await createTask(prisma, {
       title: title.trim(),
       description: description?.trim() || null,
       createdById: req.user!.id,
-      assigneeId,
+      assigneeId: assigneeId || req.user!.id,
       dueDate: dueDate ? new Date(dueDate) : null,
       relatedType: relatedType?.trim() || null,
       relatedLabel: relatedLabel?.trim() || null,

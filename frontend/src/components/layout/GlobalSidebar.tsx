@@ -61,7 +61,7 @@ const GROUPS = [
   {
     key: "supporto", label: "SUPPORTO", icon: LifeBuoy,
     items: [
-      { label: "I miei ticket", comingSoon: true },
+      { href: "/task-manager", label: "Cose da migliorare" },
     ],
   },
   {

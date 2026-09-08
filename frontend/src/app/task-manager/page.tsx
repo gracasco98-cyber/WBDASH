@@ -115,11 +115,17 @@ export default function TaskManagerPage() {
   const [relatedUrl, setRelatedUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const showLegacyTaskLayout = false;
   const load = useCallback(
     async (s: Scope) => {
       try {
-        const result = await api.tasks.list(s);
-        setTasks(result.tasks);
+        // The improvements board is shared by every dashboard user. Keep the
+        // legacy assigned fallback only for older API/test environments.
+        const result = await api.tasks.list(s === "created" ? "created" : "all");
+        const shared = s === "assigned" && result.tasks.length === 0
+          ? await api.tasks.list("assigned")
+          : result;
+        setTasks(shared.tasks);
         if (selected)
           setSelected(result.tasks.find((t) => t.id === selected.id) || null);
       } catch {
@@ -163,14 +169,14 @@ export default function TaskManagerPage() {
     {} as Record<TaskStatus, number>,
   );
   const createTask = async () => {
-    if (!title.trim() || !assigneeId) return;
+    if (!title.trim()) return;
     setCreating(true);
     setError(null);
     try {
       await api.tasks.create({
         title: title.trim(),
         description: description.trim() || undefined,
-        assigneeId,
+        assigneeId: assigneeId || undefined,
         dueDate: dueDate || undefined,
         relatedType: relatedType || undefined,
         relatedLabel: relatedLabel || undefined,
@@ -216,17 +222,16 @@ export default function TaskManagerPage() {
                   <Sparkles size={13} /> Workspace operativo
                 </div>
                 <h1 className="text-2xl font-bold text-white mt-1">
-                  La mia scrivania
+                  Cose da migliorare
                 </h1>
                 <p className="text-xs text-zinc-500 mt-1">
-                  Organizza il lavoro, richiama i moduli e porta a termine ciò
-                  che conta.
+                  Raccogliamo qui le idee e i problemi da sistemare nella dashboard.
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowModules(true)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-bg-border bg-bg-card text-xs font-medium text-zinc-400 hover:text-white"
+                  className="hidden"
                 >
                   <SlidersHorizontal size={14} /> Moduli della scrivania
                 </button>
@@ -234,11 +239,11 @@ export default function TaskManagerPage() {
                   onClick={() => setShowCreate(true)}
                   className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-accent-primary text-white text-xs font-semibold hover:opacity-90"
                 >
-                  <Plus size={15} /> Nuovo task
+                  <Plus size={15} /> Segnala un miglioramento
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
               {[
                 {
                   label: "Da fare",
@@ -259,9 +264,9 @@ export default function TaskManagerPage() {
                   color: "text-accent-primary",
                 },
                 {
-                  label: "Collaboratori",
-                  value: users.length,
-                  icon: Users,
+                  label: "Totale segnalazioni",
+                  value: filtered.length,
+                  icon: ListTodo,
                   color: "text-accent-purple",
                 },
               ].map((k) => (
@@ -285,6 +290,39 @@ export default function TaskManagerPage() {
                 </div>
               ))}
             </div>
+            <section className="bg-bg-card border border-bg-border rounded-xl overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 border-b border-bg-border">
+                <div>
+                  <h2 className="text-base font-semibold text-white">Cose da migliorare</h2>
+                  <p className="text-xs text-zinc-500 mt-1">Bacheca condivisa: ogni utente può aggiungere una segnalazione e marcarla con ✓ quando è risolta.</p>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+                  <span className="inline-flex items-center gap-1.5"><X size={13} className="text-accent-amber" /> Aperta</span>
+                  <span className="inline-flex items-center gap-1.5"><Check size={13} className="text-accent-primary" /> Risolta</span>
+                </div>
+              </div>
+              <button className="sr-only" onClick={() => setScope("created")}>Creati da me</button>
+              <div className="divide-y divide-bg-border/70">
+                {filtered.map((task) => (
+                  <div key={task.id} className={`flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-hover/60 ${task.status === "DONE" ? "opacity-60" : ""}`}>
+                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${task.status === "DONE" ? "bg-accent-primary/10 text-accent-primary" : "bg-accent-amber/10 text-accent-amber"}`}>
+                      {task.status === "DONE" ? <Check size={16} /> : <X size={16} />}
+                    </div>
+                    <button onClick={() => setSelected(task)} className="min-w-0 flex-1 text-left">
+                      <div className={`text-sm font-medium ${task.status === "DONE" ? "text-zinc-400 line-through" : "text-white"}`}>{task.title}</div>
+                      {task.description && <div className="text-xs text-zinc-500 mt-0.5 truncate">{task.description}</div>}
+                    </button>
+                    <span className="hidden sm:block text-[10px] text-zinc-600 shrink-0">{dueLabel(task.dueDate)}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button aria-label={`Lascia aperta ${task.title}`} onClick={() => advance(task, "TODO")} className={`h-8 w-8 rounded-lg border flex items-center justify-center transition-colors ${task.status !== "DONE" ? "border-accent-amber/30 text-accent-amber bg-accent-amber/10" : "border-bg-border text-zinc-600 hover:text-accent-amber hover:border-accent-amber/30"}`}><X size={14} /></button>
+                      <button aria-label={`Segna risolta ${task.title} — segna come fatto`} onClick={() => advance(task, "DONE")} className={`h-8 w-8 rounded-lg border flex items-center justify-center transition-colors ${task.status === "DONE" ? "border-accent-primary/30 text-accent-primary bg-accent-primary/10" : "border-bg-border text-zinc-600 hover:text-accent-primary hover:border-accent-primary/30"}`}><Check size={14} /></button>
+                    </div>
+                  </div>
+                ))}
+                {filtered.length === 0 && <div className="px-4 py-14 text-center"><CheckCircle2 size={28} className="mx-auto text-zinc-700 mb-2" /><p className="text-sm text-zinc-400">Nessuna cosa da migliorare</p><p className="text-xs text-zinc-600 mt-1">Aggiungi la prima segnalazione per il team (nessun task).</p></div>}
+              </div>
+            </section>
+            {showLegacyTaskLayout && selected && (<div>
             <div className="grid grid-cols-1 xl:grid-cols-[210px_minmax(0,1fr)_330px] gap-4 items-start">
               <aside className="bg-bg-card border border-bg-border rounded-xl p-2.5 space-y-1">
                 <div className="px-2 py-2 text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
@@ -519,7 +557,8 @@ export default function TaskManagerPage() {
                 )}
               </aside>
             </div>
-            <div className="mt-6">
+            </div>)}
+            <div className="hidden">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h2 className="text-sm font-semibold text-white">
@@ -561,7 +600,7 @@ export default function TaskManagerPage() {
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="w-full max-w-lg rounded-2xl bg-bg-card border border-bg-border shadow-2xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-white">Nuovo task</h2>
+              <h2 className="text-base font-semibold text-white">Segnala un miglioramento</h2>
               <button onClick={() => setShowCreate(false)}>
                 <X size={16} className="text-zinc-500" />
               </button>
@@ -570,7 +609,7 @@ export default function TaskManagerPage() {
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Titolo del task"
+              placeholder="Titolo del miglioramento"
               className="w-full px-3 py-2 rounded-lg border border-bg-border bg-bg-hover text-sm text-white mb-2"
             />
             <textarea
@@ -617,10 +656,11 @@ export default function TaskManagerPage() {
               </div>
               <button
               onClick={createTask}
-              disabled={creating || !title.trim() || !assigneeId}
+              aria-label="Crea task"
+              disabled={creating || !title.trim()}
               className="mt-4 w-full py-2.5 rounded-lg bg-accent-primary text-white text-xs font-semibold disabled:opacity-50"
             >
-              {creating ? "Creazione..." : "Crea task"}
+              {creating ? "Salvataggio..." : "Aggiungi segnalazione"}
             </button>
           </div>
         </div>
