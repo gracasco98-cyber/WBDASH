@@ -64,6 +64,7 @@ export type {
 } from "./marketing-redcare";
 export type { Task, TaskStatus, AssignableUser } from "./tasks";
 export type { BoardWidget } from "./board";
+export type { SupplierInvoice, SupplierInvoiceSource, CreateSupplierInvoiceInput } from "./supplier-invoices";
 export type { ChatMessage, ChatResponse } from "./chat";
 export type { Launch, LaunchCatalogProduct, LaunchDay, LaunchKeywordDay, LaunchDayInput, LaunchKeywordInput } from "./launches";
 
@@ -80,6 +81,7 @@ import { mirakl } from "./mirakl";
 import { marketingRedcare } from "./marketing-redcare";
 import { tasks } from "./tasks";
 import { board } from "./board";
+import { supplierInvoices } from "./supplier-invoices";
 import { chat } from "./chat";
 import { launches } from "./launches";
 
@@ -124,6 +126,9 @@ export const api = {
   // ── Bacheca / Task Manager ────────────────────────────────────────────────
   tasks,
   board,
+
+  // ── Acquisti / Fatture Fornitore ──────────────────────────────────────────
+  supplierInvoices,
 
   // ── Chat / Insight AI ─────────────────────────────────────────────────────
   chat,
