@@ -78,12 +78,10 @@ describe("NuovaFatturaPage", () => {
 
     await user.selectOptions(screen.getByLabelText(/fornitore/i), "s1");
     await user.type(screen.getByLabelText(/numero fattura/i), "FT-001");
-    await user.type(screen.getByLabelText(/data fattura/i), "2026-08-10");
+    fireEvent.change(screen.getByLabelText(/data fattura/i), { target: { value: "2026-08-10" } });
     await user.type(screen.getByLabelText(/imponibile/i), "100");
     await user.type(screen.getByLabelText(/^iva/i), "22");
-
-    const form = screen.getByRole("button", { name: /salva/i }).closest("form")!;
-    fireEvent.submit(form);
+    await user.click(screen.getByRole("button", { name: /salva/i }));
 
     await waitFor(() => {
       expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
