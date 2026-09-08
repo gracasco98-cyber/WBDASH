@@ -283,11 +283,19 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
       } else {
         histAvgNet = (totalGross + dailyRunRate * cycleDaysRemaining) * pr;
       }
-      const projectedNet   = r2(histAvgNet);
-      const projectedGross = r2(histAvgNet / Math.max(0.001, pr));
-      const projectedFees  = r2(projectedGross - projectedNet);
-
       const estNet = r2(totalGross * pr);
+
+      // The card is meant to answer "what will be paid in the next deposit?".
+      // Prefer the active, account-scoped cycle (open orders + stragglers) over
+      // the average of previous settlements. The historical average is only a
+      // fallback for a genuinely empty cycle; using it as the primary value
+      // made the dashboard disagree with Seller Central whenever the current
+      // account's next payment was smaller/larger than its historical mean.
+      const projectedNet   = totalGross > 0 ? estNet : r2(histAvgNet);
+      const projectedGross = totalGross > 0
+        ? r2(totalGross)
+        : r2(histAvgNet / Math.max(0.001, pr));
+      const projectedFees  = r2(projectedGross - projectedNet);
 
       const feeRatio = (calibField: number | undefined, rawField: number) =>
         r2(projectedGross * (useCalib && calibField !== undefined ? calibField : Number(rawField)));
