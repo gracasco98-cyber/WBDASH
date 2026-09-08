@@ -20,6 +20,8 @@ import {
   Sparkles,
   History,
   TrendingUp,
+  RefreshCw,
+  CheckCircle2,
 } from "lucide-react";
 
 type DateRange = { from: string; to: string };
@@ -396,6 +398,9 @@ export default function PeriodTiles() {
   // marketplace slice periodically so today's VAT, spend and margin are not
   // frozen at the initial render.
   const [liveTick, setLiveTick] = useState(0);
+  const [manualRefresh, setManualRefresh] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
     const timer = window.setInterval(() => setLiveTick((tick) => tick + 1), 300_000);
     return () => window.clearInterval(timer);
@@ -431,16 +436,21 @@ export default function PeriodTiles() {
             return [id, sumAggregate(groups.map((g) => g.aggregate))] as const;
           }),
         );
-        if (!cancelled) setTotals(Object.fromEntries(results));
+        if (!cancelled) {
+          setTotals(Object.fromEntries(results));
+          setLastUpdated(new Date());
+          setRefreshing(false);
+        }
       } catch (err) {
         if (!cancelled)
           console.error("[PeriodTiles] Failed to load period tiles:", err);
+        if (!cancelled) setRefreshing(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [productMarketplace, amazonAccountId, activeTiles]);
+  }, [productMarketplace, amazonAccountId, activeTiles, manualRefresh]);
 
   useEffect(() => {
     // Hidden when an Amazon-specific channel is selected, matching the same
@@ -526,16 +536,21 @@ export default function PeriodTiles() {
             ] as const;
           }),
         );
-        if (!cancelled) setShopifyTotals(Object.fromEntries(results));
+        if (!cancelled) {
+          setShopifyTotals(Object.fromEntries(results));
+          setLastUpdated(new Date());
+          setRefreshing(false);
+        }
       } catch (err) {
         if (!cancelled)
           console.error("[PeriodTiles] Failed to load Shopify totals:", err);
+        if (!cancelled) setRefreshing(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [globalMarketplace, activeTiles, liveTick]);
+  }, [globalMarketplace, activeTiles, liveTick, manualRefresh]);
 
   useEffect(() => {
     const tilesNeedingCompare = activeTiles.filter(
@@ -605,27 +620,53 @@ export default function PeriodTiles() {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-1 justify-end px-1 pb-0.5">
-        <button
-          onClick={() => setTileSet("days")}
-          className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
-            tileSet === "days"
-              ? "bg-accent-primary/15 text-accent-primary"
-              : "text-zinc-500 hover:text-zinc-300"
-          }`}
-        >
-          Giornaliero
-        </button>
-        <button
-          onClick={() => setTileSet("monthly")}
-          className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
-            tileSet === "monthly"
-              ? "bg-accent-primary/15 text-accent-primary"
-              : "text-zinc-500 hover:text-zinc-300"
-          }`}
-        >
-          Mensile
-        </button>
+      <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
+        <div className="flex min-w-0 items-center gap-1.5 text-[10px] text-zinc-500">
+          <CheckCircle2 size={13} className={refreshing ? "text-amber-500" : "text-emerald-500"} />
+          <span className="truncate">
+            {refreshing
+              ? "Aggiornamento in corso…"
+              : lastUpdated
+                ? `Dati aggiornati alle ${lastUpdated.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`
+                : "In attesa di sincronizzazione"}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            aria-label="Aggiorna dati"
+            title="Aggiorna dati"
+            onClick={() => {
+              setRefreshing(true);
+              setManualRefresh((value) => value + 1);
+            }}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-bg-hover hover:text-accent-primary"
+          >
+            <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setTileSet("days")}
+            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
+              tileSet === "days"
+                ? "bg-accent-primary/15 text-accent-primary"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            Giornaliero
+          </button>
+          <button
+            type="button"
+            onClick={() => setTileSet("monthly")}
+            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
+              tileSet === "monthly"
+                ? "bg-accent-primary/15 text-accent-primary"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            Mensile
+          </button>
+        </div>
       </div>
       <div className="flex w-full snap-x snap-mandatory gap-2.5 overflow-x-auto px-0.5 pb-2 scrollbar-hide sm:grid sm:grid-cols-3 sm:gap-3 sm:overflow-visible lg:grid-cols-5">
         {activeTiles.map((tile) => {
