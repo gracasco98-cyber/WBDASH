@@ -62,9 +62,11 @@ describe("GlobalSidebar", () => {
     render(<GlobalSidebar />);
     expect(screen.queryByText("Content Hub")).not.toBeInTheDocument();
     expect(screen.queryByText("Calendario promo")).not.toBeInTheDocument();
-    const supplierInvoices = screen.getByText("Fatture Fornitore").closest("button, a");
-    expect(supplierInvoices?.tagName).toBe("BUTTON");
-    expect(supplierInvoices).toBeDisabled();
+  });
+
+  it("renders Fatture Fornitore as an active link to /acquisti/fatture", () => {
+    render(<GlobalSidebar />);
+    expect(screen.getByRole("link", { name: "Fatture Fornitore" })).toHaveAttribute("href", "/acquisti/fatture");
   });
 
   it("adds the Redcare Keyword BI link to the MARKETING group", () => {
