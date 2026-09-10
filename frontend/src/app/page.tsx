@@ -358,8 +358,12 @@ export default function DashboardPage() {
         });
       }
       loadRef.current();
+      window.dispatchEvent(new Event("wbdash:refresh-period-tiles"));
     } else if (event === "amazon:sync") {
-      if (Number(d.imported ?? 0) > 0) loadRef.current();
+      if (Number(d.imported ?? 0) > 0) {
+        loadRef.current();
+        window.dispatchEvent(new Event("wbdash:refresh-period-tiles"));
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pushToast]));

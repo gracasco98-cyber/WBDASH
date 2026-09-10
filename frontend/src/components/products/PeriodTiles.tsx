@@ -402,8 +402,14 @@ export default function PeriodTiles() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
-    const timer = window.setInterval(() => setLiveTick((tick) => tick + 1), 300_000);
-    return () => window.clearInterval(timer);
+    const refresh = () => setLiveTick((tick) => tick + 1);
+    window.addEventListener("wbdash:refresh-period-tiles", refresh);
+    // Safety net when an SSE connection is temporarily unavailable.
+    const timer = window.setInterval(refresh, 60_000);
+    return () => {
+      window.removeEventListener("wbdash:refresh-period-tiles", refresh);
+      window.clearInterval(timer);
+    };
   }, []);
   // Populated for any tile that needs a comparison: either the global
   // "Confronto" mode (GlobalPeriodSelector) for the daily set, or a tile's
@@ -450,7 +456,7 @@ export default function PeriodTiles() {
     return () => {
       cancelled = true;
     };
-  }, [productMarketplace, amazonAccountId, activeTiles, manualRefresh]);
+  }, [productMarketplace, amazonAccountId, activeTiles, manualRefresh, liveTick]);
 
   useEffect(() => {
     // Hidden when an Amazon-specific channel is selected, matching the same
@@ -861,16 +867,29 @@ export default function PeriodTiles() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-zinc-500 text-[10px]">
-                      {globalMarketplace === "REDCARE_IT" ? "Fee Redcare (15%)" : globalMarketplace === "all" ? "Fee marketplace" : "Fee Amazon"}
-                    </div>
-                    <div className="text-zinc-300 tabular-nums">
-                      {globalMarketplace === "REDCARE_IT"
-                        ? shopifyRow ? fmtEur(shopifyRow.redcareFee) : "—"
-                        : globalMarketplace === "all"
-                          ? hasAny ? fmtEur((totalRow?.amazonFees ?? 0) + (shopifyRow?.redcareFee ?? 0)) : "—"
-                          : totalRow ? fmtEur(totalRow.amazonFees) : "—"}
-                    </div>
+                    {globalMarketplace === "all" ? (
+                      <div className="space-y-1">
+                        <div>
+                          <div className="text-zinc-500 text-[10px]">Fee Amazon</div>
+                          <div className="text-zinc-300 tabular-nums">{totalRow ? fmtEur(totalRow.amazonFees) : "—"}</div>
+                        </div>
+                        <div>
+                          <div className="text-zinc-500 text-[10px]">Fee Redcare (15%)</div>
+                          <div className="text-zinc-300 tabular-nums">{shopifyRow ? fmtEur(shopifyRow.redcareFee) : "—"}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-zinc-500 text-[10px]">
+                          {globalMarketplace === "REDCARE_IT" ? "Fee Redcare (15%)" : "Fee Amazon"}
+                        </div>
+                        <div className="text-zinc-300 tabular-nums">
+                          {globalMarketplace === "REDCARE_IT"
+                            ? shopifyRow ? fmtEur(shopifyRow.redcareFee) : "—"
+                            : totalRow ? fmtEur(totalRow.amazonFees) : "—"}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
