@@ -323,6 +323,7 @@ export function sumAggregate(
       netProfit: acc.netProfit + r.netProfit,
       estimatedPayout: acc.estimatedPayout + r.estimatedPayout,
       vatAmount: acc.vatAmount + (r.vatAmount ?? 0),
+      vatEstimated: acc.vatEstimated || Boolean(r.vatEstimated),
       adsSpend:
         r.adsSpend !== null ? (acc.adsSpend ?? 0) + r.adsSpend : acc.adsSpend,
       // AND-logic with a `true` seed, matching resolveProductPerformance's
@@ -346,6 +347,7 @@ export function sumAggregate(
       netProfit: 0,
       estimatedPayout: 0,
       vatAmount: 0,
+      vatEstimated: false,
       adsSpend: null as number | null,
       hasRealFees: true,
       hasRealCogs: true,
@@ -757,6 +759,7 @@ export default function PeriodTiles() {
               : isAmazonChannel(globalMarketplace)
                 ? totalRow?.vatAmount ?? 0
                 : combinedVat;
+          const vatIsEstimated = isAmazonChannel(globalMarketplace) && Boolean(totalRow?.vatEstimated);
           const combinedCosts =
             (totalRow?.amazonFees ?? 0) +
             (totalRow?.cogs ?? 0) +
@@ -844,7 +847,7 @@ export default function PeriodTiles() {
                   </div>
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
-                      {vatLabel}
+                      {vatLabel}{vatIsEstimated ? " (stima)" : ""}
                     </div>
                     <div className="text-[11px] font-semibold tabular-nums text-zinc-300">
                       {hasAny ? fmtEur(vatDisplay) : "—"}

@@ -39,6 +39,8 @@ export interface ProductPerformanceRow {
   bsr: number | null;
   /** Real VAT charged, summed from AmazonOrderItem.itemTax — not derived from vatRate. */
   vatAmount: number;
+  /** True when itemTax is not available yet and vatRate was used as a temporary estimate. */
+  vatEstimated: boolean;
   /** Manually entered sales VAT rate (%) on the identifier — informational, null on the aggregate. */
   vatRate: number | null;
 }
@@ -177,6 +179,8 @@ export async function resolveProductPerformance(
       const adsInfo = params.adsSpendByKey?.get(key);
       const adsSpend = adsInfo ? adsInfo.spend : null;
       const realAcos = adsSpend !== null && sold.sales > 0 ? adsSpend / sold.sales : null;
+      const vatEstimated = sold.vat === 0 && sold.sales > 0 && ident.vatRate != null && Number(ident.vatRate) > 0;
+      const vatAmount = vatEstimated ? sold.sales * Number(ident.vatRate) / 100 : sold.vat;
 
       const derived = deriveMetrics({ sales: sold.sales, refundsAmount: refund.amount, amazonFees, cogs, adsSpend, units: sold.units });
 
@@ -200,7 +204,8 @@ export async function resolveProductPerformance(
         stock: stockByKey.get(key) ?? 0,
         hasStockData: stockByKey.has(key),
         bsr: null, // AmazonProductSnapshot.bsr exists but is never populated (spec §Scope, out of scope)
-        vatAmount: sold.vat,
+        vatAmount,
+        vatEstimated,
         vatRate: ident.vatRate,
         ...derived,
       };
@@ -217,6 +222,7 @@ export async function resolveProductPerformance(
         cogs: acc.cogs + r.cogs,
         stock: acc.stock + r.stock,
         vatAmount: acc.vatAmount + r.vatAmount,
+        vatEstimated: acc.vatEstimated || r.vatEstimated,
         adsSpend: r.adsSpend !== null ? (acc.adsSpend ?? 0) + r.adsSpend : acc.adsSpend,
         hasAnyAds: acc.hasAnyAds || r.adsSpend !== null,
         // AND-logic: the aggregate only claims "real fees" when every identifier row
@@ -228,7 +234,7 @@ export async function resolveProductPerformance(
         hasRealCogs: acc.hasRealCogs && r.hasRealCogs,
         hasStockData: acc.hasStockData && r.hasStockData,
       }),
-      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, vatAmount: 0, adsSpend: null as number | null, hasAnyAds: false, hasRealFees: true, hasRealCogs: true, hasStockData: true }
+      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, vatAmount: 0, vatEstimated: false, adsSpend: null as number | null, hasAnyAds: false, hasRealFees: true, hasRealCogs: true, hasStockData: true }
     );
 
     const aggDerived = deriveMetrics({
@@ -246,6 +252,7 @@ export async function resolveProductPerformance(
       amazonFees: aggBase.amazonFees, hasRealFees: aggBase.hasRealFees, hasRealCogs: aggBase.hasRealCogs,
       cogs: aggBase.cogs, stock: aggBase.stock, hasStockData: aggBase.hasStockData,
       vatAmount: aggBase.vatAmount, vatRate: null, // a single rate across multiple identifiers isn't meaningful
+      vatEstimated: rows.some((r) => r.vatEstimated),
       ...aggDerived,
     };
 

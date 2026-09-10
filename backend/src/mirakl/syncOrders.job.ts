@@ -1,6 +1,7 @@
 // syncOrders.job.ts — Mirakl (Redcare) order sync: WAITING_ACCEPTANCE -> Shopify order -> Mirakl accept.
 // Standalone: nessuna dipendenza da backend/src/amazon/**.
 import { prisma } from "../db";
+import { broadcast } from "../sse/sse";
 import { fetchNewOrders, acceptOrder } from "./client";
 import { mapMiraklOrder } from "./orderMapper";
 import {
@@ -104,6 +105,13 @@ export async function runMiraklSync(): Promise<{ created: number; accepted: numb
           country: mapped.country,
         });
         created++;
+        broadcast("order:new", {
+          source: "mirakl",
+          orderName: shopifyOrder.name,
+          total: mapped.totalAmount,
+          marketplace: mapped.country === "DE" ? "REDCARE_DE" : "REDCARE_IT",
+          ts: new Date().toISOString(),
+        });
       }
 
       if (existing.miraklState === "PENDING_ACCEPT") {
@@ -164,6 +172,7 @@ let isRunning = false;
 // late or are not emitted for an API-created order.
 export function startMiraklPolling(intervalMs = 60_000): void {
   console.log(`[Mirakl] Polling started (every ${intervalMs / 1000}s)`);
+  runMiraklSync().catch((err) => logError("mirakl-polling-startup", err));
   setInterval(() => {
     if (isRunning) return;
     isRunning = true;

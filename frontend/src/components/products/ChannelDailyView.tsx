@@ -105,7 +105,9 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
   const grandOrders = activeTotals.reduce((s, [, t]) => s + t.orderCount, 0);
   const grandAdSpend = activeTotals.reduce((s, [, t]) => s + t.adSpend, 0);
   const grandNet = activeTotals.reduce((s, [, t]) => s + t.netRevenue, 0);
-  const grandMargin = grandTotal > 0 ? (grandNet / grandTotal) * 100 : null;
+  const grandVat = activeTotals.reduce((s, [, t]) => s + t.vatAmount, 0);
+  const grandNetAfterVat = activeTotals.reduce((s, [, t]) => s + t.netAfterVat, 0);
+  const grandMargin = grandTotal > 0 ? (grandNetAfterVat / grandTotal) * 100 : null;
 
   // Build pivot table: rows=dates (desc), cols=channels
   const pivotDates = [...data.dates].reverse().slice(0, 30); // last 30 days newest first
@@ -183,6 +185,7 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
           { label: "UnitÃ  vendute", value: fmtNum(grandUnits), icon: <Package size={14} />, color: "text-purple-400" },
           { label: "Ordini", value: fmtNum(grandOrders), icon: <ShoppingBag size={14} />, color: "text-blue-400" },
           { label: "Marketplace Ads", value: fmtEur(grandAdSpend), icon: <RotateCcw size={14} />, color: "text-purple-400" },
+          { label: "IVA vendite", value: fmtEur(grandVat), icon: <TrendingUp size={14} />, color: "text-amber-400" },
           { label: "Margine netto", value: grandMargin === null ? "—" : `${grandMargin.toFixed(1)}%`, icon: <TrendingUp size={14} />, color: grandMargin !== null && grandMargin >= 0 ? "text-emerald-400" : "text-red-400" },
         ].map(({ label, value, icon, color }) => (
           <div key={label} className="bg-bg-card rounded-xl p-3 sm:p-4 border border-bg-border">
@@ -295,6 +298,7 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
                 <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">Ordini</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">Fatturato</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">Netto</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">IVA</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">Ads</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">Margine</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wide">% sul totale</th>
@@ -327,6 +331,9 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
                     <td className="px-4 py-3 text-right text-sm font-mono text-accent-primary tabular-nums">
                       {fmtEur(t.netRevenue)}
                     </td>
+                    <td className="px-4 py-3 text-right text-sm font-mono text-amber-400 tabular-nums">
+                      {t.vatAmount > 0 ? fmtEur(t.vatAmount) : "—"}
+                    </td>
                     <td className="px-4 py-3 text-right text-sm font-mono text-purple-400 tabular-nums">
                       {t.adSpend > 0 ? fmtEur(t.adSpend) : "—"}
                     </td>
@@ -358,6 +365,7 @@ export default function ChannelDailyView({ initialFilter = "last30" }: Props) {
                 <td className="px-4 py-3 text-right text-sm font-mono text-accent-primary tabular-nums">
                   {fmtEur(grandNet)}
                 </td>
+                <td className="px-4 py-3 text-right text-sm font-mono text-amber-400 tabular-nums">{fmtEur(grandVat)}</td>
                 <td className="px-4 py-3 text-right text-sm font-mono text-purple-400 tabular-nums">{fmtEur(grandAdSpend)}</td>
                 <td className="px-4 py-3 text-right text-sm font-mono text-zinc-300 tabular-nums">{grandMargin === null ? "—" : `${grandMargin.toFixed(1)}%`}</td>
                 <td className="px-4 py-3 text-right text-xs text-zinc-500">100%</td>

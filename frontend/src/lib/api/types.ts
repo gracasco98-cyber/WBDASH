@@ -80,6 +80,8 @@ export interface ProductPerformance {
   adSpend?: number;
   /** VAT included in Redcare gross prices, calculated at the configured 10% rate. */
   vatAmount?: number;
+  /** True while Amazon itemTax is unavailable and the configured vatRate is used. */
+  vatEstimated?: boolean;
 }
 
 export interface ProductKpis {
@@ -712,6 +714,8 @@ export interface ProductPerformanceRow {
   /** Real VAT charged, summed from AmazonOrderItem.itemTax. Only set for
    *  Amazon rows — Shopify VAT isn't tracked yet (undefined there). */
   vatAmount?: number;
+  /** True while Amazon itemTax is unavailable and the configured vatRate is used. */
+  vatEstimated?: boolean;
   /** Fee origin used to avoid labelling mixed country rows as Amazon. */
   feeKind?: "amazon" | "redcare" | "mixed";
   /** Manually entered sales VAT rate (%) on the Amazon identifier, or null
