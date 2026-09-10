@@ -79,8 +79,12 @@ export default function MetricRow({
     { column: "Ads", node: dash(m.adsSpend, fmtEur) },
     { column: "% Resi", node: fmtPct(m.refundPct) },
     {
-      column: m.marketplace === "REDCARE_IT" ? "Fee Redcare (15%)" : "Fee Amazon",
-      node: hasCostData ? (
+      column:
+        m.feeKind === "redcare" ||
+        (!m.feeKind && m.marketplace.startsWith("REDCARE"))
+          ? "Fee Redcare (15%)"
+          : "Fee Amazon",
+      node: hasCostData && m.feeKind !== "mixed" ? (
         <>
           {fmtEur(m.amazonFees)}
           {!m.hasRealFees && (

@@ -230,7 +230,7 @@ export function buildShopifyMarketplaceRows(
 ): RowEntry[] {
   const redcareMetrics = (base: { sales: number; refundsAmount: number; adsSpend: number | null; vatAmount?: number }) => {
     const vatAmount = base.vatAmount ?? 0;
-    const fees = base.sales * 0.15;
+    const fees = Math.max(0, base.sales - base.refundsAmount) * 0.15;
     const ads = base.adsSpend ?? 0;
     const grossProfit = base.sales - base.refundsAmount - vatAmount - fees;
     const netProfit = grossProfit - ads;
@@ -247,6 +247,7 @@ export function buildShopifyMarketplaceRows(
       costDataAvailable: true,
       hasRealFees: false,
       hasRealCogs: false,
+      feeKind: "redcare" as const,
     };
   };
   const byMarketplace = new Map<string, ProductPerformance[]>();
@@ -546,6 +547,17 @@ function buildRowsByCountry(
       identifierId: "",
       asin: "",
       marketplace: country,
+      feeKind: (() => {
+        const kinds = new Set(
+          entries.map((e) =>
+            e.metrics.feeKind ??
+              (e.metrics.marketplace.startsWith("REDCARE") ? "redcare" : "amazon"),
+          ),
+        );
+        return kinds.size === 1
+          ? ([...kinds][0] as "amazon" | "redcare")
+          : "mixed";
+      })(),
       sku: null,
       bsr: null,
       hasRealFees: entries.every((e) => e.metrics.hasRealFees),

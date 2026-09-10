@@ -103,7 +103,7 @@ router.get("/summary", async (req: Request, res: Response) => {
     const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
 
     type TotRow = { totalRevenue: string; netRevenue: string; totalRefunds: string; orderCount: string };
-    type MpRow  = { marketplace: string; revenue: string; net: string; count: string };
+    type MpRow  = { marketplace: string; revenue: string; net: string; refunds: string; count: string };
     type LhRow  = { revenue: string; count: string };
 
     // 3 aggregation queries in parallel — DB does the heavy lifting, no JS reduce
@@ -126,6 +126,7 @@ router.get("/summary", async (req: Request, res: Response) => {
           "marketplaceDetected"                       AS marketplace,
           COALESCE(SUM("totalAmount"), 0)::FLOAT8     AS revenue,
           COALESCE(SUM("netAmount"),   0)::FLOAT8     AS net,
+          COALESCE(SUM("refundedAmount"), 0)::FLOAT8 AS refunds,
           COUNT(*)::INTEGER                           AS count
         FROM "ShopifyOrder" WHERE ${WHERE}
         GROUP BY "marketplaceDetected"
@@ -167,9 +168,12 @@ router.get("/summary", async (req: Request, res: Response) => {
     const adSpend = adRows.reduce((sum, ad) => sum + Number(ad.amount), 0);
     const redcareVat = mpRows
       .filter((row) => row.marketplace === "REDCARE_IT")
-      .reduce((sum, row) => sum + Number(row.revenue) * (10 / 110), 0);
+      .reduce((sum, row) => sum + Math.max(0, Number(row.revenue) - Number(row.refunds)) * (10 / 110), 0);
+    const redcareFee = mpRows
+      .filter((row) => row.marketplace === "REDCARE_IT")
+      .reduce((sum, row) => sum + Math.max(0, Number(row.revenue) - Number(row.refunds)) * 0.15, 0);
     if (byMarketplace.REDCARE_IT) {
-      byMarketplace.REDCARE_IT.net -= redcareVat;
+      byMarketplace.REDCARE_IT.net -= redcareVat + redcareFee;
     }
 
     // I costi manuali dei lanci sono spese reali di marketing/avviamento: non
@@ -190,9 +194,10 @@ router.get("/summary", async (req: Request, res: Response) => {
 
     res.json({
       totalRevenue:  Number(tot.totalRevenue),
-      netRevenue:    Number(tot.netRevenue) - adSpend - launchCost - redcareVat,
+      netRevenue:    Number(tot.netRevenue) - adSpend - launchCost - redcareVat - redcareFee,
       adSpend,
       redcareVat,
+      redcareFee,
       launchCost,
       totalRefunds:  Number(tot.totalRefunds),
       orderCount,

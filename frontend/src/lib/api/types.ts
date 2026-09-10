@@ -7,6 +7,8 @@ export interface Summary {
   netRevenue: number;
   adSpend: number;
   totalRefunds: number;
+  redcareVat?: number;
+  redcareFee?: number;
   orderCount: number;
   aov: number;
   lastHour: { revenue: number; orders: number };
@@ -706,6 +708,8 @@ export interface ProductPerformanceRow {
   /** Real VAT charged, summed from AmazonOrderItem.itemTax. Only set for
    *  Amazon rows — Shopify VAT isn't tracked yet (undefined there). */
   vatAmount?: number;
+  /** Fee origin used to avoid labelling mixed country rows as Amazon. */
+  feeKind?: "amazon" | "redcare" | "mixed";
   /** Manually entered sales VAT rate (%) on the Amazon identifier, or null
    *  when unset / on the aggregate row (a single rate across identifiers
    *  isn't meaningful). Undefined for Shopify rows. */
