@@ -70,8 +70,7 @@ const COLUMNS = [
   "Promo",
   "Ads",
   "% Resi",
-  "Fee Amazon",
-  "Fee Redcare (15%)",
+  "Fee marketplace",
   "COGS",
   "IVA",
   "Profitto lordo",
@@ -99,7 +98,7 @@ const COLUMN_GROUPS: { label: string; className: string; columns: string[] }[] =
     {
       label: "Costi",
       className: "text-accent-red/80",
-      columns: ["Fee Amazon", "Fee Redcare (15%)", "COGS", "IVA"],
+      columns: ["Fee marketplace", "COGS", "IVA"],
     },
     {
       label: "Risultato",
@@ -607,6 +606,7 @@ export function buildProductsCsv(rows: RowEntry[]): string {
       (m.refundPct * 100).toFixed(1),
       m.amazonFees.toFixed(2),
       m.cogs.toFixed(2),
+      (m.vatAmount ?? 0).toFixed(2),
       m.grossProfit.toFixed(2),
       m.netProfit.toFixed(2),
       m.estimatedPayout.toFixed(2),
