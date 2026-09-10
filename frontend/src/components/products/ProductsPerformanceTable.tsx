@@ -604,7 +604,7 @@ export function buildProductsCsv(rows: RowEntry[]): string {
       m.promo.toFixed(2),
       m.adsSpend !== null ? m.adsSpend.toFixed(2) : "",
       (m.refundPct * 100).toFixed(1),
-      m.amazonFees.toFixed(2),
+      m.feeKind === "mixed" ? "" : m.amazonFees.toFixed(2),
       m.cogs.toFixed(2),
       (m.vatAmount ?? 0).toFixed(2),
       m.grossProfit.toFixed(2),

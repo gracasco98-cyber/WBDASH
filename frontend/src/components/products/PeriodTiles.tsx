@@ -869,14 +869,18 @@ export default function PeriodTiles() {
                   <div>
                     {globalMarketplace === "all" ? (
                       <div className="space-y-1">
-                        <div>
-                          <div className="text-zinc-500 text-[10px]">Fee Amazon</div>
-                          <div className="text-zinc-300 tabular-nums">{totalRow ? fmtEur(totalRow.amazonFees) : "—"}</div>
-                        </div>
-                        <div>
-                          <div className="text-zinc-500 text-[10px]">Fee Redcare (15%)</div>
-                          <div className="text-zinc-300 tabular-nums">{shopifyRow ? fmtEur(shopifyRow.redcareFee) : "—"}</div>
-                        </div>
+                        {totalRow || shopifyRow ? (
+                          <>
+                            {totalRow && <div>
+                              <div className="text-zinc-500 text-[10px]">Fee Amazon</div>
+                              <div className="text-zinc-300 tabular-nums">{fmtEur(totalRow.amazonFees)}</div>
+                            </div>}
+                            {shopifyRow && <div>
+                              <div className="text-zinc-500 text-[10px]">Fee Redcare (15%)</div>
+                              <div className="text-zinc-300 tabular-nums">{fmtEur(shopifyRow.redcareFee)}</div>
+                            </div>}
+                          </>
+                        ) : <div className="text-zinc-300 tabular-nums">—</div>}
                       </div>
                     ) : (
                       <>
