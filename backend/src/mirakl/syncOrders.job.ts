@@ -159,7 +159,10 @@ export async function runMiraklSync(): Promise<{ created: number; accepted: numb
 // un ordine creato pochi istanti prima dal run precedente ancora in corso.
 let isRunning = false;
 
-export function startMiraklPolling(intervalMs = 300_000): void {
+// Redcare orders feed the Shopify webhook and therefore the live VAT refresh.
+// Keep a one-minute safety poll for cases where Mirakl/Shopify webhooks arrive
+// late or are not emitted for an API-created order.
+export function startMiraklPolling(intervalMs = 60_000): void {
   console.log(`[Mirakl] Polling started (every ${intervalMs / 1000}s)`);
   setInterval(() => {
     if (isRunning) return;
