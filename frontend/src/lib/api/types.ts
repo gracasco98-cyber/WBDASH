@@ -167,6 +167,8 @@ export interface ChannelDailyRow {
   grossRevenue: number;
   refundedAmount: number;
   netRevenue: number;
+  vatAmount: number;
+  netAfterVat: number;
   adSpend: number;
   margin: number | null;
   orderCount: number;
@@ -181,6 +183,8 @@ export interface ChannelDailyResponse {
     unitsSold: number;
     grossRevenue: number;
     netRevenue: number;
+    vatAmount: number;
+    netAfterVat: number;
     orderCount: number;
     adSpend: number;
     margin: number | null;

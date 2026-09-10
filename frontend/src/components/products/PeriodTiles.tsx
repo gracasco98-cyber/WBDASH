@@ -22,6 +22,8 @@ import {
   TrendingUp,
   RefreshCw,
   CheckCircle2,
+  X,
+  ChevronDown,
 } from "lucide-react";
 
 type DateRange = { from: string; to: string };
@@ -391,7 +393,7 @@ export default function PeriodTiles() {
   const [shopifyTotals, setShopifyTotals] = useState<
     Record<
       string,
-      { sales: number; units: number; netProfit: number; adSpend: number; vatAmount: number; redcareFee: number }
+      { sales: number; units: number; netProfit: number; adSpend: number; vatAmount: number; redcareFee: number; refunds: number }
     >
   >({});
   // Redcare Ads and orders can arrive after the page was opened. Refresh the
@@ -401,6 +403,12 @@ export default function PeriodTiles() {
   const [manualRefresh, setManualRefresh] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [breakdown, setBreakdown] = useState<{
+    label: string; sales: number; profit: number; amazonFees: number;
+    redcareFee: number; ads: number; cogs: number; vat: number;
+    refunds: number; units: number;
+  } | null>(null);
+  const [showFeeDetails, setShowFeeDetails] = useState(false);
   useEffect(() => {
     const refresh = () => setLiveTick((tick) => tick + 1);
     window.addEventListener("wbdash:refresh-period-tiles", refresh);
@@ -539,6 +547,7 @@ export default function PeriodTiles() {
                 adSpend: reportedAdSpend,
                 vatAmount: Number(kpis.redcareVat ?? 0),
                 redcareFee: Number(kpis.redcareFee ?? 0),
+                refunds: Number(kpis.totalRefunds ?? 0),
               },
             ] as const;
           }),
@@ -718,6 +727,7 @@ export default function PeriodTiles() {
               adSpend: row.adSpend * forecastMultiplier,
               vatAmount: row.vatAmount * forecastMultiplier,
               redcareFee: row.redcareFee * forecastMultiplier,
+              refunds: row.refunds * forecastMultiplier,
             };
           };
           const totalRow = scaleAmazonRow(rawTotalRow);
@@ -733,6 +743,8 @@ export default function PeriodTiles() {
             (totalRow?.adsSpend ?? 0) + (shopifyRow?.adSpend ?? 0);
           const combinedVat =
             (totalRow?.vatAmount ?? 0) + (shopifyRow?.vatAmount ?? 0);
+          const combinedRefunds =
+            (totalRow?.refundsAmount ?? 0) + (shopifyRow?.refunds ?? 0);
           const vatLabel =
             globalMarketplace === "REDCARE_IT"
               ? "IVA Redcare"
@@ -896,11 +908,69 @@ export default function PeriodTiles() {
                     )}
                   </div>
                 </div>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setShowFeeDetails(false);
+                    setBreakdown({
+                      label: tileDateLabel(tile), sales: combinedSales,
+                      profit: combinedNetProfit, amazonFees: totalRow?.amazonFees ?? 0,
+                      redcareFee: shopifyRow?.redcareFee ?? 0, ads: combinedAdSpend,
+                      cogs: totalRow?.cogs ?? 0, vat: combinedVat,
+                      refunds: combinedRefunds, units: combinedUnits,
+                    });
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault(); event.stopPropagation();
+                      setShowFeeDetails(false);
+                      setBreakdown({
+                        label: tileDateLabel(tile), sales: combinedSales,
+                        profit: combinedNetProfit, amazonFees: totalRow?.amazonFees ?? 0,
+                        redcareFee: shopifyRow?.redcareFee ?? 0, ads: combinedAdSpend,
+                        cogs: totalRow?.cogs ?? 0, vat: combinedVat,
+                        refunds: combinedRefunds, units: combinedUnits,
+                      });
+                    }
+                  }}
+                  className="mt-1 inline-flex w-full items-center justify-center rounded-md border border-bg-border bg-bg-card/70 py-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-500 transition hover:border-accent-primary hover:text-accent-primary"
+                >
+                  Apri dettaglio <ChevronDown size={12} className="ml-1" />
+                </span>
               </div>
             </button>
           );
         })}
       </div>
+      {breakdown && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={`Dettaglio ${breakdown.label}`}>
+          <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-bg-border bg-bg-card shadow-2xl">
+            <div className="flex items-start justify-between border-b border-bg-border px-5 py-4 sm:px-6">
+              <div><div className="text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">Full breakdown</div><h2 className="mt-1 text-xl font-bold text-zinc-900 dark:text-zinc-100">{breakdown.label}</h2></div>
+              <button type="button" aria-label="Chiudi dettaglio" onClick={() => setBreakdown(null)} className="rounded-full p-2 text-zinc-500 hover:bg-bg-hover hover:text-zinc-900 dark:hover:text-white"><X size={18} /></button>
+            </div>
+            <div className="max-h-[78vh] overflow-y-auto p-4 sm:p-6">
+              <div className="rounded-xl border border-accent-primary/20 bg-accent-blue/10 px-4 py-4 sm:px-5"><div className="flex flex-wrap items-end justify-between gap-3"><div><div className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-primary">Ricavi netti</div><div className="mt-1 text-3xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">{fmtEur(breakdown.sales)}</div></div><div className="text-right"><div className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Profitto netto</div><div className={`mt-1 text-xl font-bold tabular-nums ${breakdown.profit < 0 ? "text-accent-red" : "text-accent-primary"}`}>{fmtEur(breakdown.profit)}</div></div></div><div className="mt-3 text-xs text-zinc-500">{breakdown.units.toLocaleString("it-IT")} unità · dati separati per marketplace</div></div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <BreakdownItem label="Advertising" value={breakdown.ads} />
+                <div className="rounded-xl border border-bg-border bg-bg-hover/25 p-4"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-zinc-500">Marketplace fees</span><span className="font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{fmtEur(-(breakdown.amazonFees + breakdown.redcareFee))}</span></div><button type="button" onClick={() => setShowFeeDetails((value) => !value)} className="mt-3 flex w-full items-center justify-between rounded-lg bg-bg-card px-3 py-2 text-left text-xs text-zinc-500 hover:text-accent-primary"><span>{showFeeDetails ? "Nascondi voci" : "+ 2 voci"}</span><ChevronDown size={14} className={showFeeDetails ? "rotate-180" : ""} /></button>{showFeeDetails && <div className="mt-2 space-y-2 border-t border-bg-border pt-2 text-xs"><BreakdownSubItem label="Fee Amazon" value={breakdown.amazonFees} /><BreakdownSubItem label="Fee Redcare (15%)" value={breakdown.redcareFee} /></div>}</div>
+                <BreakdownItem label="Cost of goods" value={breakdown.cogs} /><BreakdownItem label="Refund cost" value={breakdown.refunds} /><BreakdownItem label="VAT / taxes" value={breakdown.vat} />
+              </div>
+              <div className="mt-4 rounded-lg border border-dashed border-bg-border px-4 py-3 text-xs text-zinc-500">Le fee sono attribuite al marketplace di origine: la fee Redcare del 15% non viene mai applicata alle vendite Amazon. Le voci non presenti nella sorgente dati restano escluse, non stimate.</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function BreakdownItem({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-xl border border-bg-border bg-bg-hover/25 p-4"><div className="text-xs font-semibold text-zinc-500">{label}</div><div className="mt-2 text-lg font-bold tabular-nums text-zinc-900 dark:text-zinc-100">{fmtEur(-Math.abs(value))}</div></div>;
+}
+
+function BreakdownSubItem({ label, value }: { label: string; value: number }) {
+  return <div className="flex items-center justify-between"><span className="text-zinc-500">{label}</span><span className="tabular-nums text-zinc-800 dark:text-zinc-200">{fmtEur(-Math.abs(value))}</span></div>;
 }

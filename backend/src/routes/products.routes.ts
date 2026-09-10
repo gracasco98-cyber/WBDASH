@@ -314,6 +314,9 @@ router.get("/channel-daily", async (req: Request, res: Response) => {
       const gross = Number(r.grossRevenue);
       const refunded = Number(r.refundedAmount);
       const net = Number(r.netRevenue);
+      const vatAmount = r.marketplace === "REDCARE_IT"
+        ? Math.max(0, gross - refunded) * (10 / 110)
+        : 0;
       const dateStr = r.date instanceof Date ? r.date.toISOString().split("T")[0] : String(r.date).split("T")[0];
       const adSpend = adSpendMap.get(`${dateStr}|${r.marketplace}`) ?? 0;
       adSpendMap.delete(`${dateStr}|${r.marketplace}`);
@@ -324,8 +327,10 @@ router.get("/channel-daily", async (req: Request, res: Response) => {
         grossRevenue: gross,
         refundedAmount: refunded,
         netRevenue: net - adSpend,
+        vatAmount,
+        netAfterVat: net - adSpend - vatAmount,
         adSpend,
-        margin: gross > 0 ? ((net - adSpend) / gross) * 100 : null,
+        margin: gross > 0 ? ((net - adSpend - vatAmount) / gross) * 100 : null,
         orderCount: Number(r.orderCount),
       };
     });
@@ -340,6 +345,8 @@ router.get("/channel-daily", async (req: Request, res: Response) => {
         grossRevenue: 0,
         refundedAmount: 0,
         netRevenue: -adSpend,
+        vatAmount: 0,
+        netAfterVat: -adSpend,
         adSpend,
         margin: null,
         orderCount: 0,
@@ -366,19 +373,21 @@ router.get("/channel-daily", async (req: Request, res: Response) => {
     });
 
     // Totals per marketplace
-    const totals: Record<string, { unitsSold: number; grossRevenue: number; netRevenue: number; orderCount: number; adSpend: number; margin: number | null }> = {};
+    const totals: Record<string, { unitsSold: number; grossRevenue: number; netRevenue: number; vatAmount: number; netAfterVat: number; orderCount: number; adSpend: number; margin: number | null }> = {};
     for (const row of rows) {
       if (!totals[row.marketplace]) {
-        totals[row.marketplace] = { unitsSold: 0, grossRevenue: 0, netRevenue: 0, orderCount: 0, adSpend: 0, margin: null };
+        totals[row.marketplace] = { unitsSold: 0, grossRevenue: 0, netRevenue: 0, vatAmount: 0, netAfterVat: 0, orderCount: 0, adSpend: 0, margin: null };
       }
       totals[row.marketplace].unitsSold += row.unitsSold;
       totals[row.marketplace].grossRevenue += row.grossRevenue;
       totals[row.marketplace].netRevenue += row.netRevenue;
+      totals[row.marketplace].vatAmount += row.vatAmount;
+      totals[row.marketplace].netAfterVat += row.netAfterVat;
       totals[row.marketplace].orderCount += row.orderCount;
       totals[row.marketplace].adSpend += row.adSpend;
     }
     for (const total of Object.values(totals)) {
-      total.margin = total.grossRevenue > 0 ? (total.netRevenue / total.grossRevenue) * 100 : null;
+      total.margin = total.grossRevenue > 0 ? (total.netAfterVat / total.grossRevenue) * 100 : null;
     }
 
     res.json({ rows, dates, marketplaces, chartData, totals });
