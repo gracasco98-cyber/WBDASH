@@ -116,6 +116,76 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ── Gestionale UI foundation ───────────────────────────────────────────────
+   All purchasing/administration modules opt into this scope. It keeps the
+   existing data and component structure while giving lists, forms and detail
+   views one predictable rhythm on desktop and mobile. */
+.management-page {
+  min-height: 100dvh;
+  color: #0f172a;
+}
+.management-page main {
+  min-width: 0;
+}
+.management-page main > div {
+  scroll-margin-top: 4rem;
+}
+.management-page h1 {
+  letter-spacing: -0.025em;
+}
+.management-page table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.management-page th {
+  white-space: nowrap;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+.management-page td {
+  vertical-align: middle;
+}
+.management-page button,
+.management-page a {
+  -webkit-tap-highlight-color: transparent;
+}
+.management-page input,
+.management-page select,
+.management-page textarea {
+  min-height: 2.25rem;
+}
+
+@media (max-width: 767px) {
+  .management-page main > div {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    padding-top: 1rem !important;
+    padding-bottom: 5rem !important;
+  }
+  .management-page h1 {
+    font-size: 1.35rem !important;
+  }
+  .management-page h2 {
+    font-size: 0.95rem;
+  }
+  .management-page section,
+  .management-page article {
+    border-radius: 0.875rem;
+  }
+  .management-page table {
+    min-width: 720px;
+  }
+  .management-page .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .management-page input,
+  .management-page select,
+  .management-page textarea {
+    font-size: 0.875rem;
+  }
+}
+
 /* ══════════════════════════════════════════════════════════════════════════════
    LIGHT THEME — Bianco / Blu / Nero
    Palette: sfondo bianco puro, testo nero #0f172a, accento blu #1d4ed8

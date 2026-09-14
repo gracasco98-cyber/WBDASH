@@ -43,7 +43,7 @@ export default function PrimaNotaPage() {
   const health = (summary?.net ?? 0) > 0 ? "Crescita" : (summary?.net ?? 0) < 0 ? "In calo" : "Stabile";
   const monthLabel = new Intl.DateTimeFormat("it-IT", { month: "long" }).format(new Date(year, month, 1));
 
-  return <div className="min-h-screen bg-[#f5f6fa] text-slate-900">
+  return <div className="management-page min-h-screen bg-[#f5f6fa] text-slate-900">
     <AppHeader accentColor="primary" />
     <div className="flex"><GlobalSidebar /><main className="flex-1 min-w-0">
       <div className="max-w-[1600px] mx-auto px-4 md:px-6 py-5 space-y-5">

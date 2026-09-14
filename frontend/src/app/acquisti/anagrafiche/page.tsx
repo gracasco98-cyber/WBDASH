@@ -26,7 +26,7 @@ export default function AnagrafichePage() {
   useEffect(() => { loadCounts(); }, [loadCounts]);
 
   return (
-    <div className="min-h-screen bg-[#f5f6fa] text-slate-900">
+    <div className="management-page min-h-screen bg-[#f5f6fa] text-slate-900">
       <AppHeader accentColor="primary" />
       <div className="flex">
         <GlobalSidebar />
