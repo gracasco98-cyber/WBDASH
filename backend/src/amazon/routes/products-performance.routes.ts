@@ -6,6 +6,8 @@ import { resolveProductPerformance } from "../../repositories/amazon/product-per
 import { moveIdentifier, renameProduct, findAllProducts, updateIdentifierVatRate } from "../../repositories/amazon/product.repo";
 import { findAdSpendForAsins } from "../../repositories/amazon/ad-spend.repo";
 import { getDateRange } from "../utils/datetime";
+import { toItalyDateColumnValue } from "../../repositories/amazon/ad-spend.repo";
+import { getCurrentAccountId } from "../../context/account-context";
 
 export const productsPerformanceRouter = Router();
 
@@ -49,6 +51,45 @@ productsPerformanceRouter.get("/products/performance", async (req: Request, res:
       dateTo,
       adsSpendByKey,
     });
+
+    // The Ads overview is sourced from AmazonAdSnapshot (campaign totals),
+    // while product rows use AmazonAdvertisedProductSnapshot (ASIN totals).
+    // ASIN reports can legitimately omit campaigns without an advertised ASIN
+    // (for example some headline/display campaigns), which previously made the
+    // dashboard show ~77€ while Ads showed ~92€. Reconcile the difference as a
+    // transparent, non-attributed row so totals always match the authoritative
+    // campaign report without inventing a product allocation.
+    const snapshotFrom = toItalyDateColumnValue(dateFrom);
+    const snapshotTo = toItalyDateColumnValue(dateTo);
+    const campaignTotal = await prisma.amazonAdSnapshot.aggregate({
+      where: {
+        amazonAccountId: getCurrentAccountId(),
+        snapshotDate: { gte: snapshotFrom, lte: snapshotTo },
+        ...(marketplace && marketplace !== "all" ? { marketplace } : {}),
+      },
+      _sum: { spend: true },
+    });
+    const authoritativeSpend = Number(campaignTotal._sum.spend ?? 0);
+    const assignedSpend = groups.reduce(
+      (sum, group) => sum + (group.aggregate.adsSpend ?? 0),
+      0,
+    );
+    const unallocatedSpend = Math.max(0, authoritativeSpend - assignedSpend);
+    if (unallocatedSpend > 0.005) {
+      groups.push({
+        product: { id: "__ads_unallocated__", name: "Ads non attribuite", brand: null },
+        rows: [],
+        aggregate: {
+          identifierId: "__ads_unallocated__", asin: "", marketplace: marketplace === "all" ? "ALL" : marketplace,
+          sku: null, units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0,
+          refundPct: 0, adsSpend: unallocatedSpend, realAcos: null, amazonFees: 0,
+          hasRealFees: true, hasRealCogs: true, cogs: 0, stock: 0, hasStockData: false,
+          grossProfit: -unallocatedSpend, netProfit: -unallocatedSpend,
+          estimatedPayout: -unallocatedSpend, margin: 0, roi: 0, avgSellingPrice: 0,
+          bsr: null, vatAmount: 0, vatEstimated: false, vatRate: null,
+        },
+      });
+    }
 
     res.json({ groups });
   } catch (err) {
