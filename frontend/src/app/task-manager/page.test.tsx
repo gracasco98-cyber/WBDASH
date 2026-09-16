@@ -117,6 +117,6 @@ describe("TaskManagerPage", () => {
 
   it("shows an empty state when there are no tasks", async () => {
     render(<TaskManagerPage />);
-    expect(await screen.findByText(/nessun task/i)).toBeInTheDocument();
+    expect(await screen.findByText(/nessuna attività/i)).toBeInTheDocument();
   });
 });
