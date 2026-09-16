@@ -890,28 +890,31 @@ export default function ProductsPerformanceTable({
         null)
       : null;
     return (
-      <span className="inline-flex items-center">
+      <span className="inline-flex w-full min-w-0 items-center">
         {groupBy === "product" &&
           (thumb ? (
             <img
               src={thumb}
               alt=""
-              className="w-[20px] h-[20px] rounded-[4px] object-cover shrink-0 mr-1.5"
+              className="mr-2 h-10 w-10 shrink-0 rounded-lg object-cover md:mr-1.5 md:h-[20px] md:w-[20px] md:rounded-[4px]"
             />
           ) : (
-            <div className="w-[20px] h-[20px] rounded-[4px] bg-bg-hover shrink-0 mr-1.5" />
+            <div className="mr-2 h-10 w-10 shrink-0 rounded-lg bg-bg-hover md:mr-1.5 md:h-[20px] md:w-[20px] md:rounded-[4px]" />
           ))}
         <button
           aria-label={`Espandi ${entry.label}`}
+          aria-expanded={isOpen}
           onClick={() => toggle(entry.key)}
-          className="bg-transparent border-none cursor-pointer flex items-center gap-1.5 text-inherit hover:text-accent-primary transition-colors"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 border-none bg-transparent text-left text-inherit transition-colors hover:text-accent-primary"
         >
           {isOpen ? (
             <ChevronDown size={13} className="text-accent-primary" />
           ) : (
             <ChevronRight size={13} className="text-zinc-400" />
           )}
-          {entry.label}
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold md:text-[11.5px] md:font-medium">
+            {entry.label}
+          </span>
         </button>
         {groupBy === "product" && (
           <button
@@ -983,7 +986,7 @@ export default function ProductsPerformanceTable({
 
   return (
     <div className="bg-bg-card rounded-xl border border-bg-border text-zinc-300 shadow-sm overflow-hidden">
-      <div className="flex flex-wrap justify-between items-center gap-2 px-4 py-3 border-b border-bg-border/70">
+      <div className="flex flex-wrap justify-between items-center gap-2 px-3 py-3 md:px-4 border-b border-bg-border/70">
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-2 text-xs font-semibold text-zinc-600">
             <Table2 size={14} className="text-accent-blue" />
@@ -993,8 +996,8 @@ export default function ProductsPerformanceTable({
             Performance per canale e prodotto
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
+        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
+          <div className="relative w-full sm:w-auto">
             <Search
               size={13}
               className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500"
@@ -1003,7 +1006,7 @@ export default function ProductsPerformanceTable({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cerca..."
-              className="h-8 w-40 rounded-lg border border-bg-border bg-bg-base pl-7 pr-2 text-xs text-zinc-300 outline-none focus:border-accent-primary"
+              className="h-9 w-full rounded-lg border border-bg-border bg-bg-base pl-7 pr-2 text-xs text-zinc-300 outline-none focus:border-accent-primary sm:h-8 sm:w-40"
             />
           </div>
           <div className="inline-flex rounded-lg border border-bg-border overflow-hidden text-xs font-medium">
@@ -1081,7 +1084,7 @@ export default function ProductsPerformanceTable({
           >
             <Download size={13} /> Esporta
           </button>
-          <div className="relative">
+          <div className="relative hidden md:block">
             <button
               onClick={() => setColumnsPickerOpen((v) => !v)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-bg-border px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:bg-bg-hover transition-colors"
@@ -1160,9 +1163,12 @@ export default function ProductsPerformanceTable({
           </table>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-b-lg">
-          <table className="w-full min-w-[1540px] border-collapse text-[11.5px]">
-            <thead>
+        <div className="rounded-b-lg md:overflow-x-auto">
+          <p className="px-3 pb-1 pt-3 text-[10px] text-zinc-500 md:hidden">
+            Tocca un prodotto per vedere tutte le metriche e il dettaglio per canale.
+          </p>
+          <table className="block w-full border-separate text-[11.5px] md:table md:min-w-[1540px] md:border-collapse">
+            <thead className="hidden md:table-header-group">
               <tr className="text-[9px] uppercase tracking-wider text-zinc-500 text-left bg-bg-hover/80 border-b border-bg-border">
                 <th
                   className="sticky left-0 z-20 bg-bg-hover/95 px-2.5 py-1.5 font-semibold text-zinc-500"
@@ -1196,7 +1202,7 @@ export default function ProductsPerformanceTable({
                   ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="block space-y-2 p-2 md:table-row-group md:space-y-0 md:p-0">
               {filteredRows.length === 0 ? (
                 <tr>
                   <td
@@ -1224,6 +1230,7 @@ export default function ProductsPerformanceTable({
                         label={parentLabel(entry, isOpen)}
                         metrics={entry.metrics}
                         hiddenColumns={hiddenColumns}
+                        mobileExpanded={isOpen}
                       />
                       {isOpen &&
                         entry.children?.map((child) => (
@@ -1233,6 +1240,7 @@ export default function ProductsPerformanceTable({
                             metrics={child.metrics}
                             isChild
                             hiddenColumns={hiddenColumns}
+                            mobileExpanded
                             vatEditor={
                               child.metrics.identifierId ? (
                                 <VatRateEditor

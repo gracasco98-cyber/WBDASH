@@ -101,6 +101,7 @@ describe("HomePage — product BI section", () => {
     // unconditionally regardless of which top-nav tab (Tiles/Chart/P&L/Trends)
     // is active, preserving the prior product-section behavior.
     expect(screen.getByLabelText(/raggruppa per/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/raggruppa per/i)).toHaveValue("product");
   });
 
   it("doesn't clip the period-selector dropdown with an overflow-hidden ancestor", async () => {
