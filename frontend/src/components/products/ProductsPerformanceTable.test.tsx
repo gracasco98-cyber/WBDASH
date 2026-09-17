@@ -69,6 +69,24 @@ describe("ProductsPerformanceTable", () => {
     expect(screen.getByText("B0ABC123")).toBeInTheDocument();
   });
 
+  it("renders a compact mobile product card and reveals every metric on expansion", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    const expandButton = screen.getByRole("button", { name: /espandi resveratrolo 500mg/i });
+    const unitsCell = container.querySelector('[data-mobile-metric="Unità"]');
+    const cogsCell = container.querySelector('[data-mobile-metric="COGS"]');
+
+    expect(expandButton).toHaveAttribute("aria-expanded", "false");
+    expect(unitsCell).toHaveClass("flex");
+    expect(cogsCell).toHaveClass("hidden");
+
+    await user.click(expandButton);
+
+    expect(expandButton).toHaveAttribute("aria-expanded", "true");
+    expect(cogsCell).toHaveClass("flex");
+    expect(screen.getByText("B0ABC123")).toBeInTheDocument();
+  });
+
   it("renders one parent row per marketplace in 'marketplace' groupBy mode", () => {
     render(<ProductsPerformanceTable groups={groups} groupBy="marketplace" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
     expect(screen.getByText(/amazon\.it/i)).toBeInTheDocument();
@@ -393,6 +411,20 @@ describe("ProductsPerformanceTable — column visibility (Colonne)", () => {
 
     render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
     expect(screen.queryByRole("columnheader", { name: "BSR" })).not.toBeInTheDocument();
+  });
+
+  it("keeps desktop-hidden metrics available inside the expanded mobile card", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("products_table_hidden_columns_v1", JSON.stringify(["COGS"]));
+    const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    const cogsCell = container.querySelector('[data-mobile-metric="COGS"]');
+
+    expect(screen.queryByRole("columnheader", { name: "COGS" })).not.toBeInTheDocument();
+    expect(cogsCell).toHaveClass("hidden", "md:hidden");
+
+    await user.click(screen.getByRole("button", { name: /espandi resveratrolo 500mg/i }));
+
+    expect(cogsCell).toHaveClass("flex", "md:hidden");
   });
 });
 

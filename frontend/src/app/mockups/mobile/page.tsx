@@ -9,6 +9,8 @@ import {
   Target,
   Warehouse,
 } from "lucide-react";
+import MobileMetricStrip from "@/components/mockups/MobileMetricStrip";
+import MockProductCards from "@/components/mockups/MockProductCards";
 
 const money = (value: string) => value;
 
@@ -32,15 +34,17 @@ export default function MobileDashboardMockup() {
           <div className="flex rounded-xl border border-[#dbe3ec] bg-white p-1 shadow-sm">
             <button
               onClick={() => setVariant("tiles")}
+              aria-pressed={variant === "tiles"}
               className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${variant === "tiles" ? "bg-[#eaf8f2] text-[#168464]" : "text-[#748196]"}`}
             >
               A · Tiles
             </button>
             <button
               onClick={() => setVariant("focus")}
+              aria-pressed={variant === "focus"}
               className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${variant === "focus" ? "bg-[#eaf8f2] text-[#168464]" : "text-[#748196]"}`}
             >
-              B · Focus
+              B · Intelligence
             </button>
           </div>
         </div>
@@ -94,7 +98,7 @@ export default function MobileDashboardMockup() {
                 <div className="text-[9px] font-extrabold uppercase tracking-[.12em] text-[#2d7bd3]">
                   {variant === "tiles"
                     ? "Ricavi netti · oggi"
-                    : "Performance di oggi"}
+                    : "Intelligence di oggi"}
                 </div>
                 <strong className="my-1 block text-[29px] tracking-[-.05em]">
                   {money("3.537,35 €")}
@@ -102,11 +106,9 @@ export default function MobileDashboardMockup() {
                 <span className="rounded-full bg-[#eaf8f2] px-2 py-1 text-[10px] font-semibold text-[#168464]">
                   ↗ +8,4%
                 </span>
-                <div className="mt-3 flex justify-between text-[10px] text-[#637188]">
-                  <span>275 ordini</span>
-                  <span>302 unità</span>
-                </div>
               </section>
+
+              <MobileMetricStrip orders={275} units={302} />
 
               <div className="grid grid-cols-2 gap-2">
                 {[
@@ -117,9 +119,9 @@ export default function MobileDashboardMockup() {
                     color: "text-[#168464]",
                   },
                   {
-                    label: variant === "tiles" ? "Margine" : "Ordini",
-                    value: variant === "tiles" ? "24,8%" : "275",
-                    color: "text-[#172236]",
+                    label: variant === "tiles" ? "Margine" : "Profitto netto",
+                    value: variant === "tiles" ? "24,8%" : "878,20 €",
+                    color: variant === "tiles" ? "text-[#172236]" : "text-[#168464]",
                   },
                   {
                     label: variant === "tiles" ? "Ads" : "Payout",
@@ -188,19 +190,22 @@ export default function MobileDashboardMockup() {
                 ) : (
                   <div className="overflow-hidden rounded-[10px] border border-[#dfe6ee] bg-white">
                     {[
-                      ["Oggi", "3.537,35 €"],
-                      ["Ieri · 31 agosto", "14.276,82 €"],
-                      ["Ultimi 7 giorni", "52.890,10 €"],
-                      ["Mese in corso", "3.537,35 €"],
-                    ].map(([label, value], index) => (
+                      ["Oggi", "3.537,35 €", "302 pz"],
+                      ["Ieri · 31 agosto", "14.276,82 €", "1.230 pz"],
+                      ["Ultimi 7 giorni", "52.890,10 €", "4.684 pz"],
+                      ["Mese in corso", "3.537,35 €", "302 pz"],
+                    ].map(([label, value, units], index) => (
                       <div
                         key={label}
                         className="flex items-center justify-between border-b border-[#edf1f5] px-3 py-2.5 text-[10px] last:border-0"
                       >
                         <span>{label}</span>
-                        <b className={index === 0 ? "text-[#168464]" : ""}>
-                          {value}　{index === 0 ? "⌃" : "›"}
-                        </b>
+                        <span className="text-right">
+                          <b className={`block ${index === 0 ? "text-[#168464]" : ""}`}>
+                            {value}　{index === 0 ? "⌃" : "›"}
+                          </b>
+                          <small className="mt-0.5 block text-[9px] font-semibold text-[#7b8798]">{units} venduti</small>
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -213,24 +218,20 @@ export default function MobileDashboardMockup() {
                     ? "Prodotti principali"
                     : "Azioni rapide"}
                 </h3>
-                <div className="grid gap-2">
-                  {(variant === "tiles"
-                    ? [
-                        ["Collagenaid 120", "47 unità · Amazon.it", "128,73 €"],
-                        ["Biotina 360", "30 unità · Amazon.it", "83,44 €"],
-                        ["Soleil 80", "26 unità · Amazon.de", "100,58 €"],
-                      ]
-                    : [
-                        ["Aggiorna dati", "Ultimo sync 2 min fa", "↻"],
-                        ["Esporta riepilogo", "CSV · PDF", "↓"],
-                      ]
-                  ).map(([name, note, value]) => (
+                {variant === "tiles" ? (
+                  <MockProductCards />
+                ) : (
+                  <div className="grid gap-2">
+                    {[
+                      ["Aggiorna dati", "Ultimo sync 2 min fa", "↻"],
+                      ["Esporta riepilogo", "CSV · PDF", "↓"],
+                    ].map(([name, note, value]) => (
                     <div
                       key={name}
                       className="flex items-center gap-2 rounded-[10px] border border-[#e1e7ee] bg-white p-2.5"
                     >
                       <div className="grid h-8 w-7 place-items-center rounded-md bg-[#eaf8f2] text-[9px] font-extrabold text-[#168464]">
-                        {variant === "tiles" ? "WB" : value}
+                        {value}
                       </div>
                       <div className="min-w-0 flex-1">
                         <b className="block text-[10px]">{name}</b>
@@ -238,18 +239,11 @@ export default function MobileDashboardMockup() {
                           {note}
                         </small>
                       </div>
-                      <strong
-                        className={
-                          variant === "tiles"
-                            ? "text-[11px] text-[#168464]"
-                            : "text-[#748196]"
-                        }
-                      >
-                        {variant === "tiles" ? value : "›"}
-                      </strong>
+                      <strong className="text-[#748196]">›</strong>
                     </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </section>
             </div>
             <nav className="flex h-14 items-center justify-around border-t border-[#dfe6ee] bg-white text-[#8490a0]">

@@ -48,6 +48,9 @@ interface MetricRowProps {
    *  "Fee Amazon") to omit from this row — driven by the "Colonne" picker.
    *  The label cell is never hideable. */
   hiddenColumns?: Set<string>;
+  /** On mobile, reveal every metric in the product card. The four summary
+   *  metrics remain visible even while the card is collapsed. */
+  mobileExpanded?: boolean;
 }
 
 /**
@@ -56,6 +59,12 @@ interface MetricRowProps {
  * duplicating the whole metric block (and its estimate-badge logic) twice.
  */
 const NO_COST_DATA_TITLE = "Costi non tracciati per questo canale";
+const MOBILE_SUMMARY_COLUMNS = new Set([
+  "Unità",
+  "Ricavi",
+  "Profitto netto",
+  "Margine",
+]);
 
 export default function MetricRow({
   label,
@@ -63,6 +72,7 @@ export default function MetricRow({
   isChild = false,
   hiddenColumns,
   vatEditor,
+  mobileExpanded = false,
 }: MetricRowProps) {
   const estimated = isEstimated(m);
   // Distinct from "estimated": for non-Amazon channels there is no fee/COGS
@@ -173,11 +183,36 @@ export default function MetricRow({
   ];
 
   return (
-    <tr className={isChild ? "bg-bg-hover/50" : "border-b border-bg-border/60"}>
-      <MetricCell className="sticky left-0 z-10 bg-bg-card border-r border-bg-border/70 font-medium">{label}</MetricCell>
-      {cells.filter((c) => !hiddenColumns?.has(c.column)).map((c) => (
-        <MetricCell key={c.column}>{c.node}</MetricCell>
-      ))}
+    <tr
+      className={`grid grid-cols-2 overflow-hidden rounded-xl border shadow-sm md:table-row md:rounded-none md:border-0 md:shadow-none ${
+        isChild
+          ? "mx-2 border-accent-blue/20 bg-bg-hover/50"
+          : "border-bg-border bg-bg-card md:border-b md:border-bg-border/60"
+      }`}
+    >
+      <MetricCell className="col-span-2 block border-b border-bg-border/70 bg-bg-card px-3 py-3 font-medium md:sticky md:left-0 md:z-10 md:table-cell md:border-b-0 md:border-r md:px-2.5 md:py-2.5">
+        {label}
+      </MetricCell>
+      {cells.map((c) => {
+        const visibleOnMobile = mobileExpanded || MOBILE_SUMMARY_COLUMNS.has(c.column);
+        const desktopVisibility = hiddenColumns?.has(c.column)
+          ? "md:hidden"
+          : "md:table-cell";
+        return (
+          <td
+            key={c.column}
+            data-mobile-metric={c.column}
+            className={`${visibleOnMobile ? "flex" : "hidden"} ${desktopVisibility} min-w-0 flex-col gap-1 border-b border-bg-border/50 px-3 py-2.5 odd:border-r md:border-0 md:px-2.5 md:py-2.5`}
+          >
+            <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-zinc-500 md:hidden">
+              {c.column}
+            </span>
+            <span className="truncate text-sm font-semibold tabular-nums text-zinc-300 md:text-[11.5px] md:font-normal">
+              {c.node}
+            </span>
+          </td>
+        );
+      })}
     </tr>
   );
 }
