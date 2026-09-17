@@ -62,8 +62,10 @@ const NO_COST_DATA_TITLE = "Costi non tracciati per questo canale";
 const MOBILE_SUMMARY_COLUMNS = new Set([
   "Unità",
   "Ricavi",
+  "Ads",
   "Profitto netto",
   "Margine",
+  "ACOS reale",
 ]);
 
 export default function MetricRow({
