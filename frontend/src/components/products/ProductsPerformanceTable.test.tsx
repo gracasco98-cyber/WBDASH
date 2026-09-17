@@ -74,16 +74,22 @@ describe("ProductsPerformanceTable", () => {
     const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
     const expandButton = screen.getByRole("button", { name: /espandi resveratrolo 500mg/i });
     const unitsCell = container.querySelector('[data-mobile-metric="Unità"]');
+    const adsCell = container.querySelector('[data-mobile-metric="Ads"]');
+    const acosCell = container.querySelector('[data-mobile-metric="ACOS reale"]');
     const cogsCell = container.querySelector('[data-mobile-metric="COGS"]');
 
     expect(expandButton).toHaveAttribute("aria-expanded", "false");
     expect(unitsCell).toHaveClass("flex");
+    expect(adsCell).toHaveClass("flex");
+    expect(acosCell).toHaveClass("flex");
     expect(cogsCell).toHaveClass("hidden");
+    expect(screen.getByText("Mostra tutte le metriche")).toBeInTheDocument();
 
     await user.click(expandButton);
 
     expect(expandButton).toHaveAttribute("aria-expanded", "true");
     expect(cogsCell).toHaveClass("flex");
+    expect(screen.getByText("Nascondi metriche")).toBeInTheDocument();
     expect(screen.getByText("B0ABC123")).toBeInTheDocument();
   });
 

@@ -912,8 +912,13 @@ export default function ProductsPerformanceTable({
           ) : (
             <ChevronRight size={13} className="text-zinc-400" />
           )}
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold md:text-[11.5px] md:font-medium">
-            {entry.label}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold md:text-[11.5px] md:font-medium">
+              {entry.label}
+            </span>
+            <span className="mt-0.5 block text-[10px] font-normal text-zinc-500 md:hidden">
+              {isOpen ? "Nascondi metriche" : "Mostra tutte le metriche"}
+            </span>
           </span>
         </button>
         {groupBy === "product" && (

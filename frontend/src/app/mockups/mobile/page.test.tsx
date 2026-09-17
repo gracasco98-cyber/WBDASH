@@ -29,6 +29,8 @@ describe("MobileDashboardMockup", () => {
 
     const collagen = screen.getByRole("button", { name: /collagenaid 120/i });
     expect(collagen).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByText("Ads").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText("ACOS reale").length).toBeGreaterThanOrEqual(3);
     expect(screen.getByText("Fee marketplace")).toBeInTheDocument();
     expect(screen.getByText("COLL-120-IT")).toBeInTheDocument();
 
