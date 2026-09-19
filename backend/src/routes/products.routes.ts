@@ -145,6 +145,7 @@ router.get("/", async (req: Request, res: Response) => {
       gross: string | number;
       net: string | number;
       refunds: string | number;
+      refundCount: string | number;
       orderCount: string | number;
       redcareGross: string | number;
       redcareRefunds: string | number;
@@ -157,6 +158,7 @@ router.get("/", async (req: Request, res: Response) => {
         SUM("totalAmount")::FLOAT8    AS gross,
         SUM("netAmount")::FLOAT8      AS net,
         SUM("refundedAmount")::FLOAT8 AS refunds,
+        COUNT(*) FILTER (WHERE "refundedAmount" > 0)::INTEGER AS "refundCount",
         COUNT(*)::INTEGER             AS "orderCount",
         SUM(CASE WHEN "marketplaceDetected" = 'REDCARE_IT' THEN "totalAmount" ELSE 0 END)::FLOAT8 AS "redcareGross",
         SUM(CASE WHEN "marketplaceDetected" = 'REDCARE_IT' THEN "refundedAmount" ELSE 0 END)::FLOAT8 AS "redcareRefunds"
@@ -188,6 +190,7 @@ router.get("/", async (req: Request, res: Response) => {
         redcareAdSpend: totalAdSpend,
         totalUnits:   products.reduce((s, p) => s + p.unitsSold, 0),
         totalRefunds: Number(orderKpis[0]?.refunds ?? 0),
+        totalRefundCount: Number(orderKpis[0]?.refundCount ?? 0),
         productCount,
       },
     });

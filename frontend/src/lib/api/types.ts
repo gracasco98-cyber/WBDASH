@@ -95,6 +95,8 @@ export interface ProductKpis {
   redcareFee?: number;
   totalUnits: number;
   totalRefunds: number;
+  /** Number of orders with a non-zero refund in the period. */
+  totalRefundCount?: number;
   productCount: number;
 }
 

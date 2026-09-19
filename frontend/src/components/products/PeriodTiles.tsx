@@ -395,7 +395,7 @@ export default function PeriodTiles() {
   const [shopifyTotals, setShopifyTotals] = useState<
     Record<
       string,
-      { sales: number; units: number; netProfit: number; adSpend: number; vatAmount: number; redcareFee: number; refunds: number }
+      { sales: number; units: number; netProfit: number; adSpend: number; vatAmount: number; redcareFee: number; refunds: number; refundCount: number }
     >
   >({});
   // Redcare Ads and orders can arrive after the page was opened. Refresh the
@@ -550,6 +550,7 @@ export default function PeriodTiles() {
                 vatAmount: Number(kpis.redcareVat ?? 0),
                 redcareFee: Number(kpis.redcareFee ?? 0),
                 refunds: Number(kpis.totalRefunds ?? 0),
+                refundCount: Number(kpis.totalRefundCount ?? 0),
               },
             ] as const;
           }),
@@ -730,6 +731,7 @@ export default function PeriodTiles() {
               vatAmount: row.vatAmount * forecastMultiplier,
               redcareFee: row.redcareFee * forecastMultiplier,
               refunds: row.refunds * forecastMultiplier,
+              refundCount: Math.round(row.refundCount * forecastMultiplier),
             };
           };
           const totalRow = scaleAmazonRow(rawTotalRow);
@@ -747,6 +749,8 @@ export default function PeriodTiles() {
             (totalRow?.vatAmount ?? 0) + (shopifyRow?.vatAmount ?? 0);
           const combinedRefunds =
             (totalRow?.refundsAmount ?? 0) + (shopifyRow?.refunds ?? 0);
+          const combinedRefundCount =
+            (totalRow?.refundsCount ?? 0) + (shopifyRow?.refundCount ?? 0);
           const vatLabel =
             globalMarketplace === "REDCARE_IT"
               ? "IVA Redcare"
@@ -819,7 +823,7 @@ export default function PeriodTiles() {
                   </div>
                   <div className="flex justify-between mt-1 text-[10px] text-zinc-500">
                     <span>
-                      {hasAny ? `${totalRow?.refundsCount ?? 0} resi` : "—"}
+                      {hasAny ? `${combinedRefundCount} resi` : "—"}
                     </span>
                     <span>{hasAny ? `${combinedUnits} unità` : "—"}</span>
                   </div>
@@ -864,7 +868,7 @@ export default function PeriodTiles() {
                   <div>
                     <div className="text-zinc-500 text-[10px]">Resi</div>
                     <div className="text-zinc-300 tabular-nums">
-                      {totalRow ? totalRow.refundsCount : "—"}
+                      {hasAny ? combinedRefundCount : "—"}
                     </div>
                   </div>
                   <div className="pt-1.5 border-t border-bg-border">
