@@ -168,7 +168,7 @@ router.get("/summary", async (req: Request, res: Response) => {
     const adSpend = adRows.reduce((sum, ad) => sum + Number(ad.amount), 0);
     const redcareVat = mpRows
       .filter((row) => row.marketplace === "REDCARE_IT")
-      .reduce((sum, row) => sum + Math.max(0, Number(row.revenue) - Number(row.refunds)) * (10 / 110), 0);
+      .reduce((sum, row) => sum + Math.max(0, Number(row.revenue) - Number(row.refunds)) * 0.10, 0);
     const redcareFee = mpRows
       .filter((row) => row.marketplace === "REDCARE_IT")
       .reduce((sum, row) => sum + Math.max(0, Number(row.revenue) - Number(row.refunds)) * 0.15, 0);

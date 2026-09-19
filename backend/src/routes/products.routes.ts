@@ -74,11 +74,10 @@ router.get("/", async (req: Request, res: Response) => {
         });
         const grossRevenue = g._sum.lineTotal ?? 0;
         const refundedAmount = g._sum.refundedAmount ?? 0;
-        // Only Redcare IT uses this marketplace rule. Prices are VAT-inclusive,
-        // therefore the 10% VAT component is gross / 11 (10 / 110), not 10%
-        // of the displayed gross amount. Amazon keeps its real itemTax path.
+        // Redcare IT uses the operational sales VAT rule: turnover is the
+        // taxable amount, so 400 € of turnover produces 40 € of VAT (10%).
         const taxableRevenue = Math.max(0, grossRevenue - Number(refundedAmount));
-        const vatAmount = g.marketplace === "REDCARE_IT" ? taxableRevenue * (10 / 110) : 0;
+        const vatAmount = g.marketplace === "REDCARE_IT" ? taxableRevenue * 0.10 : 0;
         return {
           shopifyProductId: g.shopifyProductId,
           productTitle: sample?.productTitle ?? "Unknown",
@@ -168,12 +167,11 @@ router.get("/", async (req: Request, res: Response) => {
         ${mpCondition}
     `;
 
-    // Redcare prices include VAT (10/110). Calculate this KPI from the live
-    // order totals, not the product line-item grouping, so today's card also
-    // includes orders synced moments ago. Refunds reduce the taxable base.
+    // Calculate Redcare VAT from live order totals, so today's card includes
+    // orders synced moments ago. Refunds reduce the taxable base.
     const redcareGross = Number(orderKpis[0]?.redcareGross ?? 0);
     const redcareRefunds = Number(orderKpis[0]?.redcareRefunds ?? 0);
-    const redcareVat = Math.max(0, redcareGross - redcareRefunds) * (10 / 110);
+    const redcareVat = Math.max(0, redcareGross - redcareRefunds) * 0.10;
     const redcareFee = Math.max(0, redcareGross - redcareRefunds) * 0.15;
 
     res.json({
@@ -315,7 +313,7 @@ router.get("/channel-daily", async (req: Request, res: Response) => {
       const refunded = Number(r.refundedAmount);
       const net = Number(r.netRevenue);
       const vatAmount = r.marketplace === "REDCARE_IT"
-        ? Math.max(0, gross - refunded) * (10 / 110)
+        ? Math.max(0, gross - refunded) * 0.10
         : 0;
       const dateStr = r.date instanceof Date ? r.date.toISOString().split("T")[0] : String(r.date).split("T")[0];
       const adSpend = adSpendMap.get(`${dateStr}|${r.marketplace}`) ?? 0;
