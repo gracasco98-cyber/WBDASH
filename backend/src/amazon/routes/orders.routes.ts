@@ -96,9 +96,12 @@ ordersRouter.get("/overview", async (req: Request, res: Response) => {
     const adColsSql = periods.map(([name, from, to]) =>
       `COALESCE(SUM(CASE WHEN "snapshotDate" >= '${isoSnapD(from)}'::date AND "snapshotDate" <= '${isoSnapD(to)}'::date THEN spend ELSE 0 END), 0)::FLOAT8 AS ${name}_adspend`
     ).join(",\n");
+    const refundColsSql = periods.map(([name, from, to]) =>
+      `COALESCE(SUM(CASE WHEN "postedDate" >= '${iso(from)}'::timestamp AND "postedDate" <= '${iso(to)}'::timestamp THEN ABS(amount) ELSE 0 END), 0)::FLOAT8 AS ${name}_refunds`
+    ).join(",\n");
 
     type FlatRow = Record<string, number>;
-    const [ordersRow, adsRow] = await Promise.all([
+    const [ordersRow, adsRow, refundsRow] = await Promise.all([
       prisma.$queryRawUnsafe<FlatRow[]>(`
         SELECT ${orderColsSql}
         FROM "AmazonOrder" o
@@ -118,6 +121,16 @@ ordersRouter.get("/overview", async (req: Request, res: Response) => {
           AND "amazonAccountId" = '${amazonAccountId}'
           ${adMpW}
       `).then(r => r[0] ?? {}),
+
+      prisma.$queryRawUnsafe<FlatRow[]>(`
+        SELECT ${refundColsSql}
+        FROM "AmazonSettlementTransaction"
+        WHERE "postedDate" >= '${iso(wideFrom)}'::timestamp
+          AND "postedDate" <= '${iso(wideTo)}'::timestamp
+          AND "transactionType" = 'Refund'
+          AND "amazonAccountId" = '${amazonAccountId}'
+          ${mpFilter ? `AND marketplace = '${mpFilter}'` : ""}
+      `).then(r => r[0] ?? {}),
     ]);
 
     // ── Build per-period stats ─────────────────────────────────────────────────
@@ -127,12 +140,13 @@ ordersRouter.get("/overview", async (req: Request, res: Response) => {
       const unitsSold      = Number(ordersRow[`${name}_unitssold`]      ?? 0);
       const cancelledCount = Number(ordersRow[`${name}_cancelledcount`] ?? 0);
       const adSpend        = Number(adsRow[`${name}_adspend`]           ?? 0);
+      const refunds        = Number(refundsRow[`${name}_refunds`]       ?? 0);
       const estFees        = grossRevenue * 0.15 + unitsSold * 3.80;
       // Ads are a separate Amazon Ads charge, not part of the seller payout
       // transfer. Keep them out of payout; net-profit consumers subtract Ads
       // explicitly from this value.
       const estPayout      = Math.max(0, grossRevenue - estFees);
-      return { grossRevenue, orderCount, unitsSold, cancelledCount, adSpend, estFees, estPayout };
+      return { grossRevenue, orderCount, unitsSold, cancelledCount, refunds, adSpend, estFees, estPayout };
     }
 
     const today     = buildStats("today");
@@ -155,6 +169,7 @@ ordersRouter.get("/overview", async (req: Request, res: Response) => {
       orderCount:     Math.round(fc(mtd.orderCount)),
       unitsSold:      Math.round(fc(mtd.unitsSold)),
       cancelledCount: Math.round(fc(mtd.cancelledCount)),
+      refunds:        fc(mtd.refunds),
       adSpend:        fc(mtd.adSpend),
       estFees:        fc(mtd.estFees),
       estPayout:      fc(mtd.estPayout),
@@ -243,6 +258,15 @@ ordersRouter.get("/summary", async (req: Request, res: Response) => {
     const adSpend = Number(adRows[0]?.spend ?? 0);
     const adSales = Number(adRows[0]?.sales ?? 0);
     const acos = adSales > 0 ? (adSpend / adSales) * 100 : 0;
+    const refundRows = await prisma.$queryRawUnsafe<Array<{ refunds: number }>>(`
+      SELECT COALESCE(SUM(ABS(amount)), 0)::FLOAT8 AS refunds
+      FROM "AmazonSettlementTransaction"
+      WHERE "postedDate" >= '${dateFrom.toISOString()}'::timestamp
+        AND "postedDate" <= '${dateTo.toISOString()}'::timestamp
+        AND "transactionType" = 'Refund'
+        AND "amazonAccountId" = '${amazonAccountId}'
+        ${marketplace && marketplace !== "all" ? `AND marketplace = '${marketplace.replace(/'/g, "")}'` : ""}
+    `);
     // Advertising is not deducted from the seller settlement transfer.
     const estimatedPayout = totalRevenue;
 
@@ -251,6 +275,7 @@ ordersRouter.get("/summary", async (req: Request, res: Response) => {
       netRevenue: totalRevenue,
       orderCount: totalOrders,
       unitsSold: totalUnits,
+      refunds: Number(refundRows[0]?.refunds ?? 0),
       adSpend,
       acos: Math.round(acos * 100) / 100,
       estimatedPayout,

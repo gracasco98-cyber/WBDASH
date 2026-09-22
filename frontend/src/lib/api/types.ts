@@ -229,6 +229,7 @@ export interface AmazonSummary {
   netRevenue: number;
   orderCount: number;
   unitsSold: number;
+  refunds: number;
   adSpend: number;
   acos: number;
   estimatedPayout: number;
@@ -491,6 +492,7 @@ export interface AmazonPeriodStats {
   grossRevenue: number;
   orderCount: number;
   unitsSold: number;
+  refunds: number;
   cancelledCount: number;
   adSpend: number;
   estFees: number;
