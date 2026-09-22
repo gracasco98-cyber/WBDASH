@@ -38,14 +38,19 @@ export function AmazonAccountProvider({ children }: { children: ReactNode }) {
       // if it no longer exists, and default to the only account when there's
       // exactly one (keeps single-account setups selection-free).
       const stored = getStoredAmazonAccountId();
-      if (stored && list.some((a) => a.id === stored)) {
+      if (stored === "ALL" && list.length > 1) {
+        // Keep the aggregate selection persisted so the API client can send
+        // amazonAccountId=ALL on every request.
+        setSelectedAccountId(null);
+      } else if (stored && list.some((a) => a.id === stored)) {
         setSelectedAccountId(stored);
       } else if (list.length === 1) {
         setSelectedAccountId(list[0].id);
         setStoredAmazonAccountId(list[0].id);
       } else {
         setSelectedAccountId(null);
-        if (stored) setStoredAmazonAccountId(null);
+        if (list.length > 1) setStoredAmazonAccountId("ALL");
+        else if (stored && stored !== "ALL") setStoredAmazonAccountId(null);
       }
     } catch (e) {
       console.error("[AmazonAccountContext] Failed to load accounts:", e);
@@ -80,7 +85,9 @@ export function AmazonAccountProvider({ children }: { children: ReactNode }) {
     // the new amazonAccountId, without threading account-change reactions
     // through ~10 independent pages individually.
     const changed = id !== selectedAccountId;
-    setStoredAmazonAccountId(id);
+    // null is the UI representation of the aggregate; persist the explicit
+    // ALL sentinel so every API request is resolved across active accounts.
+    setStoredAmazonAccountId(id ?? (accounts.length > 1 ? "ALL" : null));
     setSelectedAccountId(id);
     if (changed && typeof window !== "undefined") {
       window.location.reload();
