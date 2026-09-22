@@ -309,7 +309,9 @@ export function startAmazonSnapshotPolling(): void {
   }
   scheduleDailyRebuild();
 
-  // Settlement sync: every 4 hours + reconcile forecast snapshots after each run
+  // Settlement sync: every 30 minutes + reconcile forecast snapshots after each run.
+  // Amazon refunds are published through financial events/settlement data, not
+  // the Orders API, so this is the refresh that makes refund cards current.
   const runSettlementAndReconcile = () =>
     forEachActiveAccount("settlement sync + reconcile", async () => {
       await syncSettlementReports().catch(console.error);
@@ -320,7 +322,7 @@ export function startAmazonSnapshotPolling(): void {
   setInterval(() => {
     console.log("[Amazon Sync] Running scheduled settlement sync...");
     runSettlementAndReconcile().catch(console.error);
-  }, 4 * 3_600_000);
+  }, 30 * 60_000);
 
   // First settlement sync after 30s on startup
   setTimeout(() => {
