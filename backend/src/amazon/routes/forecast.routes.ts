@@ -250,11 +250,20 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
       const currentGross    = Number(row.current_gross);
       const stragglerGross  = Number(row.straggler_gross);
       const totalGross      = currentGross + stragglerGross;
+      // Only orders that can enter the next settlement cycle belong in the
+      // next-payment estimate. Orders after the capture cutoff are deferred
+      // to a later payment and must not inflate this card.
+      const split = payableSplitMap.get(mp);
+      const payableGross = Number(split?.payable_gross ?? 0);
+      const borderlineGross = Number(split?.borderline_gross ?? 0);
+      const eligibleGross = payableGross + borderlineGross;
       const totalOrders     = Number(row.current_orders) + Number(row.straggler_orders);
 
       const calib = calibMap.get(mp);
       const useCalib = calib !== null && calib !== undefined && calib.dataPoints >= 3;
-      const pr = useCalib ? calib!.payoutRatio : fr.payoutRatio;
+      // A payout ratio is a net/gross ratio; guard against bad historical
+      // calibration data producing an impossible payout above gross sales.
+      const pr = Math.min(1, Math.max(0, useCalib ? calib!.payoutRatio : fr.payoutRatio));
 
       const periodStart  = cycle.last_end;
       const periodEnd    = cycle.next_period_end;
@@ -283,7 +292,8 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
       } else {
         histAvgNet = (totalGross + dailyRunRate * cycleDaysRemaining) * pr;
       }
-      const estNet = r2(totalGross * pr);
+      const forecastGross = eligibleGross > 0 ? eligibleGross : totalGross;
+      const estNet = r2(forecastGross * pr);
 
       // The card is meant to answer "what will be paid in the next deposit?".
       // Prefer the active, account-scoped cycle (open orders + stragglers) over
@@ -291,9 +301,9 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
       // fallback for a genuinely empty cycle; using it as the primary value
       // made the dashboard disagree with Seller Central whenever the current
       // account's next payment was smaller/larger than its historical mean.
-      const projectedNet   = totalGross > 0 ? estNet : r2(histAvgNet);
-      const projectedGross = totalGross > 0
-        ? r2(totalGross)
+      const projectedNet   = forecastGross > 0 ? estNet : r2(histAvgNet);
+      const projectedGross = forecastGross > 0
+        ? r2(forecastGross)
         : r2(histAvgNet / Math.max(0.001, pr));
       const projectedFees  = r2(projectedGross - projectedNet);
 
@@ -347,7 +357,6 @@ forecastRouter.get("/payments/forecast", async (_req: Request, res: Response) =>
         cycleCompletionPct * Math.max(0.45, 1 - histVariance * 0.6)
       )));
 
-      const split = payableSplitMap.get(mp);
       const payableGrossAO    = r2(Number(split?.payable_gross    ?? 0));
       const borderlineGrossAO = r2(Number(split?.borderline_gross ?? 0));
       const deferredGrossAO   = r2(Number(split?.deferred_gross   ?? 0));
