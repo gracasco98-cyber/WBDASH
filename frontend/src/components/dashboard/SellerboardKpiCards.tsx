@@ -140,7 +140,7 @@ function buildKpiTotal(
 
   const sales = sGross + aGross;
   const orders = sOrders + aOrders;
-  const netProfit = sNet + aPayout - aAdSpend;
+  const netProfit = sNet + aPayout;
   const marginPct = sales > 0 ? (netProfit / sales) * 100 : null;
 
   const pctChange =
@@ -182,7 +182,7 @@ function buildKpiAmazon(a: AmazonPeriodStats | null): CardKpi {
   const gross = a?.grossRevenue ?? 0;
   const payout = a?.estPayout ?? 0;
   const adSpend = a?.adSpend ?? 0;
-  const net = payout - adSpend;
+  const net = payout;
   const margin = gross > 0 ? (net / gross) * 100 : null;
   return {
     sales: gross,

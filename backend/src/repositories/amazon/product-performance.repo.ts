@@ -58,17 +58,12 @@ function deriveMetrics(base: {
   sales: number; refundsAmount: number; amazonFees: number; cogs: number; adsSpend: number | null; units: number;
 }): { grossProfit: number; netProfit: number; estimatedPayout: number; margin: number; roi: number; avgSellingPrice: number } {
   const ads = base.adsSpend ?? 0;
-  // Gross profit stops at marketplace fees and COGS. Advertising is a selling
-  // expense and belongs only in net profit; subtracting it from both values
-  // made the product table understate gross margin and then effectively count
-  // Ads twice when the dashboard combined channels.
+  // Gross profit stops at marketplace fees and COGS; Ads are a selling cost.
   const grossProfit = base.sales - base.refundsAmount - base.amazonFees - base.cogs;
   const netProfit = grossProfit - ads;
-  // Payout is the marketplace settlement estimate. Amazon Ads are charged
-  // separately from the seller disbursement, so they belong in net profit but
-  // must not be deducted from payout (otherwise the dashboard is lower than
-  // the bank transfer and callers subtract Ads a second time).
-  const estimatedPayout = base.sales - base.refundsAmount - base.amazonFees;
+  // Dashboard payout is an operational estimate after known Ads costs. It is
+  // distinct from the actual Amazon settlement shown in Pagamenti.
+  const estimatedPayout = base.sales - base.refundsAmount - base.amazonFees - ads;
   const margin = base.sales > 0 ? netProfit / base.sales : 0;
   const roi = base.cogs > 0 ? netProfit / base.cogs : 0;
   const avgSellingPrice = base.units > 0 ? base.sales / base.units : 0;

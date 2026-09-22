@@ -142,10 +142,9 @@ ordersRouter.get("/overview", async (req: Request, res: Response) => {
       const adSpend        = Number(adsRow[`${name}_adspend`]           ?? 0);
       const refunds        = Number(refundsRow[`${name}_refunds`]       ?? 0);
       const estFees        = grossRevenue * 0.15 + unitsSold * 3.80;
-      // Ads are a separate Amazon Ads charge, not part of the seller payout
-      // transfer. Keep them out of payout; net-profit consumers subtract Ads
-      // explicitly from this value.
-      const estPayout      = Math.max(0, grossRevenue - estFees);
+      // Dashboard payout is an operational estimate after marketplace fees
+      // and advertising, distinct from the actual settlement transfer.
+      const estPayout      = Math.max(0, grossRevenue - estFees - adSpend);
       return { grossRevenue, orderCount, unitsSold, cancelledCount, refunds, adSpend, estFees, estPayout };
     }
 
