@@ -184,10 +184,12 @@ export async function resolveProductPerformance(
       const configuredVatRate = ident.vatRate != null && Number(ident.vatRate) > 0
         ? Number(ident.vatRate)
         : 10;
-      const vatEstimated = sold.vat === 0 && sold.sales > 0;
-      const vatAmount = vatEstimated
-        ? Math.max(0, sold.sales - refund.amount) * configuredVatRate / 100
-        : sold.vat;
+      // The dashboard VAT rule is deterministic: always apply the configured
+      // rate (10% by default) to turnover net of refunds. Do not mix it with
+      // Amazon's optional itemTax field, which can be partial (e.g. €41 on a
+      // €613 day) and was the source of the inconsistent card total.
+      const vatEstimated = sold.sales > 0;
+      const vatAmount = Math.max(0, sold.sales - refund.amount) * configuredVatRate / 100;
 
       const derived = deriveMetrics({ sales: sold.sales, refundsAmount: refund.amount, amazonFees, cogs, adsSpend, units: sold.units });
 
