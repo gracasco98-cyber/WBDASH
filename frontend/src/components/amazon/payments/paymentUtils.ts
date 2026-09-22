@@ -160,7 +160,12 @@ export function getComparisonPeriod(
 
 export function filterByPeriod(settlements: Settlement[], country: string, from: Date, to: Date): Settlement[] {
   return settlements.filter(s => {
-    const refDate = s.dateFrom || s.dateTo;
+    // Pagamenti/incassi are reported by the date Amazon actually deposits the
+    // settlement.  dateFrom is only the covered order period (often crosses
+    // month boundaries), so using it makes monthly totals differ from the
+    // bank statement. Older imported rows can lack depositDate; dateTo is the
+    // safest fallback for those rows.
+    const refDate = s.depositDate || s.dateTo || s.dateFrom;
     if (!refDate) return false;
     if (country !== "Europa" && s.marketplace !== country) return false;
     const d = new Date(refDate + "T12:00:00");
@@ -178,7 +183,10 @@ export function getPaymentAnalytics(
 ): AnalyticsResult {
   const groupByDate = (setts: Settlement[]) => {
     const map = new Map<string, number>();
-    for (const s of setts) map.set(s.dateTo, (map.get(s.dateTo) ?? 0) + s.netPayout);
+    for (const s of setts) {
+      const date = s.depositDate || s.dateTo;
+      if (date) map.set(date, (map.get(date) ?? 0) + s.netPayout);
+    }
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, amount]) => ({ date, amount }));
