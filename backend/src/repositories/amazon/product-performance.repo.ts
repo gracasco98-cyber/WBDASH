@@ -178,8 +178,16 @@ export async function resolveProductPerformance(
       const adsInfo = params.adsSpendByKey?.get(key);
       const adsSpend = adsInfo ? adsInfo.spend : null;
       const realAcos = adsSpend !== null && sold.sales > 0 ? adsSpend / sold.sales : null;
-      const vatEstimated = sold.vat === 0 && sold.sales > 0 && ident.vatRate != null && Number(ident.vatRate) > 0;
-      const vatAmount = vatEstimated ? sold.sales * Number(ident.vatRate) / 100 : sold.vat;
+      // Amazon itemTax is not present on some imported order rows. The
+      // dashboard account uses the agreed 10% operational VAT rule, so a
+      // €613 turnover must show €61.30 instead of zero in the card.
+      const configuredVatRate = ident.vatRate != null && Number(ident.vatRate) > 0
+        ? Number(ident.vatRate)
+        : 10;
+      const vatEstimated = sold.vat === 0 && sold.sales > 0;
+      const vatAmount = vatEstimated
+        ? Math.max(0, sold.sales - refund.amount) * configuredVatRate / 100
+        : sold.vat;
 
       const derived = deriveMetrics({ sales: sold.sales, refundsAmount: refund.amount, amazonFees, cogs, adsSpend, units: sold.units });
 
@@ -205,7 +213,7 @@ export async function resolveProductPerformance(
         bsr: null, // AmazonProductSnapshot.bsr exists but is never populated (spec §Scope, out of scope)
         vatAmount,
         vatEstimated,
-        vatRate: ident.vatRate,
+        vatRate: vatEstimated ? configuredVatRate : ident.vatRate,
         ...derived,
       };
     });
