@@ -71,6 +71,7 @@ model SyncState {
 
 model WebhookEventLog {
   id          String    @id @default(cuid())
+  webhookId   String?   @unique
   topic       String
   shopifyId   String
   payload     Json

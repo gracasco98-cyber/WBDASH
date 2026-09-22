@@ -23,6 +23,7 @@ function verifyHmac(rawBody: Buffer, hmacHeader: string): boolean {
 // ─── Main webhook handler ─────────────────────────────────────────────────────
 export async function handleWebhook(req: Request, res: Response): Promise<void> {
   const topic     = req.headers["x-shopify-topic"] as string;
+  const webhookId = req.headers["x-shopify-webhook-id"] as string ?? null;
   const headerOrderId = req.headers["x-shopify-order-id"] as string ?? "";
   const hmac      = req.headers["x-shopify-hmac-sha256"] as string ?? "";
   const rawBody: Buffer = (req as any).rawBody;
@@ -45,26 +46,28 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
   // fulfillments/create — fall back to the payload's own order_id for that
   // topic so the idempotency key (and the WebhookEventLog row) never collapses
   // to an empty shopifyId shared across unrelated orders.
-  const shopifyId = topic === "fulfillments/create"
+  const shopifyId = topic === "fulfillments/create" || topic === "refunds/create" || topic === "refunds/update"
     ? String(payload.order_id ?? headerOrderId)
     : headerOrderId;
 
   setImmediate(async () => {
     // Idempotency: skip if this event was already processed successfully
-    const existing = await prisma.webhookEventLog.findFirst({
-      where: { shopifyId, topic, processed: true },
-    });
-    if (existing) return;
+    const existing = webhookId
+      ? await prisma.webhookEventLog.findUnique({ where: { webhookId } })
+      : await prisma.webhookEventLog.findFirst({ where: { shopifyId, topic, processed: true } });
+    if (existing?.processed) return;
 
     const logEntry = await prisma.webhookEventLog.create({
-      data: { topic, shopifyId, payload },
+      data: { topic, shopifyId, webhookId, payload },
     });
 
     try {
       if (
         topic === "orders/create" ||
         topic === "orders/updated" ||
-        topic === "orders/cancelled"
+        topic === "orders/cancelled" ||
+        topic === "refunds/create" ||
+        topic === "refunds/update"
       ) {
         // Re-fetch from Shopify API for full payload (webhook body may be partial)
         const gid = `gid://shopify/Order/${shopifyId}`;
@@ -72,12 +75,12 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         if (fullOrder) {
           await upsertOrder(fullOrder);
 
-          // Broadcast live event to SSE clients (only for new orders, not updates/cancellations)
-          if (topic === "orders/create") {
+          // Broadcast live event for new orders and economic updates such as refunds.
+          if (topic === "orders/create" || topic === "orders/updated" || topic === "orders/cancelled" || topic === "refunds/create" || topic === "refunds/update") {
             try {
               const saved = await findOrderForBroadcast(prisma, shopifyId);
               if (saved) {
-                broadcast("order:new", {
+                broadcast(topic === "orders/create" ? "order:new" : "order:updated", {
                   source:      "shopify",
                   orderName:   saved.orderName,
                   total:       saved.totalAmount,
