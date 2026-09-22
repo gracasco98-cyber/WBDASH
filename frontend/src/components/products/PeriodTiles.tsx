@@ -443,13 +443,26 @@ export default function PeriodTiles() {
         const results = await Promise.all(
           activeTiles.map(async ({ id, preset }) => {
             const { from, to } = presetDateRange(preset);
-            const { groups } = await api.productPerformance.get({
-              marketplace: productMarketplace,
-              from,
-              to,
-              amazonAccountId,
-            });
-            return [id, sumAggregate(groups.map((g) => g.aggregate))] as const;
+            const [performance, financial] = await Promise.all([
+              api.productPerformance.get({
+                marketplace: productMarketplace,
+                from,
+                to,
+                amazonAccountId,
+              }),
+              typeof api.amazon?.summary === "function"
+                ? api.amazon.summary({ filter: "custom", from, to })
+                : Promise.resolve(null),
+            ]);
+            const aggregate = sumAggregate(performance.groups.map((g) => g.aggregate));
+            // Refunds are financial events and may not be attached to an active
+            // ASIN/product row yet. Prefer the Amazon financial aggregate for
+            // the card, while retaining the product-performance fallback.
+            if (aggregate && financial) {
+              aggregate.refundsAmount = Math.max(aggregate.refundsAmount, financial.refunds ?? 0);
+              aggregate.refundsCount = Math.max(aggregate.refundsCount, financial.refundCount ?? 0);
+            }
+            return [id, aggregate] as const;
           }),
         );
         if (!cancelled) {

@@ -230,6 +230,7 @@ export interface AmazonSummary {
   orderCount: number;
   unitsSold: number;
   refunds: number;
+  refundCount: number;
   adSpend: number;
   acos: number;
   estimatedPayout: number;

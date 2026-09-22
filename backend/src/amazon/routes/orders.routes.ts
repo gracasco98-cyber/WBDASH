@@ -258,8 +258,9 @@ ordersRouter.get("/summary", async (req: Request, res: Response) => {
     const adSpend = Number(adRows[0]?.spend ?? 0);
     const adSales = Number(adRows[0]?.sales ?? 0);
     const acos = adSales > 0 ? (adSpend / adSales) * 100 : 0;
-    const refundRows = await prisma.$queryRawUnsafe<Array<{ refunds: number }>>(`
-      SELECT COALESCE(SUM(ABS(amount)), 0)::FLOAT8 AS refunds
+    const refundRows = await prisma.$queryRawUnsafe<Array<{ refunds: number; refundCount: number }>>(`
+      SELECT COALESCE(SUM(ABS(amount)), 0)::FLOAT8 AS refunds,
+             COUNT(DISTINCT "orderId")::INTEGER AS "refundCount"
       FROM "AmazonSettlementTransaction"
       WHERE "postedDate" >= '${dateFrom.toISOString()}'::timestamp
         AND "postedDate" <= '${dateTo.toISOString()}'::timestamp
@@ -276,6 +277,7 @@ ordersRouter.get("/summary", async (req: Request, res: Response) => {
       orderCount: totalOrders,
       unitsSold: totalUnits,
       refunds: Number(refundRows[0]?.refunds ?? 0),
+      refundCount: Number(refundRows[0]?.refundCount ?? 0),
       adSpend,
       acos: Math.round(acos * 100) / 100,
       estimatedPayout,
