@@ -64,7 +64,11 @@ function deriveMetrics(base: {
   // Ads twice when the dashboard combined channels.
   const grossProfit = base.sales - base.refundsAmount - base.amazonFees - base.cogs;
   const netProfit = grossProfit - ads;
-  const estimatedPayout = base.sales - base.refundsAmount - base.amazonFees - ads;
+  // Payout is the marketplace settlement estimate. Amazon Ads are charged
+  // separately from the seller disbursement, so they belong in net profit but
+  // must not be deducted from payout (otherwise the dashboard is lower than
+  // the bank transfer and callers subtract Ads a second time).
+  const estimatedPayout = base.sales - base.refundsAmount - base.amazonFees;
   const margin = base.sales > 0 ? netProfit / base.sales : 0;
   const roi = base.cogs > 0 ? netProfit / base.cogs : 0;
   const avgSellingPrice = base.units > 0 ? base.sales / base.units : 0;

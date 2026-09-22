@@ -128,7 +128,10 @@ ordersRouter.get("/overview", async (req: Request, res: Response) => {
       const cancelledCount = Number(ordersRow[`${name}_cancelledcount`] ?? 0);
       const adSpend        = Number(adsRow[`${name}_adspend`]           ?? 0);
       const estFees        = grossRevenue * 0.15 + unitsSold * 3.80;
-      const estPayout      = Math.max(0, grossRevenue - estFees - adSpend);
+      // Ads are a separate Amazon Ads charge, not part of the seller payout
+      // transfer. Keep them out of payout; net-profit consumers subtract Ads
+      // explicitly from this value.
+      const estPayout      = Math.max(0, grossRevenue - estFees);
       return { grossRevenue, orderCount, unitsSold, cancelledCount, adSpend, estFees, estPayout };
     }
 
@@ -240,7 +243,8 @@ ordersRouter.get("/summary", async (req: Request, res: Response) => {
     const adSpend = Number(adRows[0]?.spend ?? 0);
     const adSales = Number(adRows[0]?.sales ?? 0);
     const acos = adSales > 0 ? (adSpend / adSales) * 100 : 0;
-    const estimatedPayout = totalRevenue - adSpend;
+    // Advertising is not deducted from the seller settlement transfer.
+    const estimatedPayout = totalRevenue;
 
     res.json({
       totalRevenue,
