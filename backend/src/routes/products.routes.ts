@@ -22,6 +22,7 @@ import { findSnapshotsByProductId } from "../repositories/shopify/product-snapsh
 import { getDateRange } from "../amazon/utils/datetime";
 import { italyDateString } from "../amazon/utils/datetime";
 import { findDailyAdSpends } from "../repositories/marketing/marketplaceAdSpend.repo";
+import { calculateRedcareShippingCost } from "../config/redcare-costs";
 
 const router = Router();
 
@@ -149,6 +150,7 @@ router.get("/", async (req: Request, res: Response) => {
       orderCount: string | number;
       redcareGross: string | number;
       redcareRefunds: string | number;
+      redcareOrderCount: string | number;
     };
     const mpCondition = marketplace && marketplace !== "all"
       ? Prisma.sql`AND "marketplaceDetected" = ${marketplace}`
@@ -161,7 +163,8 @@ router.get("/", async (req: Request, res: Response) => {
         COUNT(*) FILTER (WHERE "refundedAmount" > 0)::INTEGER AS "refundCount",
         COUNT(*)::INTEGER             AS "orderCount",
         SUM(CASE WHEN "marketplaceDetected" = 'REDCARE_IT' THEN "totalAmount" ELSE 0 END)::FLOAT8 AS "redcareGross",
-        SUM(CASE WHEN "marketplaceDetected" = 'REDCARE_IT' THEN "refundedAmount" ELSE 0 END)::FLOAT8 AS "redcareRefunds"
+        SUM(CASE WHEN "marketplaceDetected" = 'REDCARE_IT' THEN "refundedAmount" ELSE 0 END)::FLOAT8 AS "redcareRefunds",
+        COUNT(*) FILTER (WHERE "marketplaceDetected" = 'REDCARE_IT')::INTEGER AS "redcareOrderCount"
       FROM "ShopifyOrder"
       WHERE "createdAt" >= ${dateFrom}::timestamp
         AND "createdAt" <= ${dateTo}::timestamp
@@ -175,15 +178,19 @@ router.get("/", async (req: Request, res: Response) => {
     const redcareRefunds = Number(orderKpis[0]?.redcareRefunds ?? 0);
     const redcareVat = Math.max(0, redcareGross - redcareRefunds) * 0.10;
     const redcareFee = Math.max(0, redcareGross - redcareRefunds) * 0.15;
+    const redcareShippingCost = calculateRedcareShippingCost(
+      Number(orderKpis[0]?.redcareOrderCount ?? 0),
+    );
 
     res.json({
       products,
       kpis: {
         totalGross:   Number(orderKpis[0]?.gross   ?? 0),
-        totalNet:     Number(orderKpis[0]?.net     ?? 0) - totalAdSpend - redcareVat - redcareFee,
+        totalNet:     Number(orderKpis[0]?.net     ?? 0) - totalAdSpend - redcareVat - redcareFee - redcareShippingCost,
         totalAdSpend,
         redcareVat,
         redcareFee,
+        redcareShippingCost,
         // All manually maintained MarketplaceAdSpend rows currently represent
         // Redcare (IT/DE). Keep the explicit field so dashboard consumers can
         // distinguish this daily channel cost from future ad sources.

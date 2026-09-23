@@ -9,6 +9,8 @@ export interface Summary {
   totalRefunds: number;
   redcareVat?: number;
   redcareFee?: number;
+  /** Redcare IT shipping cost (4.36 EUR per order). */
+  redcareShippingCost?: number;
   orderCount: number;
   aov: number;
   lastHour: { revenue: number; orders: number };
@@ -93,6 +95,8 @@ export interface ProductKpis {
   redcareVat?: number;
   /** Redcare marketplace fee (15% of net-of-refunds revenue). */
   redcareFee?: number;
+  /** Redcare IT shipping cost (4.36 EUR per order). */
+  redcareShippingCost?: number;
   totalUnits: number;
   totalRefunds: number;
   /** Number of orders with a non-zero refund in the period. */
