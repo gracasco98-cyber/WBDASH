@@ -17,6 +17,7 @@ import { findSyncState } from "../repositories/shopify/sync-state.repo";
 import { findRecentErrors } from "../repositories/shopify/error-log.repo";
 import { findDailyAdSpends } from "../repositories/marketing/marketplaceAdSpend.repo";
 import { italyDateString } from "../amazon/utils/datetime";
+import { calculateRedcareShippingCost } from "../config/redcare-costs";
 
 const router = Router();
 
@@ -172,8 +173,12 @@ router.get("/summary", async (req: Request, res: Response) => {
     const redcareFee = mpRows
       .filter((row) => row.marketplace === "REDCARE_IT")
       .reduce((sum, row) => sum + Math.max(0, Number(row.revenue) - Number(row.refunds)) * 0.15, 0);
+    const redcareOrderCount = mpRows
+      .filter((row) => row.marketplace === "REDCARE_IT")
+      .reduce((sum, row) => sum + Number(row.count), 0);
+    const redcareShippingCost = calculateRedcareShippingCost(redcareOrderCount);
     if (byMarketplace.REDCARE_IT) {
-      byMarketplace.REDCARE_IT.net -= redcareVat + redcareFee;
+      byMarketplace.REDCARE_IT.net -= redcareVat + redcareFee + redcareShippingCost;
     }
 
     // I costi manuali dei lanci sono spese reali di marketing/avviamento: non
@@ -194,10 +199,11 @@ router.get("/summary", async (req: Request, res: Response) => {
 
     res.json({
       totalRevenue:  Number(tot.totalRevenue),
-      netRevenue:    Number(tot.netRevenue) - adSpend - launchCost - redcareVat - redcareFee,
+      netRevenue:    Number(tot.netRevenue) - adSpend - launchCost - redcareVat - redcareFee - redcareShippingCost,
       adSpend,
       redcareVat,
       redcareFee,
+      redcareShippingCost,
       launchCost,
       totalRefunds:  Number(tot.totalRefunds),
       orderCount,

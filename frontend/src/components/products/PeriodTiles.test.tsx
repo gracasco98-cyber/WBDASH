@@ -28,7 +28,16 @@ const mockGet = vi.fn(async (_params: unknown): Promise<{ groups: { product: { i
     aggregate: { identifierId: "i1", asin: "", marketplace: "ALL", sku: null, units: 5, sales: 100, promo: 0, refundsAmount: 0, refundsCount: 0, refundPct: 0, adsSpend: 5, realAcos: 0.05, amazonFees: 15, hasRealFees: true, hasRealCogs: true, cogs: 20, stock: 10, hasStockData: true, grossProfit: 60, netProfit: 60, estimatedPayout: 80, margin: 0.6, roi: 3, avgSellingPrice: 20, bsr: null, vatAmount: 12 },
   }],
 }));
-const mockProducts = vi.fn(async (_params: unknown) => ({
+const mockProducts = vi.fn(async (_params: unknown): Promise<{
+  products: { grossRevenue: number; unitsSold: number }[];
+  kpis: {
+    totalGross: number;
+    totalNet: number;
+    totalAdSpend: number;
+    redcareAdSpend: number;
+    redcareShippingCost?: number;
+  };
+}> => ({
   products: [{ grossRevenue: 40, unitsSold: 2 }],
   kpis: { totalGross: 40, totalNet: 35, totalAdSpend: 99, redcareAdSpend: 6 },
 }));
@@ -107,6 +116,31 @@ describe("PeriodTiles", () => {
     expect(screen.getAllByText("€ 46,00")).toHaveLength(5);
   });
 
+  it("includes Redcare shipping in profit, costs and the dashboard breakdown", async () => {
+    for (let i = 0; i < 5; i += 1) {
+      mockProducts.mockResolvedValueOnce({
+        products: [{ grossRevenue: 40, unitsSold: 2 }],
+        kpis: {
+          totalGross: 40,
+          totalNet: 30.64,
+          totalAdSpend: 99,
+          redcareAdSpend: 6,
+          redcareShippingCost: 4.36,
+        },
+      });
+    }
+
+    render(<PeriodTiles />);
+
+    await vi.waitFor(() => expect(screen.getAllByText("€ 90,64")).toHaveLength(5));
+    expect(screen.getAllByText("€ 50,36")).toHaveLength(5);
+    expect(screen.getAllByText("Spedizioni Redcare")).toHaveLength(5);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /apri dettaglio/i })[0]);
+    expect(screen.getByRole("dialog")).toHaveTextContent("Spedizioni Redcare");
+    expect(screen.getByRole("dialog")).toHaveTextContent("€ -4,36");
+  });
+
   it("uses the daily Redcare Ads source when the aggregate KPI differs", async () => {
     mockRedcareList.mockResolvedValue({ entries: [], total: 8 });
     render(<PeriodTiles />);
@@ -140,7 +174,7 @@ describe("PeriodTiles", () => {
     expect(screen.getByRole("button", { name: /14 giorni/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /30 giorni/i })).toBeInTheDocument();
     // Verify component stays usable with placeholders when one channel fails.
-    expect(screen.getAllByText("—")).toHaveLength(65);
+    expect(screen.getAllByText("—")).toHaveLength(70);
     // Verify error was logged
     await vi.waitFor(() => expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[PeriodTiles] Failed to load period tiles:"), expect.any(Error)));
     consoleErrorSpy.mockRestore();

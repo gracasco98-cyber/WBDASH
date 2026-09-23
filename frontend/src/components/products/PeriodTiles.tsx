@@ -391,11 +391,11 @@ export default function PeriodTiles() {
     Record<string, ProductPerformanceRow | null>
   >({});
   // Shopify (Redcare/Temu/eBay/...) contribution to the tiles. Redcare Ads are
-  // marketplace/day costs; fee and COGS figures remain unavailable here.
+  // marketplace/day costs; fee and shipping are calculated from live orders.
   const [shopifyTotals, setShopifyTotals] = useState<
     Record<
       string,
-      { sales: number; units: number; netProfit: number; adSpend: number; vatAmount: number; redcareFee: number; refunds: number; refundCount: number }
+      { sales: number; units: number; netProfit: number; adSpend: number; vatAmount: number; redcareFee: number; redcareShippingCost: number; refunds: number; refundCount: number }
     >
   >({});
   // Redcare Ads and orders can arrive after the page was opened. Refresh the
@@ -407,7 +407,7 @@ export default function PeriodTiles() {
   const [refreshing, setRefreshing] = useState(false);
   const [breakdown, setBreakdown] = useState<{
     label: string; sales: number; profit: number; amazonFees: number;
-    redcareFee: number; ads: number; cogs: number; vat: number;
+    redcareFee: number; redcareShippingCost: number; ads: number; cogs: number; vat: number;
     refunds: number; units: number;
   } | null>(null);
   const [showFeeDetails, setShowFeeDetails] = useState(false);
@@ -562,6 +562,7 @@ export default function PeriodTiles() {
                 adSpend: reportedAdSpend,
                 vatAmount: Number(kpis.redcareVat ?? 0),
                 redcareFee: Number(kpis.redcareFee ?? 0),
+                redcareShippingCost: Number(kpis.redcareShippingCost ?? 0),
                 refunds: Number(kpis.totalRefunds ?? 0),
                 refundCount: Number(kpis.totalRefundCount ?? 0),
               },
@@ -743,6 +744,7 @@ export default function PeriodTiles() {
               adSpend: row.adSpend * forecastMultiplier,
               vatAmount: row.vatAmount * forecastMultiplier,
               redcareFee: row.redcareFee * forecastMultiplier,
+              redcareShippingCost: row.redcareShippingCost * forecastMultiplier,
               refunds: row.refunds * forecastMultiplier,
               refundCount: Math.round(row.refundCount * forecastMultiplier),
             };
@@ -781,7 +783,8 @@ export default function PeriodTiles() {
             (totalRow?.amazonFees ?? 0) +
             (totalRow?.cogs ?? 0) +
             combinedAdSpend +
-            (shopifyRow?.redcareFee ?? 0);
+            (shopifyRow?.redcareFee ?? 0) +
+            (shopifyRow?.redcareShippingCost ?? 0);
           const active = state.preset === preset;
           // Amazon-only on both sides (no Shopify comparison fetch, to keep
           // this addition to a single extra request per tile) — close enough
@@ -927,6 +930,12 @@ export default function PeriodTiles() {
                       </>
                     )}
                   </div>
+                  <div>
+                    <div className="text-zinc-500 text-[10px]">Spedizioni Redcare</div>
+                    <div className="text-zinc-300 tabular-nums">
+                      {shopifyRow ? fmtEur(shopifyRow.redcareShippingCost) : "—"}
+                    </div>
+                  </div>
                 </div>
                 <span
                   role="button"
@@ -938,6 +947,7 @@ export default function PeriodTiles() {
                       label: tileDateLabel(tile), sales: combinedSales,
                       profit: combinedNetProfit, amazonFees: totalRow?.amazonFees ?? 0,
                       redcareFee: shopifyRow?.redcareFee ?? 0, ads: combinedAdSpend,
+                      redcareShippingCost: shopifyRow?.redcareShippingCost ?? 0,
                       cogs: totalRow?.cogs ?? 0, vat: combinedVat,
                       refunds: combinedRefunds, units: combinedUnits,
                     });
@@ -950,6 +960,7 @@ export default function PeriodTiles() {
                         label: tileDateLabel(tile), sales: combinedSales,
                         profit: combinedNetProfit, amazonFees: totalRow?.amazonFees ?? 0,
                         redcareFee: shopifyRow?.redcareFee ?? 0, ads: combinedAdSpend,
+                        redcareShippingCost: shopifyRow?.redcareShippingCost ?? 0,
                         cogs: totalRow?.cogs ?? 0, vat: combinedVat,
                         refunds: combinedRefunds, units: combinedUnits,
                       });
@@ -975,10 +986,11 @@ export default function PeriodTiles() {
               <div className="rounded-xl border border-accent-primary/20 bg-accent-blue/10 px-4 py-4 sm:px-5"><div className="flex flex-wrap items-end justify-between gap-3"><div><div className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-primary">Ricavi netti</div><div className="mt-1 text-3xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">{fmtEur(breakdown.sales)}</div></div><div className="text-right"><div className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Profitto netto</div><div className={`mt-1 text-xl font-bold tabular-nums ${breakdown.profit < 0 ? "text-accent-red" : "text-accent-primary"}`}>{fmtEur(breakdown.profit)}</div></div></div><div className="mt-3 text-xs text-zinc-500">{breakdown.units.toLocaleString("it-IT")} unità · dati separati per marketplace</div></div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <BreakdownItem label="Advertising" value={breakdown.ads} />
+                <BreakdownItem label="Spedizioni Redcare" value={breakdown.redcareShippingCost} />
                 <div className="rounded-xl border border-bg-border bg-bg-hover/25 p-4"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-zinc-500">Marketplace fees</span><span className="font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{fmtEur(-(breakdown.amazonFees + breakdown.redcareFee))}</span></div><button type="button" onClick={() => setShowFeeDetails((value) => !value)} className="mt-3 flex w-full items-center justify-between rounded-lg bg-bg-card px-3 py-2 text-left text-xs text-zinc-500 hover:text-accent-primary"><span>{showFeeDetails ? "Nascondi voci" : "+ 2 voci"}</span><ChevronDown size={14} className={showFeeDetails ? "rotate-180" : ""} /></button>{showFeeDetails && <div className="mt-2 space-y-2 border-t border-bg-border pt-2 text-xs"><BreakdownSubItem label="Fee Amazon" value={breakdown.amazonFees} /><BreakdownSubItem label="Fee Redcare (15%)" value={breakdown.redcareFee} /></div>}</div>
                 <BreakdownItem label="Cost of goods" value={breakdown.cogs} /><BreakdownItem label="Refund cost" value={breakdown.refunds} /><BreakdownItem label="VAT / taxes" value={breakdown.vat} />
               </div>
-              <div className="mt-4 rounded-lg border border-dashed border-bg-border px-4 py-3 text-xs text-zinc-500">Le fee sono attribuite al marketplace di origine: la fee Redcare del 15% non viene mai applicata alle vendite Amazon. Le voci non presenti nella sorgente dati restano escluse, non stimate.</div>
+              <div className="mt-4 rounded-lg border border-dashed border-bg-border px-4 py-3 text-xs text-zinc-500">Le fee sono attribuite al marketplace di origine: la fee Redcare del 15% e il costo di spedizione di €4,36 per ordine non vengono mai applicati alle vendite Amazon. Le voci non presenti nella sorgente dati restano escluse, non stimate.</div>
             </div>
           </div>
         </div>
