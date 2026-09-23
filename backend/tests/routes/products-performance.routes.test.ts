@@ -7,9 +7,13 @@ import { createProduct, createIdentifier } from "../../src/repositories/amazon/p
 
 // findAdSpendForAsins now returns { asin, marketplace, spend } — marketplace is
 // part of the shape because the route keys its ads map by `${marketplace}::${asin}`.
-vi.mock("../../src/repositories/amazon/ad-spend.repo", () => ({
-  findAdSpendForAsins: vi.fn(async (): Promise<Array<{ asin: string; marketplace: string; spend: number }>> => []),
-}));
+vi.mock("../../src/repositories/amazon/ad-spend.repo", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/repositories/amazon/ad-spend.repo")>();
+  return {
+    ...actual,
+    findAdSpendForAsins: vi.fn(async (): Promise<Array<{ asin: string; marketplace: string; spend: number }>> => []),
+  };
+});
 
 let db: TestDb;
 let accountId: string;
