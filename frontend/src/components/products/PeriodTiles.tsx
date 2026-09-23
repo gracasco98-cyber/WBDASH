@@ -281,6 +281,29 @@ function VariationBadge({
   );
 }
 
+function AcosStatusDot({ realAcos }: { realAcos: number | null | undefined }) {
+  if (realAcos == null || !Number.isFinite(realAcos)) return null;
+
+  const isHealthy = realAcos < 0.10;
+  const percentage = (realAcos * 100).toLocaleString("it-IT", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  const status = isHealthy ? "sotto il 10%" : "almeno il 10%";
+  const label = `Amazon Real ACOS ${percentage}%: ${status}`;
+
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      title={label}
+      className={`ml-auto h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white/70 ${
+        isHealthy ? "bg-emerald-500" : "bg-red-500"
+      }`}
+    />
+  );
+}
+
 /** Plain SVG polyline — the whole daily trend for a multi-day tile is a
  *  handful of points, not worth pulling in a charting library for. */
 function Sparkline({ values, color }: { values: number[]; color: string }) {
@@ -823,6 +846,7 @@ export default function PeriodTiles() {
                     <Icon size={13} strokeWidth={2.2} />
                   </span>
                   <span className="truncate">{tileDateLabel(tile)}</span>
+                  <AcosStatusDot realAcos={totalRow?.realAcos} />
                 </div>
               </div>
               <div className="flex w-full flex-none flex-col gap-2 px-2.5 py-2.5">

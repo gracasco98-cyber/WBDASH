@@ -110,6 +110,45 @@ describe("PeriodTiles", () => {
     await vi.waitFor(() => expect(screen.getAllByText("€ 95,00")).toHaveLength(5));
   });
 
+  it("shows a green Amazon Real ACOS dot below 10% on every period tab", async () => {
+    render(<PeriodTiles />);
+
+    const dots = await screen.findAllByRole("status", {
+      name: /Amazon Real ACOS 5,0%: sotto il 10%/i,
+    });
+    expect(dots).toHaveLength(5);
+    for (const dot of dots) expect(dot).toHaveClass("bg-emerald-500");
+  });
+
+  it("shows a red Amazon Real ACOS dot at 10% or above", async () => {
+    const highAcosAggregate = {
+      identifierId: "i1", asin: "", marketplace: "ALL", sku: null,
+      units: 5, sales: 100, promo: 0, refundsAmount: 0, refundsCount: 0,
+      refundPct: 0, adsSpend: 10, realAcos: 0.10, amazonFees: 15,
+      hasRealFees: true, hasRealCogs: true, cogs: 20, stock: 10,
+      hasStockData: true, grossProfit: 55, netProfit: 55,
+      estimatedPayout: 80, margin: 0.55, roi: 2.75,
+      avgSellingPrice: 20, bsr: null, vatAmount: 12,
+    } satisfies ProductPerformanceRow;
+    for (let i = 0; i < 5; i += 1) {
+      mockGet.mockResolvedValueOnce({
+        groups: [{
+          product: { id: "p1", name: "X", brand: null },
+          rows: [],
+          aggregate: highAcosAggregate,
+        }],
+      });
+    }
+
+    render(<PeriodTiles />);
+
+    const dots = await screen.findAllByRole("status", {
+      name: /Amazon Real ACOS 10,0%: almeno il 10%/i,
+    });
+    expect(dots).toHaveLength(5);
+    for (const dot of dots) expect(dot).toHaveClass("bg-red-500");
+  });
+
   it("adds Redcare marketplace Ads to the Ads and total-cost fields", async () => {
     render(<PeriodTiles />);
     await vi.waitFor(() => expect(screen.getAllByText("€ 11,00")).toHaveLength(5));
