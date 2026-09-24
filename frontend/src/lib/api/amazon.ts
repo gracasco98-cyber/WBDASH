@@ -217,7 +217,7 @@ export const amazon = {
 
   adsThreshold: () =>
     get<{
-      threshold: number; spend: number; totalThreshold: number; score: number;
+      threshold: number; spend: number; cycleSpend: number; totalThreshold: number; score: number;
       remaining: number; thresholdReached: boolean;
       accounts: Array<{ accountId: string; spend: number; threshold: number; score: number; remaining: number; lastChargeDate: string | null; lastChargeAmount: number; lastSpendDate: string | null; thresholdReached: boolean }>;
     }>("/api/amazon/ads/threshold"),

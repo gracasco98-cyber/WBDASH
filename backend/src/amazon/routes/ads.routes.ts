@@ -46,7 +46,7 @@ adsRouter.get("/ads/threshold", async (_req: Request, res: Response) => {
         MAX("snapshotDate")::date::text AS "lastDate"
       FROM "AmazonAdSnapshot"
       WHERE "amazonAccountId" IN (${safeIds})
-        AND "snapshotDate" > COALESCE(
+        AND "snapshotDate"::date > COALESCE(
           (SELECT MAX(t."postedDate")::date FROM "AmazonSettlementTransaction" t
            WHERE t."amazonAccountId" = "AmazonAdSnapshot"."amazonAccountId"
              AND t.marketplace = 'EU'
@@ -92,6 +92,7 @@ adsRouter.get("/ads/threshold", async (_req: Request, res: Response) => {
     res.json({
       threshold,
       spend: Math.round(totalSpend * 100) / 100,
+      cycleSpend: Math.round(totalCycleSpend * 100) / 100,
       totalThreshold,
       score: Math.min(99.9, Math.round((totalCycleSpend / totalThreshold) * 1000) / 10),
       remaining: Math.round(Math.max(0, totalThreshold - totalCycleSpend) * 100) / 100,

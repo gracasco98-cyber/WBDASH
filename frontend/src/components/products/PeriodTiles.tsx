@@ -426,7 +426,7 @@ export default function PeriodTiles() {
   // marketplace slice periodically so today's VAT, spend and margin are not
   // frozen at the initial render.
   const [liveTick, setLiveTick] = useState(0);
-  const [adsThreshold, setAdsThreshold] = useState<{ spend: number; score: number; remaining: number; thresholdReached: boolean } | null>(null);
+  const [adsThreshold, setAdsThreshold] = useState<{ spend: number; cycleSpend: number; score: number; remaining: number; thresholdReached: boolean } | null>(null);
   const [manualRefresh, setManualRefresh] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -901,11 +901,11 @@ export default function PeriodTiles() {
                   </div>
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2 py-2">
                     <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.08em] text-zinc-500">
-                      <span>Ads</span>
-                      {tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") && adsThreshold && <span title={`${adsThreshold.score.toFixed(1)}/100 · €${adsThreshold.spend.toFixed(2)} accumulati`} className="relative grid h-6 w-6 place-items-center rounded-full text-[8px] font-bold text-zinc-200" style={{ background: `conic-gradient(${adsThreshold.thresholdReached ? "#fbbf24" : "#a855f7"} ${Math.min(99.9, adsThreshold.score)}%, rgba(255,255,255,.08) 0)` }}><span className="grid h-4 w-4 place-items-center rounded-full bg-bg-card">{Math.floor(adsThreshold.score)}</span></span>}
+                      <span>{tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") ? "Adspay" : "Ads"}</span>
+                      {tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") && adsThreshold && <span title={`${adsThreshold.score.toFixed(1)}/100 · €${adsThreshold.cycleSpend.toFixed(2)} nel ciclo corrente`} className="relative grid h-6 w-6 place-items-center rounded-full text-[8px] font-bold text-zinc-200" style={{ background: `conic-gradient(${adsThreshold.thresholdReached ? "#fbbf24" : "#a855f7"} ${Math.min(99.9, adsThreshold.score)}%, rgba(255,255,255,.08) 0)` }}><span className="grid h-4 w-4 place-items-center rounded-full bg-bg-card">{Math.floor(adsThreshold.score)}</span></span>}
                     </div>
                     <div className="flex items-baseline gap-1 whitespace-nowrap text-[10px] font-semibold tabular-nums text-zinc-300">
-                      <span>{hasAny ? dash(combinedAdSpend, fmtEur) : "—"}</span>
+                      <span>{(hasAny || (tile.id === "today" && adsThreshold)) ? dash(tile.id === "today" && adsThreshold ? adsThreshold.cycleSpend : combinedAdSpend, fmtEur) : "—"}</span>
                       {tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") && adsThreshold && <span className="text-[9px] font-normal text-zinc-500">/ € 600</span>}
                     </div>
                   </div>
