@@ -900,13 +900,11 @@ export default function PeriodTiles() {
                     </div>
                   </div>
                 {tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") && adsThreshold && (
-                  <div className="rounded-[9px] border border-purple-500/20 bg-purple-500/5 px-2.5 py-2">
-                    <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.08em] text-purple-300">
-                      <span>Soglia Ads · 600 €</span>
-                      <span className="font-bold tabular-nums">{adsThreshold.score.toFixed(1).replace(".", ",")}/100</span>
+                  <div className="flex items-center gap-2 rounded-[9px] border border-purple-500/20 bg-purple-500/5 px-2 py-1.5">
+                    <div className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(${adsThreshold.thresholdReached ? "#fbbf24" : "#a855f7"} ${Math.min(99.9, adsThreshold.score)}%, rgba(255,255,255,.08) 0)` }}>
+                      <div className="grid h-6 w-6 place-items-center rounded-full bg-bg-card text-[9px] font-bold tabular-nums text-zinc-200">{Math.floor(adsThreshold.score)}</div>
                     </div>
-                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-bg-base"><div className={`h-full rounded-full ${adsThreshold.thresholdReached ? "bg-amber-400" : "bg-purple-500"}`} style={{ width: `${Math.min(100, adsThreshold.score)}%` }} /></div>
-                    <div className="mt-1 flex justify-between text-[9px] text-zinc-500"><span>€ {adsThreshold.spend.toFixed(2).replace(".", ",")}</span><span>{adsThreshold.thresholdReached ? "Addebito in attesa" : `mancano € ${adsThreshold.remaining.toFixed(2).replace(".", ",")}`}</span></div>
+                    <div className="min-w-0 flex-1 leading-tight"><div className="flex items-center justify-between gap-2 text-[9px] font-semibold uppercase tracking-[0.06em] text-purple-300"><span className="truncate">Ads / 600 €</span><span className="shrink-0 tabular-nums">€ {adsThreshold.spend.toFixed(0)}</span></div><div className="mt-0.5 truncate text-[9px] text-zinc-500">{adsThreshold.thresholdReached ? "Soglia raggiunta · charge in attesa" : `mancano € ${adsThreshold.remaining.toFixed(0)}`}</div></div>
                   </div>
                 )}
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">

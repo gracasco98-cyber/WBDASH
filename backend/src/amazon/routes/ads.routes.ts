@@ -56,6 +56,12 @@ adsRouter.get("/ads/threshold", async (_req: Request, res: Response) => {
       GROUP BY "amazonAccountId"
     `);
     const spendByAccount = new Map(spends.map(row => [row.amazonAccountId, row]));
+    // 100 is reserved for a cycle that has actually been closed by an Amazon
+    // charge. While the accumulated spend is over the threshold but the
+    // settlement charge has not arrived yet, expose 99.9 and an explicit
+    // pending state instead of falsely implying that the payment was posted.
+    const progressScore = (spend: number, limit: number) =>
+      Math.min(99.9, Math.round((spend / limit) * 1000) / 10);
     const accounts = accountIds.map(id => {
       const spend = Number(spendByAccount.get(id)?.spend ?? 0);
       const charge = chargeByAccount.get(id);
@@ -63,7 +69,7 @@ adsRouter.get("/ads/threshold", async (_req: Request, res: Response) => {
         accountId: id,
         spend: Math.round(spend * 100) / 100,
         threshold,
-        score: Math.min(100, Math.round((spend / threshold) * 1000) / 10),
+        score: progressScore(spend, threshold),
         remaining: Math.round(Math.max(0, threshold - spend) * 100) / 100,
         lastChargeDate: charge?.chargeDate ?? null,
         lastChargeAmount: Number(charge?.chargeAmount ?? 0),
@@ -77,7 +83,7 @@ adsRouter.get("/ads/threshold", async (_req: Request, res: Response) => {
       threshold,
       spend: Math.round(totalSpend * 100) / 100,
       totalThreshold,
-      score: Math.min(100, Math.round((totalSpend / totalThreshold) * 1000) / 10),
+      score: progressScore(totalSpend, totalThreshold),
       remaining: Math.round(Math.max(0, totalThreshold - totalSpend) * 100) / 100,
       thresholdReached: accounts.some(row => row.thresholdReached),
       accounts,
