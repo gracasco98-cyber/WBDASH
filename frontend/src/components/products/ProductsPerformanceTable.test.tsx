@@ -93,9 +93,20 @@ describe("ProductsPerformanceTable", () => {
     expect(screen.getByText("B0ABC123")).toBeInTheDocument();
   });
 
-  it("renders one parent row per marketplace in 'marketplace' groupBy mode", () => {
+  it("renders marketplace identity and expands its products as child rows", async () => {
+    const user = userEvent.setup();
     render(<ProductsPerformanceTable groups={groups} groupBy="marketplace" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
     expect(screen.getByText(/amazon\.it/i)).toBeInTheDocument();
+    expect(screen.getByText("🇮🇹")).toBeInTheDocument();
+    expect(screen.getByText("Italia")).toBeInTheDocument();
+    expect(screen.getByText("1 prodotto")).toBeInTheDocument();
+
+    const marketplaceButton = screen.getByRole("button", { name: /espandi amazon\.it/i });
+    expect(marketplaceButton).toHaveAttribute("aria-expanded", "false");
+    await user.click(marketplaceButton);
+    expect(screen.getByText("B0ABC123")).toBeInTheDocument();
+    expect(screen.getByText("SKU-RSV-01")).toBeInTheDocument();
+    expect(marketplaceButton).toHaveAttribute("aria-expanded", "true");
   });
 
   it("calls onGroupByChange when the toggle changes", async () => {
