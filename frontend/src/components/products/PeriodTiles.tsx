@@ -396,6 +396,7 @@ export function sumAggregate(
 }
 
 export default function PeriodTiles() {
+  const { selectedAccountId } = useAmazonAccount();
   const { state, setPreset } = usePeriodFilter();
   const [tileSet, setTileSet] = useState<TileSetKey>("days");
   const activeTiles = TILE_SETS[tileSet];
@@ -453,7 +454,7 @@ export default function PeriodTiles() {
     loadThreshold();
     const timer = window.setInterval(loadThreshold, 60_000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, []);
+  }, [selectedAccountId]);
   // Populated for any tile that needs a comparison: either the global
   // "Confronto" mode (GlobalPeriodSelector) for the daily set, or a tile's
   // own fixedCompareRange for the monthly set (always on, e.g. "Oggi" vs
@@ -461,7 +462,6 @@ export default function PeriodTiles() {
   const [compareTotals, setCompareTotals] = useState<
     Record<string, ProductPerformanceRow | null>
   >({});
-  const { selectedAccountId } = useAmazonAccount();
   // Main dashboard default: when the user hasn't drilled into one specific
   // Amazon account, sum every active account instead of leaving the tiles
   // empty (the backend otherwise refuses to guess which account to show —
