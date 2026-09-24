@@ -13,6 +13,8 @@ import type { ProductPerformanceRow } from "@/lib/api";
 import { formatDateToIso } from "@/lib/periodUtils";
 import { getComparePeriod, calculateVariation } from "@/lib/compareUtils";
 import { fmtEur, dash } from "./MetricRow";
+import PpcBillingScore from "./PpcBillingScore";
+import type { AmazonPpcBillingCycle } from "@/lib/api";
 import {
   CalendarDays,
   CalendarClock,
@@ -458,6 +460,25 @@ export default function PeriodTiles() {
   // see amazon-account.middleware.ts). Picking one account from the
   // selector still narrows these tiles to just that account.
   const amazonAccountId = selectedAccountId ?? "ALL";
+  const [ppcCycles, setPpcCycles] = useState<AmazonPpcBillingCycle[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const request = typeof api.amazon?.ppcBillingCycle === "function"
+      ? api.amazon.ppcBillingCycle({ amazonAccountId })
+      : Promise.resolve({ threshold: 600, cycles: [] });
+    request
+      .then(({ cycles }) => {
+        if (!cancelled) setPpcCycles(cycles);
+      })
+      .catch((err) => {
+        if (!cancelled) setPpcCycles([]);
+        console.error("[PeriodTiles] Failed to load PPC billing cycle:", err);
+      });
+    return () => { cancelled = true; };
+  }, [amazonAccountId, manualRefresh, liveTick]);
+
+  const primaryPpcCycle = [...ppcCycles].sort((a, b) => b.progressPct - a.progressPct)[0] ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -961,6 +982,9 @@ export default function PeriodTiles() {
                     </div>
                   </div>
                 </div>
+                {id === "today" && primaryPpcCycle && (
+                  <PpcBillingScore cycle={primaryPpcCycle} showAccountName={ppcCycles.length > 1} />
+                )}
                 <span
                   role="button"
                   tabIndex={0}

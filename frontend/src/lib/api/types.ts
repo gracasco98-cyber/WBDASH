@@ -666,6 +666,30 @@ export interface AmazonPaymentForecast {
   note: string;
 }
 
+export interface AmazonPpcBillingCycle {
+  accountId: string;
+  accountName: string;
+  threshold: number;
+  accumulatedSpend: number;
+  progressPct: number;
+  remaining: number;
+  status: "accumulating" | "charge_expected";
+  averageDailySpend7d: number;
+  estimatedDaysToThreshold: number | null;
+  updatedThrough: string | null;
+  lastCharge: {
+    settlementId: string;
+    date: string;
+    amount: number;
+  } | null;
+  daily: Array<{ date: string; spend: number; cumulative: number }>;
+}
+
+export interface AmazonPpcBillingCycleResponse {
+  threshold: number;
+  cycles: AmazonPpcBillingCycle[];
+}
+
 export interface AmazonSyncJob {
   id: string;
   jobType: string;

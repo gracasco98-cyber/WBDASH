@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { setupTestDb, truncateAll, createTestAmazonAccount, type TestDb } from "../../helpers/db";
-import { runWithAccount } from "../../../src/context/account-context";
+import { runWithAccount, runWithAccounts } from "../../../src/context/account-context";
 import { sampleSettlements, sampleSettlementTransactions } from "../../fixtures/amazon-settlements.fixture";
 import {
   upsertAmazonSettlement,
@@ -26,6 +26,7 @@ import {
   findSettlementsForExport,
   computeFeeBreakdown,
   computeReimbursementsByMonth,
+  findPpcBillingCycles,
 } from "../../../src/repositories/amazon/settlement.repo";
 
 let db: TestDb;
@@ -166,6 +167,116 @@ describe("deleteSettlementTransactions + createSettlementTransactions", () => {
       });
       expect(remaining).toBe(0);
     });
+  });
+});
+
+describe("findPpcBillingCycles", () => {
+  it("resets only after the latest real PPC charge and excludes the charge day", async () => {
+    await db.prisma.amazonSettlementTransaction.create({
+      data: {
+        amazonAccountId: accountId,
+        settlementId: "PPC-CHARGE-1",
+        transactionType: "ServiceFee",
+        marketplace: "EU",
+        amountType: "Cost of Advertising",
+        amount: -600,
+        currency: "EUR",
+        postedDate: new Date("2026-09-18T10:00:00Z"),
+      },
+    });
+    for (const [date, spend] of [["2026-09-18", 25], ["2026-09-19", 100], ["2026-09-20", 200]] as const) {
+      await db.prisma.amazonAdSnapshot.create({
+        data: {
+          amazonAccountId: accountId,
+          snapshotDate: new Date(`${date}T00:00:00Z`),
+          marketplace: "IT",
+          campaignId: `campaign-${date}`,
+          campaignName: `Campaign ${date}`,
+          spend,
+        },
+      });
+    }
+
+    const [cycle] = await runWithAccount(accountId, () => findPpcBillingCycles(db.prisma));
+    expect(cycle.accumulatedSpend).toBe(300);
+    expect(cycle.progressPct).toBe(50);
+    expect(cycle.remaining).toBe(300);
+    expect(cycle.status).toBe("accumulating");
+    expect(cycle.daily.map((day) => day.date)).toEqual(["2026-09-19", "2026-09-20"]);
+    expect(cycle.lastCharge).toMatchObject({ settlementId: "PPC-CHARGE-1", amount: 600 });
+  });
+
+  it("caps the score at 100 without resetting when spend crosses the threshold", async () => {
+    await db.prisma.amazonAdSnapshot.create({
+      data: {
+        amazonAccountId: accountId,
+        snapshotDate: new Date("2026-09-20T00:00:00Z"),
+        marketplace: "IT",
+        campaignId: "campaign-over-threshold",
+        campaignName: "Campaign over threshold",
+        spend: 650,
+      },
+    });
+
+    const [cycle] = await runWithAccount(accountId, () => findPpcBillingCycles(db.prisma));
+    expect(cycle.accumulatedSpend).toBe(650);
+    expect(cycle.progressPct).toBe(100);
+    expect(cycle.remaining).toBe(0);
+    expect(cycle.status).toBe("charge_expected");
+    expect(cycle.lastCharge).toBeNull();
+  });
+
+  it("does not treat an unrelated service-fee tax as a PPC charge", async () => {
+    await db.prisma.amazonSettlementTransaction.create({
+      data: {
+        amazonAccountId: accountId,
+        settlementId: "NON-PPC-TAX",
+        transactionType: "ServiceFee",
+        marketplace: "EU",
+        amountType: "TaxAmount",
+        amount: -22,
+        currency: "EUR",
+        postedDate: new Date("2026-09-21T10:00:00Z"),
+      },
+    });
+    await db.prisma.amazonAdSnapshot.create({
+      data: {
+        amazonAccountId: accountId,
+        snapshotDate: new Date("2026-09-20T00:00:00Z"),
+        marketplace: "IT",
+        campaignId: "campaign-before-tax",
+        campaignName: "Campaign before unrelated tax",
+        spend: 120,
+      },
+    });
+
+    const [cycle] = await runWithAccount(accountId, () => findPpcBillingCycles(db.prisma));
+    expect(cycle.accumulatedSpend).toBe(120);
+    expect(cycle.lastCharge).toBeNull();
+  });
+
+  it("keeps independent cycles for every selected Amazon account", async () => {
+    const secondId = await createTestAmazonAccount(db.prisma, { name: "Second Account" });
+    for (const [id, spend] of [[accountId, 120], [secondId, 360]] as const) {
+      await db.prisma.amazonAdSnapshot.create({
+        data: {
+          amazonAccountId: id,
+          snapshotDate: new Date("2026-09-24T00:00:00Z"),
+          marketplace: "IT",
+          campaignId: `campaign-${id}`,
+          campaignName: "Campaign",
+          spend,
+        },
+      });
+    }
+
+    const cycles = await runWithAccounts(
+      [accountId, secondId],
+      () => findPpcBillingCycles(db.prisma),
+    );
+    expect(cycles.map(({ accountId: id, accumulatedSpend }) => ({ id, accumulatedSpend })))
+      .toEqual([{ id: accountId, accumulatedSpend: 120 }, { id: secondId, accumulatedSpend: 360 }]);
+    expect(cycles[1].accountName).toBe("Second Account");
   });
 });
 

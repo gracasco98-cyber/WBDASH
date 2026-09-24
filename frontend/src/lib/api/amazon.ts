@@ -18,6 +18,7 @@ import type {
   AmazonPaymentForecast,
   AmazonUnreconciledResponse,
   AmazonAccountSummary,
+  AmazonPpcBillingCycleResponse,
 } from "./types";
 
 export const amazon = {
@@ -250,6 +251,9 @@ export const amazon = {
       summary: Array<{ marketplace: string; totalNet: number; totalGross: number; settlementCount: number }>;
       monthlyAdSpend: Array<{ month: string; spend: number }>;
     }>("/api/amazon/payments", params),
+
+  ppcBillingCycle: (params?: Record<string, string>) =>
+    get<AmazonPpcBillingCycleResponse>("/api/amazon/payments/ppc-cycle", params),
 
   settlementTransactions: (settlementId: string, params?: Record<string, string>) =>
     get<{
