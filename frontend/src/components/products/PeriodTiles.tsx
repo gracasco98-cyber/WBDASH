@@ -425,6 +425,7 @@ export default function PeriodTiles() {
   // marketplace slice periodically so today's VAT, spend and margin are not
   // frozen at the initial render.
   const [liveTick, setLiveTick] = useState(0);
+  const [adsThreshold, setAdsThreshold] = useState<{ spend: number; score: number; remaining: number; thresholdReached: boolean } | null>(null);
   const [manualRefresh, setManualRefresh] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -443,6 +444,15 @@ export default function PeriodTiles() {
       window.removeEventListener("wbdash:refresh-period-tiles", refresh);
       window.clearInterval(timer);
     };
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const loadThreshold = () => api.amazon.adsThreshold()
+      .then((value) => { if (!cancelled) setAdsThreshold(value); })
+      .catch(() => { if (!cancelled) setAdsThreshold(null); });
+    loadThreshold();
+    const timer = window.setInterval(loadThreshold, 60_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, []);
   // Populated for any tile that needs a comparison: either the global
   // "Confronto" mode (GlobalPeriodSelector) for the daily set, or a tile's
@@ -880,7 +890,7 @@ export default function PeriodTiles() {
                     {hasAny ? fmtEur(combinedNetProfit) : "—"}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
                       Costi
@@ -889,6 +899,16 @@ export default function PeriodTiles() {
                       {hasAny ? fmtEur(combinedCosts) : "—"}
                     </div>
                   </div>
+                {tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") && adsThreshold && (
+                  <div className="rounded-[9px] border border-purple-500/20 bg-purple-500/5 px-2.5 py-2">
+                    <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.08em] text-purple-300">
+                      <span>Soglia Ads · 600 €</span>
+                      <span className="font-bold tabular-nums">{adsThreshold.score.toFixed(1).replace(".", ",")}/100</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-bg-base"><div className={`h-full rounded-full ${adsThreshold.thresholdReached ? "bg-amber-400" : "bg-purple-500"}`} style={{ width: `${Math.min(100, adsThreshold.score)}%` }} /></div>
+                    <div className="mt-1 flex justify-between text-[9px] text-zinc-500"><span>€ {adsThreshold.spend.toFixed(2).replace(".", ",")}</span><span>{adsThreshold.thresholdReached ? "Addebito in attesa" : `mancano € ${adsThreshold.remaining.toFixed(2).replace(".", ",")}`}</span></div>
+                  </div>
+                )}
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
                       {vatLabel}{vatIsEstimated ? " (stima)" : ""}
