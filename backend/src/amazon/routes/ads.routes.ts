@@ -56,35 +56,45 @@ adsRouter.get("/ads/threshold", async (_req: Request, res: Response) => {
       GROUP BY "amazonAccountId"
     `);
     const spendByAccount = new Map(spends.map(row => [row.amazonAccountId, row]));
-    // 100 is reserved for a cycle that has actually been closed by an Amazon
-    // charge. While the accumulated spend is over the threshold but the
-    // settlement charge has not arrived yet, expose 99.9 and an explicit
-    // pending state instead of falsely implying that the payment was posted.
-    const progressScore = (spend: number, limit: number) =>
-      Math.min(99.9, Math.round((spend / limit) * 1000) / 10);
+    // Amazon's threshold is cyclical: every 600 EUR starts a new cycle. This
+    // also prevents a delayed settlement import from leaving the UI stuck at
+    // 99% after several threshold-sized charges have already accumulated.
+    const cycleState = (spend: number, limit: number) => {
+      const completedCycles = Math.floor(spend / limit);
+      const cycleSpend = spend - completedCycles * limit;
+      return {
+        cycleSpend: Math.round(cycleSpend * 100) / 100,
+        completedCycles,
+        score: Math.min(99.9, Math.round((cycleSpend / limit) * 1000) / 10),
+      };
+    };
     const accounts = accountIds.map(id => {
       const spend = Number(spendByAccount.get(id)?.spend ?? 0);
       const charge = chargeByAccount.get(id);
+      const cycle = cycleState(spend, threshold);
       return {
         accountId: id,
         spend: Math.round(spend * 100) / 100,
+        cycleSpend: cycle.cycleSpend,
+        completedCycles: cycle.completedCycles,
         threshold,
-        score: progressScore(spend, threshold),
-        remaining: Math.round(Math.max(0, threshold - spend) * 100) / 100,
+        score: cycle.score,
+        remaining: Math.round(Math.max(0, threshold - cycle.cycleSpend) * 100) / 100,
         lastChargeDate: charge?.chargeDate ?? null,
         lastChargeAmount: Number(charge?.chargeAmount ?? 0),
         lastSpendDate: spendByAccount.get(id)?.lastDate ?? null,
-        thresholdReached: spend >= threshold,
+        thresholdReached: cycle.completedCycles > 0,
       };
     });
     const totalSpend = accounts.reduce((sum, row) => sum + row.spend, 0);
+    const totalCycleSpend = accounts.reduce((sum, row) => sum + row.cycleSpend, 0);
     const totalThreshold = threshold * Math.max(1, accounts.length);
     res.json({
       threshold,
       spend: Math.round(totalSpend * 100) / 100,
       totalThreshold,
-      score: progressScore(totalSpend, totalThreshold),
-      remaining: Math.round(Math.max(0, totalThreshold - totalSpend) * 100) / 100,
+      score: Math.min(99.9, Math.round((totalCycleSpend / totalThreshold) * 1000) / 10),
+      remaining: Math.round(Math.max(0, totalThreshold - totalCycleSpend) * 100) / 100,
       thresholdReached: accounts.some(row => row.thresholdReached),
       accounts,
     });
