@@ -24,7 +24,7 @@ beforeAll(async () => {
       print.error();
     },
   });
-}, 60_000);
+});
 
 afterAll(async () => { server.close(); await db.cleanup(); });
 beforeEach(async () => { await truncateAll(db.prisma); });

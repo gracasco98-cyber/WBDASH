@@ -17,7 +17,7 @@ beforeAll(async () => {
   // dynamically, after DATABASE_URL points at the testcontainer.
   process.env.DATABASE_URL = db.databaseUrl;
   ({ amazonAccountMiddleware } = await import("../../src/middleware/amazon-account.middleware"));
-}, 60_000);
+});
 afterAll(async () => { await db.cleanup(); });
 beforeEach(async () => {
   await truncateAll(db.prisma);

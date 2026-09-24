@@ -12,7 +12,7 @@ export interface TestDb {
 }
 
 /**
- * Avvia un container Postgres effimero per i test, applica lo schema Prisma,
+ * Avvia un container Postgres effimero per i test, applica le migrazioni Prisma,
  * restituisce un PrismaClient connesso e una funzione di cleanup.
  *
  * Uso tipico (in test integration):
@@ -31,8 +31,10 @@ export async function setupTestDb(): Promise<TestDb> {
 
   const databaseUrl = container.getConnectionUri();
 
-  // Applica schema Prisma
-  execSync('npx prisma db push --skip-generate', {
+  // Apply the same versioned migrations used by development and production.
+  // `db push` would build the database directly from schema.prisma and could
+  // therefore hide drift or defects in the committed migration SQL.
+  execSync('npx prisma migrate deploy', {
     env: { ...process.env, DATABASE_URL: databaseUrl },
     stdio: process.env.TEST_VERBOSE ? 'inherit' : 'ignore',
   });

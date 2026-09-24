@@ -14,7 +14,7 @@ let paymentTermId: string;
 let productId: string;
 let userId: string;
 
-beforeAll(async () => { db = await setupTestDb(); }, 60_000);
+beforeAll(async () => { db = await setupTestDb(); });
 afterAll(async () => { await db.cleanup(); });
 
 beforeEach(async () => {

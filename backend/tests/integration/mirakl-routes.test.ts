@@ -30,7 +30,7 @@ beforeAll(async () => {
       print.error();
     },
   });
-}, 60_000);
+});
 
 afterAll(async () => {
   server.close();

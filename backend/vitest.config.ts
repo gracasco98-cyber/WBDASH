@@ -8,7 +8,7 @@ export default defineConfig({
     exclude: ['node_modules', 'dist'],
     setupFiles: ['./tests/setup.ts'],
     testTimeout: 30_000, // testcontainers boot può prendere tempo
-    hookTimeout: 120_000, // testcontainers + prisma db push can take 60-90s
+    hookTimeout: 120_000, // testcontainers + prisma migrate deploy can take 60-90s
     pool: 'forks', // process isolation evita race su container Postgres
     singleFork: true,
   },
