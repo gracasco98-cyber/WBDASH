@@ -15,7 +15,7 @@ beforeAll(async () => {
   app.use(express.json());
   app.use((req, _res, next) => { (req as any).user = { id: alice, role: "user" }; next(); });
   app.use("/api/board", boardRouter);
-}, 60_000);
+});
 
 afterAll(async () => { await db.cleanup(); });
 

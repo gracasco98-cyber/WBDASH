@@ -13,7 +13,7 @@ beforeAll(async () => {
   process.env.DATABASE_URL = db.databaseUrl;
   ({ runRedcareKeywordTracking } = await import("../../src/jobs/redcareKeywordTracking.job"));
   server.listen({ onUnhandledRequest: "error" });
-}, 60_000);
+});
 
 afterAll(async () => { server.close(); await db.cleanup(); });
 beforeEach(async () => { await truncateAll(db.prisma); });

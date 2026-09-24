@@ -11,7 +11,7 @@ let userId: string;
 let supplierAId: string;
 let supplierBId: string;
 
-beforeAll(async () => { db = await setupTestDb(); }, 60_000);
+beforeAll(async () => { db = await setupTestDb(); });
 afterAll(async () => { await db.cleanup(); });
 
 beforeEach(async () => {

@@ -7,7 +7,7 @@ import {
 } from "../../../src/repositories/marketing/marketplaceAdSpend.repo";
 
 let db: TestDb;
-beforeAll(async () => { db = await setupTestDb(); }, 60_000);
+beforeAll(async () => { db = await setupTestDb(); });
 afterAll(async () => { await db.cleanup(); });
 beforeEach(async () => { await truncateAll(db.prisma); });
 

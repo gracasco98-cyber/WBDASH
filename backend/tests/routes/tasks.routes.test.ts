@@ -21,7 +21,7 @@ beforeAll(async () => {
   app.use(express.json());
   app.use((req, _res, next) => { (req as any).user = { id: currentUserId, role: "user" }; next(); });
   app.use("/api/tasks", tasksRouter);
-}, 60_000);
+});
 
 afterAll(async () => { await db.cleanup(); });
 
