@@ -448,7 +448,7 @@ export default function PeriodTiles() {
   }, []);
   useEffect(() => {
     let cancelled = false;
-    const loadThreshold = () => api.amazon.adsThreshold()
+    const loadThreshold = () => api.amazon.adsThreshold({ amazonAccountId: selectedAccountId ?? "ALL" })
       .then((value) => { if (!cancelled) setAdsThreshold(value); })
       .catch(() => { if (!cancelled) setAdsThreshold(null); });
     loadThreshold();
