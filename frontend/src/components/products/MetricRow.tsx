@@ -51,6 +51,9 @@ interface MetricRowProps {
   /** On mobile, reveal every metric in the product card. The four summary
    *  metrics remain visible even while the card is collapsed. */
   mobileExpanded?: boolean;
+  /** Gives aggregate marketplace rows a stronger visual hierarchy than their
+   *  product children without changing any metric rendering. */
+  tone?: "default" | "marketplace";
 }
 
 /**
@@ -75,6 +78,7 @@ export default function MetricRow({
   hiddenColumns,
   vatEditor,
   mobileExpanded = false,
+  tone = "default",
 }: MetricRowProps) {
   const estimated = isEstimated(m);
   // Distinct from "estimated": for non-Amazon channels there is no fee/COGS
@@ -189,10 +193,12 @@ export default function MetricRow({
       className={`grid grid-cols-2 overflow-hidden rounded-xl border shadow-sm md:table-row md:rounded-none md:border-0 md:shadow-none ${
         isChild
           ? "mx-2 border-accent-blue/20 bg-bg-hover/50"
+          : tone === "marketplace"
+            ? "border-accent-amber/30 bg-accent-amber/5 md:border-b md:border-accent-amber/20"
           : "border-bg-border bg-bg-card md:border-b md:border-bg-border/60"
       }`}
     >
-      <MetricCell className="col-span-2 block border-b border-bg-border/70 bg-bg-card px-3 py-3 font-medium md:sticky md:left-0 md:z-10 md:table-cell md:border-b-0 md:border-r md:px-2.5 md:py-2.5">
+      <MetricCell className={`col-span-2 block border-b px-3 py-3 font-medium md:sticky md:left-0 md:z-10 md:table-cell md:border-b-0 md:border-r md:px-2.5 md:py-2.5 ${tone === "marketplace" && !isChild ? "border-accent-amber/20 bg-accent-amber/5" : "border-bg-border/70 bg-bg-card"}`}>
         {label}
       </MetricCell>
       {cells.map((c) => {

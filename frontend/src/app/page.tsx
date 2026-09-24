@@ -139,7 +139,7 @@ export default function DashboardPage() {
 
   // ── Products performance (BUSINESS INTELLIGENCE / PRODOTTI sections) ──────
   // Declared after isAmazonMp/amazonMpCode since loadProductGroups depends on them.
-  const [productsGroupBy, setProductsGroupBy] = useState<GroupBy>("product");
+  const [productsGroupBy, setProductsGroupBy] = useState<GroupBy>("marketplace");
   const [productGroups, setProductGroups] = useState<ProductPerformanceGroup[]>([]);
   const [shopifyMarketplaceRows, setShopifyMarketplaceRows] = useState<RowEntry[]>([]);
 

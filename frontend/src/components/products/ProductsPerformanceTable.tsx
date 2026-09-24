@@ -62,6 +62,18 @@ const MARKETPLACE_LABEL: Record<string, string> = {
   BE: "Amazon.com.be",
 };
 
+const MARKETPLACE_IDENTITY: Record<string, { flag: string; country: string }> = {
+  IT: { flag: "🇮🇹", country: "Italia" },
+  DE: { flag: "🇩🇪", country: "Germania" },
+  FR: { flag: "🇫🇷", country: "Francia" },
+  ES: { flag: "🇪🇸", country: "Spagna" },
+  UK: { flag: "🇬🇧", country: "Regno Unito" },
+  PL: { flag: "🇵🇱", country: "Polonia" },
+  NL: { flag: "🇳🇱", country: "Paesi Bassi" },
+  SE: { flag: "🇸🇪", country: "Svezia" },
+  BE: { flag: "🇧🇪", country: "Belgio" },
+};
+
 const COLUMNS = [
   "Marketplace / Prodotto",
   "Unità",
@@ -889,6 +901,11 @@ export default function ProductsPerformanceTable({
         entry.children?.[0]?.metrics.imageUrl ??
         null)
       : null;
+    const marketplaceIdentity =
+      groupBy === "marketplace"
+        ? MARKETPLACE_IDENTITY[entry.metrics.marketplace]
+        : undefined;
+    const productCount = entry.children?.length ?? 0;
     return (
       <span className="inline-flex w-full min-w-0 items-center">
         {groupBy === "product" &&
@@ -901,6 +918,11 @@ export default function ProductsPerformanceTable({
           ) : (
             <div className="mr-2 h-10 w-10 shrink-0 rounded-lg bg-bg-hover md:mr-1.5 md:h-[20px] md:w-[20px] md:rounded-[4px]" />
           ))}
+        {marketplaceIdentity && (
+          <span aria-hidden="true" className="mr-2 text-xl leading-none md:text-base">
+            {marketplaceIdentity.flag}
+          </span>
+        )}
         <button
           aria-label={`Espandi ${entry.label}`}
           aria-expanded={isOpen}
@@ -916,9 +938,20 @@ export default function ProductsPerformanceTable({
             <span className="block truncate text-sm font-semibold md:text-[11.5px] md:font-medium">
               {entry.label}
             </span>
-            <span className="mt-0.5 block text-[10px] font-normal text-zinc-500 md:hidden">
-              {isOpen ? "Nascondi metriche" : "Mostra tutte le metriche"}
-            </span>
+            {groupBy === "marketplace" ? (
+              <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[9px] font-normal text-zinc-500">
+                <span className="rounded bg-accent-amber/15 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-accent-amber">
+                  Marketplace
+                </span>
+                {marketplaceIdentity?.country && <span>{marketplaceIdentity.country}</span>}
+                <span>·</span>
+                <span>{productCount} {productCount === 1 ? "prodotto" : "prodotti"}</span>
+              </span>
+            ) : (
+              <span className="mt-0.5 block text-[10px] font-normal text-zinc-500 md:hidden">
+                {isOpen ? "Nascondi metriche" : "Mostra tutte le metriche"}
+              </span>
+            )}
           </span>
         </button>
         {groupBy === "product" && (
@@ -943,9 +976,10 @@ export default function ProductsPerformanceTable({
     // Righe Shopify/Redcare (asin sempre "", niente lookup ASIN possibile):
     // il backend restituisce già l'imageUrl del prodotto su metrics.imageUrl.
     const thumb = images[child.metrics.asin] ?? child.metrics.imageUrl ?? null;
+    const hasIdentifiers = Boolean(child.metrics.asin || child.metrics.sku);
     return (
       <>
-        <div className="ml-5 flex items-center gap-2">
+        <div className="ml-5 flex min-w-0 items-center gap-2">
           {thumb ? (
             <img
               src={thumb}
@@ -955,9 +989,16 @@ export default function ProductsPerformanceTable({
           ) : (
             <div className="w-[22px] h-[22px] rounded-[5px] bg-bg-hover shrink-0" />
           )}
-          <span className="ml-1 text-zinc-500">
-            <CornerDownRight size={11} className="inline text-zinc-400 mr-1" />
-            {child.label} — <span>{child.metrics.asin}</span>
+          <CornerDownRight size={11} className="shrink-0 text-zinc-400" />
+          <span className="min-w-0">
+            <span className="block truncate font-medium text-zinc-300">{child.label}</span>
+            {hasIdentifiers && (
+              <span className="mt-0.5 block truncate font-mono text-[9px] text-zinc-500">
+                {child.metrics.asin && <>ASIN <span>{child.metrics.asin}</span></>}
+                {child.metrics.asin && child.metrics.sku && " · "}
+                {child.metrics.sku && <>SKU <span>{child.metrics.sku}</span></>}
+              </span>
+            )}
           </span>
         </div>
         {groupBy === "product" && (
@@ -1118,6 +1159,19 @@ export default function ProductsPerformanceTable({
         </div>
       </div>
 
+      {viewMode === "product" && groupBy === "marketplace" && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-bg-border/70 bg-bg-hover/40 px-3 py-2 text-[10px] text-zinc-500 md:px-4">
+          <span className="font-semibold uppercase tracking-wider text-zinc-500">Vista</span>
+          <span className="rounded-full border border-accent-amber/30 bg-accent-amber/10 px-2.5 py-1 font-semibold text-accent-amber">
+            Marketplace → Prodotti
+          </span>
+          <span>Espandi un paese per vedere prodotti, ASIN e SKU separati.</span>
+          <span className="ml-auto rounded-full border border-bg-border bg-bg-card px-2.5 py-1">
+            {filteredRows.length} marketplace · {filteredRows.reduce((total, row) => total + (row.children?.length ?? 0), 0)} listing
+          </span>
+        </div>
+      )}
+
       {viewMode === "orders" ? (
         <div className="overflow-x-auto rounded-b-lg">
           <table className="w-full border-collapse text-[11.5px]">
@@ -1236,6 +1290,7 @@ export default function ProductsPerformanceTable({
                         metrics={entry.metrics}
                         hiddenColumns={hiddenColumns}
                         mobileExpanded={isOpen}
+                        tone={groupBy === "marketplace" ? "marketplace" : "default"}
                       />
                       {isOpen &&
                         entry.children?.map((child) => (
