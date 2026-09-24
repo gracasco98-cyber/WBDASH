@@ -2,7 +2,7 @@
 // Search terms cache, /ppc/products, /ppc/adgroups, /ppc/search-terms are in ppc-extra.routes.ts.
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
-import { getCurrentAccountId } from "../../context/account-context";
+import { getCurrentAccountId, getCurrentAccountIds } from "../../context/account-context";
 import {
   countAdSnapshotsByDateRange,
   groupAdSnapshotsByCampaign,
@@ -11,6 +11,82 @@ import { verifyAdsConnection, quickCampaignList, getLiveCampaigns, syncKeywordMe
 import { italyOffsetMs, getDateRange } from "../utils/datetime";
 
 export const adsRouter = Router();
+
+// ─── GET /ads/threshold ──────────────────────────────────────────────────────
+// Amazon charges accumulated advertising once the account reaches the
+// configured threshold. This endpoint tracks the open cycle, not a calendar
+// month: the cycle starts after the last advertising charge found in the
+// settlement feed and resets automatically when a new charge is imported.
+adsRouter.get("/ads/threshold", async (_req: Request, res: Response) => {
+  try {
+    const accountIds = getCurrentAccountIds();
+    const safeIds = accountIds.map(id => `'${String(id).replace(/'/g, "''")}'`).join(",");
+    const threshold = 600;
+    type ChargeRow = { amazonAccountId: string; chargeDate: string | null; chargeAmount: number | null };
+    const charges = await prisma.$queryRawUnsafe<ChargeRow[]>(`
+      SELECT "amazonAccountId",
+        MAX("postedDate")::date::text AS "chargeDate",
+        COALESCE(SUM(ABS(amount)), 0)::FLOAT8 AS "chargeAmount"
+      FROM "AmazonSettlementTransaction"
+      WHERE "amazonAccountId" IN (${safeIds})
+        AND marketplace = 'EU'
+        AND (
+          "amountType" ILIKE '%advertising%'
+          OR "amountType" ILIKE '%cost per click%'
+          OR "amountType" = 'Cost of Advertising'
+        )
+      GROUP BY "amazonAccountId"
+    `);
+    const chargeByAccount = new Map(charges.map(row => [row.amazonAccountId, row]));
+
+    type SpendRow = { amazonAccountId: string; spend: number | null; lastDate: string | null };
+    const spends = await prisma.$queryRawUnsafe<SpendRow[]>(`
+      SELECT "amazonAccountId",
+        COALESCE(SUM(spend), 0)::FLOAT8 AS spend,
+        MAX("snapshotDate")::date::text AS "lastDate"
+      FROM "AmazonAdSnapshot"
+      WHERE "amazonAccountId" IN (${safeIds})
+        AND "snapshotDate" > COALESCE(
+          (SELECT MAX(t."postedDate")::date FROM "AmazonSettlementTransaction" t
+           WHERE t."amazonAccountId" = "AmazonAdSnapshot"."amazonAccountId"
+             AND t.marketplace = 'EU'
+             AND (t."amountType" ILIKE '%advertising%' OR t."amountType" ILIKE '%cost per click%' OR t."amountType" = 'Cost of Advertising')),
+          DATE '2000-01-01'
+        )
+      GROUP BY "amazonAccountId"
+    `);
+    const spendByAccount = new Map(spends.map(row => [row.amazonAccountId, row]));
+    const accounts = accountIds.map(id => {
+      const spend = Number(spendByAccount.get(id)?.spend ?? 0);
+      const charge = chargeByAccount.get(id);
+      return {
+        accountId: id,
+        spend: Math.round(spend * 100) / 100,
+        threshold,
+        score: Math.min(100, Math.round((spend / threshold) * 1000) / 10),
+        remaining: Math.round(Math.max(0, threshold - spend) * 100) / 100,
+        lastChargeDate: charge?.chargeDate ?? null,
+        lastChargeAmount: Number(charge?.chargeAmount ?? 0),
+        lastSpendDate: spendByAccount.get(id)?.lastDate ?? null,
+        thresholdReached: spend >= threshold,
+      };
+    });
+    const totalSpend = accounts.reduce((sum, row) => sum + row.spend, 0);
+    const totalThreshold = threshold * Math.max(1, accounts.length);
+    res.json({
+      threshold,
+      spend: Math.round(totalSpend * 100) / 100,
+      totalThreshold,
+      score: Math.min(100, Math.round((totalSpend / totalThreshold) * 1000) / 10),
+      remaining: Math.round(Math.max(0, totalThreshold - totalSpend) * 100) / 100,
+      thresholdReached: accounts.some(row => row.thresholdReached),
+      accounts,
+    });
+  } catch (err) {
+    console.error("[Amazon] GET /ads/threshold:", err);
+    res.status(500).json({ error: "Failed to calculate advertising threshold" });
+  }
+});
 
 // Re-export from ppc-extra.routes.ts for backwards compatibility
 // (sync.routes.ts and index.ts import _stSyncing and runSearchTermSync from here)
