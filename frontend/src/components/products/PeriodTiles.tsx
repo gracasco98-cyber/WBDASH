@@ -904,7 +904,10 @@ export default function PeriodTiles() {
                       <span>Ads</span>
                       {tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") && adsThreshold && <span title={`${adsThreshold.score.toFixed(1)}/100 · €${adsThreshold.spend.toFixed(2)} accumulati`} className="relative grid h-6 w-6 place-items-center rounded-full text-[8px] font-bold text-zinc-200" style={{ background: `conic-gradient(${adsThreshold.thresholdReached ? "#fbbf24" : "#a855f7"} ${Math.min(99.9, adsThreshold.score)}%, rgba(255,255,255,.08) 0)` }}><span className="grid h-4 w-4 place-items-center rounded-full bg-bg-card">{Math.floor(adsThreshold.score)}</span></span>}
                     </div>
-                    <div className="text-[11px] font-semibold tabular-nums text-zinc-300">{hasAny ? dash(combinedAdSpend, fmtEur) : "—"}</div>
+                    <div className="flex items-baseline gap-1 whitespace-nowrap text-[10px] font-semibold tabular-nums text-zinc-300">
+                      <span>{hasAny ? dash(combinedAdSpend, fmtEur) : "—"}</span>
+                      {tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") && adsThreshold && <span className="text-[9px] font-normal text-zinc-500">/ € 600</span>}
+                    </div>
                   </div>
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
