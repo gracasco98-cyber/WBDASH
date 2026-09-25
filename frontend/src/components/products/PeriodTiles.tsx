@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 import type { ProductPerformanceRow } from "@/lib/api";
 import { formatDateToIso } from "@/lib/periodUtils";
 import { getComparePeriod, calculateVariation } from "@/lib/compareUtils";
-import { fmtEur, dash } from "./MetricRow";
+import { fmtEur, fmtEurNoWrap, dash } from "./MetricRow";
 import AdspayCell from "./AdspayCell";
 import { usePpcBillingCycle } from "@/hooks/usePpcBillingCycle";
 import {
@@ -834,7 +834,7 @@ export default function PeriodTiles() {
               aria-label={label}
               aria-pressed={active}
               onClick={() => setPreset(preset)}
-              className={`group h-auto min-h-0 w-[255px] shrink-0 snap-start text-left rounded-[13px] overflow-hidden p-0 cursor-pointer border transition-all bg-bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 flex flex-col sm:w-auto sm:min-w-0 sm:shrink ${
+              className={`group h-auto min-h-0 w-[255px] shrink-0 snap-start [container-type:inline-size] text-left rounded-[13px] overflow-hidden p-0 cursor-pointer border transition-all bg-bg-card shadow-sm hover:shadow-md hover:-translate-y-0.5 flex flex-col sm:w-auto sm:min-w-0 sm:shrink ${
                 active ? "border-accent-primary shadow-sm" : "border-bg-border"
               }`}
             >
@@ -849,7 +849,7 @@ export default function PeriodTiles() {
                   <span className="hidden sm:inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/70 border border-white/80">
                     <Icon size={13} strokeWidth={2.2} />
                   </span>
-                  <span className="truncate">{tileDateLabel(tile)}</span>
+                  <span className="min-w-0 leading-snug">{tileDateLabel(tile)}</span>
                   <AcosStatusDot realAcos={totalRow?.realAcos} />
                 </div>
               </div>
@@ -862,8 +862,9 @@ export default function PeriodTiles() {
                     <span>Ricavi netti</span>
                     <VariationBadge variation={salesVariation} />
                   </div>
-                  <div className="text-[22px] leading-tight font-bold text-zinc-100 tabular-nums mt-1">
-                    {hasAny ? fmtEur(combinedSales) : "—"}
+                  {/* Scales with the tile (cqw) instead of splitting "€" from the amount. */}
+                  <div className="text-[length:clamp(12px,10cqw,22px)] leading-tight font-bold text-zinc-100 tabular-nums mt-1 whitespace-nowrap">
+                    {hasAny ? fmtEurNoWrap(combinedSales) : "—"}
                   </div>
                   <div className="flex justify-between mt-1 text-[10px] text-zinc-500">
                     <span>
@@ -879,24 +880,25 @@ export default function PeriodTiles() {
                     <VariationBadge variation={profitVariation} dark />
                   </div>
                   <div
-                    className={`text-[17px] font-bold tabular-nums mt-1 ${combinedNetProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}
+                    className={`text-[length:clamp(12px,8cqw,17px)] font-bold tabular-nums mt-1 whitespace-nowrap ${combinedNetProfit < 0 ? "text-accent-red" : "text-accent-primary"}`}
                   >
-                    {hasAny ? fmtEur(combinedNetProfit) : "—"}
+                    {hasAny ? fmtEurNoWrap(combinedNetProfit) : "—"}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                {/* auto-fit: Costi | IVA side by side only when the tile has room, stacked otherwise. */}
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(4.25rem,1fr))] gap-2">
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
                       Costi
                     </div>
                     <div className="text-[11px] font-semibold tabular-nums text-zinc-300">
-                      {hasAny ? fmtEur(combinedCosts) : "—"}
+                      {hasAny ? fmtEurNoWrap(combinedCosts) : "—"}
                     </div>
                   </div>
                   {showAdspay && primaryPpcCycle && (
                     // Full row under Costi | IVA: half a tile is too narrow
                     // for the threshold score on 5-column desktops.
-                    <div className="order-last col-span-2">
+                    <div className="order-last col-span-full">
                       <AdspayCell cycle={primaryPpcCycle} />
                     </div>
                   )}
@@ -905,11 +907,11 @@ export default function PeriodTiles() {
                       {vatLabel}{vatIsEstimated ? " (stima)" : ""}
                     </div>
                     <div className="text-[11px] font-semibold tabular-nums text-zinc-300">
-                      {hasAny ? fmtEur(vatDisplay) : "—"}
+                      {hasAny ? fmtEurNoWrap(vatDisplay) : "—"}
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] px-0.5">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(4rem,1fr))] gap-x-3 gap-y-2 text-[11px] px-0.5">
                   <div>
                     <div className="text-zinc-500 text-[10px]">Unità</div>
                     <div className="text-zinc-300 tabular-nums">
@@ -925,7 +927,7 @@ export default function PeriodTiles() {
                   <div className="pt-1.5 border-t border-bg-border">
                     <div className="text-zinc-500 text-[10px]">Ads</div>
                     <div className="text-zinc-300 tabular-nums">
-                      {hasAny ? dash(combinedAdSpend, fmtEur) : "—"}
+                      {hasAny ? dash(combinedAdSpend, fmtEurNoWrap) : "—"}
                     </div>
                   </div>
                   <div className="pt-1.5 border-t border-bg-border">
@@ -933,7 +935,7 @@ export default function PeriodTiles() {
                       Payout stimato
                     </div>
                     <div className="text-zinc-300 tabular-nums">
-                      {totalRow ? fmtEur(totalRow.estimatedPayout) : "—"}
+                      {totalRow ? fmtEurNoWrap(totalRow.estimatedPayout) : "—"}
                     </div>
                   </div>
                   <div>
@@ -943,11 +945,11 @@ export default function PeriodTiles() {
                           <>
                             {totalRow && <div>
                               <div className="text-zinc-500 text-[10px]">Fee Amazon</div>
-                              <div className="text-zinc-300 tabular-nums">{fmtEur(totalRow.amazonFees)}</div>
+                              <div className="text-zinc-300 tabular-nums">{fmtEurNoWrap(totalRow.amazonFees)}</div>
                             </div>}
                             {shopifyRow && <div>
                               <div className="text-zinc-500 text-[10px]">Fee Redcare (15%)</div>
-                              <div className="text-zinc-300 tabular-nums">{fmtEur(shopifyRow.redcareFee)}</div>
+                              <div className="text-zinc-300 tabular-nums">{fmtEurNoWrap(shopifyRow.redcareFee)}</div>
                             </div>}
                           </>
                         ) : <div className="text-zinc-300 tabular-nums">—</div>}
@@ -959,8 +961,8 @@ export default function PeriodTiles() {
                         </div>
                         <div className="text-zinc-300 tabular-nums">
                           {globalMarketplace === "REDCARE_IT"
-                            ? shopifyRow ? fmtEur(shopifyRow.redcareFee) : "—"
-                            : totalRow ? fmtEur(totalRow.amazonFees) : "—"}
+                            ? shopifyRow ? fmtEurNoWrap(shopifyRow.redcareFee) : "—"
+                            : totalRow ? fmtEurNoWrap(totalRow.amazonFees) : "—"}
                         </div>
                       </>
                     )}
@@ -968,7 +970,7 @@ export default function PeriodTiles() {
                   <div>
                     <div className="text-zinc-500 text-[10px]">Spedizioni Redcare</div>
                     <div className="text-zinc-300 tabular-nums">
-                      {shopifyRow ? fmtEur(shopifyRow.redcareShippingCost) : "—"}
+                      {shopifyRow ? fmtEurNoWrap(shopifyRow.redcareShippingCost) : "—"}
                     </div>
                   </div>
                 </div>
