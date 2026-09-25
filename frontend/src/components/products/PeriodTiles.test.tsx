@@ -46,10 +46,10 @@ const mockPpcBillingCycle = vi.fn(async (_params: unknown) => ({
   threshold: 600,
   cycles: [{
     accountId: "acc-1", accountName: "Amazon EU", threshold: 600,
-    accumulatedSpend: 412.8, progressPct: 68.8, remaining: 187.2,
+    accumulatedSpend: 412.8, carryOver: 0, progressPct: 68.8, remaining: 187.2,
     status: "accumulating" as const, averageDailySpend7d: 46.8,
     estimatedDaysToThreshold: 4, updatedThrough: "2026-09-24",
-    lastCharge: { settlementId: "sett-1", date: "2026-09-18", amount: 600 },
+    lastCharge: { invoiceId: "IT-INV-1", date: "2026-09-18", amount: 600, totalAmount: 732, source: "financial_events" as const },
     daily: [{ date: "2026-09-24", spend: 48.2, cumulative: 412.8 }],
   }],
 }));
@@ -111,12 +111,13 @@ describe("PeriodTiles", () => {
     expect(mockPpcBillingCycle).toHaveBeenCalledWith({ amazonAccountId: "ALL" });
   });
 
-  it("shows the PPC billing score only in the Oggi tile", async () => {
+  it("shows the Adspay score from the last ads invoice charge only in the Oggi tile", async () => {
     render(<PeriodTiles />);
-    expect(await screen.findByLabelText(/ciclo PPC Amazon 68.8%/i)).toBeInTheDocument();
-    expect(screen.getByText("69%")).toBeInTheDocument();
-    expect(screen.getByText(/187,20.*all.addebito/i)).toBeInTheDocument();
-    expect(screen.getAllByText("Ciclo PPC Amazon")).toHaveLength(1);
+    const adspay = await screen.findByRole("progressbar", { name: /adspay/i });
+    expect(adspay).toHaveAttribute("aria-valuenow", "69");
+    expect(screen.getByText("dal 18 set")).toBeInTheDocument();
+    expect(screen.getByText("mancano € 187,20")).toBeInTheDocument();
+    expect(screen.getAllByRole("progressbar", { name: /adspay/i })).toHaveLength(1);
   });
 
   it("requests only the selected account's id once one is chosen from the switcher", async () => {

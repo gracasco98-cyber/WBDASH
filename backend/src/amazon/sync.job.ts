@@ -8,6 +8,7 @@ import { runAmazonSnapshotJob, computeAllAmazonHistoricalSnapshots } from "./sna
 import { syncSettlementReports } from "./settlement.service";
 import { syncAdsDaily, syncAdsBackfill, refreshLiveCampaignCache, syncKeywordMetrics, syncAdsCatchUp, syncAdvertisedProductDaily } from "./ads-sync.service";
 import { syncAdsIntraday } from "./ads-intraday.service";
+import { syncAdsPaymentEvents } from "./ads-charges.service";
 import { reconcileForecastSnapshots, computeAndSaveForecasts } from "./forecast";
 import { broadcast } from "../sse/sse";
 import { createSyncJob, finishSyncJob } from "../repositories/amazon/sync-jobs.repo";
@@ -314,6 +315,11 @@ export function startAmazonSnapshotPolling(): void {
   // the Orders API, so this is the refresh that makes refund cards current.
   const runSettlementAndReconcile = () =>
     forEachActiveAccount("settlement sync + reconcile", async () => {
+      // Ads invoice charges (Finances API) restart the PPC billing cycle long
+      // before the settlement report containing them is closed.
+      await syncAdsPaymentEvents().catch(err =>
+        console.error("[Ads Charges] Finances ads charge sync failed:", err)
+      );
       await syncSettlementReports().catch(console.error);
       await reconcileForecastSnapshots().catch(err =>
         console.warn("[Calibration] reconcile after settlement sync:", err)

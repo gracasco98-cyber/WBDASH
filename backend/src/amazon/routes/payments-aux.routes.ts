@@ -15,12 +15,15 @@ import {
   findSettlementsForExport,
   computeFeeBreakdown,
   computeReimbursementsByMonth,
+} from "../../repositories/amazon/settlement.repo";
+import {
   findPpcBillingCycles,
   PPC_BILLING_THRESHOLD_EUR,
-} from "../../repositories/amazon/settlement.repo";
+} from "../../repositories/amazon/ppc-cycle.repo";
 
 export const paymentsAuxRouter = Router();
 
+// ─── GET /payments/ppc-cycle ──────────────────────────────────────────────────
 paymentsAuxRouter.get("/payments/ppc-cycle", async (_req: Request, res: Response) => {
   try {
     const cycles = await findPpcBillingCycles(prisma);

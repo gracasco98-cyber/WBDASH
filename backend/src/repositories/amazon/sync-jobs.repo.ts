@@ -35,6 +35,22 @@ export async function countSyncJobsByStatus(
   });
 }
 
+/**
+ * End of the window covered by the newest successful job of `jobType` for the
+ * current account — the resume point for incremental syncs.
+ */
+export async function findLatestCompletedSyncJobEnd(
+  prisma: PrismaClient,
+  jobType: string
+): Promise<Date | null> {
+  const job = await prisma.amazonSyncJob.findFirst({
+    where: { amazonAccountId: getCurrentAccountId(), jobType, status: "done", dateTo: { not: null } },
+    orderBy: { dateTo: "desc" },
+    select: { dateTo: true },
+  });
+  return job?.dateTo ?? null;
+}
+
 // ─── Write operations ─────────────────────────────────────────────────────────
 
 /**

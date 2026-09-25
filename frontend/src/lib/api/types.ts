@@ -677,10 +677,16 @@ export interface AmazonPpcBillingCycle {
   averageDailySpend7d: number;
   estimatedDaysToThreshold: number | null;
   updatedThrough: string | null;
+  /** Spend of the charge day beyond the last invoice, carried into this cycle. */
+  carryOver: number;
   lastCharge: {
-    settlementId: string;
+    invoiceId: string;
     date: string;
+    /** Billed amount net of VAT. */
     amount: number;
+    /** Amount deducted from the Amazon balance, VAT included. */
+    totalAmount: number;
+    source: "financial_events" | "settlement";
   } | null;
   daily: Array<{ date: string; spend: number; cumulative: number }>;
 }

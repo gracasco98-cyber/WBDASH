@@ -13,8 +13,8 @@ import type { ProductPerformanceRow } from "@/lib/api";
 import { formatDateToIso } from "@/lib/periodUtils";
 import { getComparePeriod, calculateVariation } from "@/lib/compareUtils";
 import { fmtEur, dash } from "./MetricRow";
-import PpcBillingScore from "./PpcBillingScore";
-import type { AmazonPpcBillingCycle } from "@/lib/api";
+import AdspayCell from "./AdspayCell";
+import { usePpcBillingCycle } from "@/hooks/usePpcBillingCycle";
 import {
   CalendarDays,
   CalendarClock,
@@ -428,7 +428,6 @@ export default function PeriodTiles() {
   // marketplace slice periodically so today's VAT, spend and margin are not
   // frozen at the initial render.
   const [liveTick, setLiveTick] = useState(0);
-  const [adsThreshold, setAdsThreshold] = useState<{ spend: number; cycleSpend: number; score: number; remaining: number; thresholdReached: boolean } | null>(null);
   const [manualRefresh, setManualRefresh] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -448,15 +447,6 @@ export default function PeriodTiles() {
       window.clearInterval(timer);
     };
   }, []);
-  useEffect(() => {
-    let cancelled = false;
-    const loadThreshold = () => api.amazon.adsThreshold({ amazonAccountId: selectedAccountId ?? "ALL" })
-      .then((value) => { if (!cancelled) setAdsThreshold(value); })
-      .catch(() => { if (!cancelled) setAdsThreshold(null); });
-    loadThreshold();
-    const timer = window.setInterval(loadThreshold, 60_000);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, [selectedAccountId]);
   // Populated for any tile that needs a comparison: either the global
   // "Confronto" mode (GlobalPeriodSelector) for the daily set, or a tile's
   // own fixedCompareRange for the monthly set (always on, e.g. "Oggi" vs
@@ -470,25 +460,7 @@ export default function PeriodTiles() {
   // see amazon-account.middleware.ts). Picking one account from the
   // selector still narrows these tiles to just that account.
   const amazonAccountId = selectedAccountId ?? "ALL";
-  const [ppcCycles, setPpcCycles] = useState<AmazonPpcBillingCycle[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const request = typeof api.amazon?.ppcBillingCycle === "function"
-      ? api.amazon.ppcBillingCycle({ amazonAccountId })
-      : Promise.resolve({ threshold: 600, cycles: [] });
-    request
-      .then(({ cycles }) => {
-        if (!cancelled) setPpcCycles(cycles);
-      })
-      .catch((err) => {
-        if (!cancelled) setPpcCycles([]);
-        console.error("[PeriodTiles] Failed to load PPC billing cycle:", err);
-      });
-    return () => { cancelled = true; };
-  }, [amazonAccountId, manualRefresh, liveTick]);
-
-  const primaryPpcCycle = [...ppcCycles].sort((a, b) => b.progressPct - a.progressPct)[0] ?? null;
+  const { primary: primaryPpcCycle } = usePpcBillingCycle(amazonAccountId, `${manualRefresh}-${liveTick}`);
 
   useEffect(() => {
     let cancelled = false;
@@ -840,6 +812,7 @@ export default function PeriodTiles() {
             (shopifyRow?.redcareFee ?? 0) +
             (shopifyRow?.redcareShippingCost ?? 0);
           const active = state.preset === preset;
+          const showAdspay = id === "today" && !globalMarketplace.startsWith("REDCARE_");
           // Amazon-only on both sides (no Shopify comparison fetch, to keep
           // this addition to a single extra request per tile) — close enough
           // for a directional badge, not meant to be penny-accurate. The
@@ -911,7 +884,7 @@ export default function PeriodTiles() {
                     {hasAny ? fmtEur(combinedNetProfit) : "—"}
                   </div>
                 </div>
-                  <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
                       Costi
@@ -920,16 +893,13 @@ export default function PeriodTiles() {
                       {hasAny ? fmtEur(combinedCosts) : "—"}
                     </div>
                   </div>
-                  <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2 py-2">
-                    <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.08em] text-zinc-500">
-                      <span>{tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") ? "Adspay" : "Ads"}</span>
-                      {tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") && adsThreshold && <span title={`${adsThreshold.score.toFixed(1)}/100 · €${adsThreshold.cycleSpend.toFixed(2)} nel ciclo corrente`} className="relative grid h-6 w-6 place-items-center rounded-full text-[8px] font-bold text-zinc-200" style={{ background: `conic-gradient(${adsThreshold.thresholdReached ? "#fbbf24" : "#a855f7"} ${Math.min(99.9, adsThreshold.score)}%, rgba(255,255,255,.08) 0)` }}><span className="grid h-4 w-4 place-items-center rounded-full bg-bg-card">{Math.floor(adsThreshold.score)}</span></span>}
+                  {showAdspay && primaryPpcCycle && (
+                    // Full row under Costi | IVA: half a tile is too narrow
+                    // for the threshold score on 5-column desktops.
+                    <div className="order-last col-span-2">
+                      <AdspayCell cycle={primaryPpcCycle} />
                     </div>
-                    <div className="flex items-baseline gap-1 whitespace-nowrap text-[10px] font-semibold tabular-nums text-zinc-300">
-                      <span>{(hasAny || (tile.id === "today" && adsThreshold)) ? dash(tile.id === "today" && adsThreshold ? adsThreshold.cycleSpend : combinedAdSpend, fmtEur) : "—"}</span>
-                      {tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") && adsThreshold && <span className="text-[9px] font-normal text-zinc-500">/ € 600</span>}
-                    </div>
-                  </div>
+                  )}
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
                       {vatLabel}{vatIsEstimated ? " (stima)" : ""}
@@ -1002,9 +972,6 @@ export default function PeriodTiles() {
                     </div>
                   </div>
                 </div>
-                {id === "today" && primaryPpcCycle && (
-                  <PpcBillingScore cycle={primaryPpcCycle} showAccountName={ppcCycles.length > 1} />
-                )}
                 <span
                   role="button"
                   tabIndex={0}

@@ -19,9 +19,12 @@ vi.mock("@/lib/api", () => ({
       products: vi.fn().mockResolvedValue({ products: [], kpis: null }),
       dashboard: vi.fn().mockResolvedValue(null),
       catalogImages: vi.fn().mockResolvedValue({}),
+      ppcBillingCycle: vi.fn().mockResolvedValue({ threshold: 600, cycles: [] }),
     },
   },
 }));
+// AdsThresholdCard reads the selected account; the app layout provides it.
+vi.mock("@/hooks/useAmazonAccount", () => ({ useAmazonAccount: () => ({ selectedAccountId: null }) }));
 
 describe("AmazonOverviewPage — global marketplace filter translation", () => {
   beforeEach(() => {

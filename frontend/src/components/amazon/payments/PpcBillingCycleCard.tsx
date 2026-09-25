@@ -5,6 +5,10 @@ import { Gauge, ReceiptText } from "lucide-react";
 import type { AmazonPpcBillingCycle } from "@/lib/api";
 import { fmtEur } from "./paymentUtils";
 
+// Invoice amounts keep their cents: the threshold charge is rarely a round figure.
+const fmtEurCents = (value: number) =>
+  new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", minimumFractionDigits: 2 }).format(value);
+
 const fmtDate = (date: string) =>
   new Date(`${date}T12:00:00`).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
 
@@ -45,7 +49,7 @@ export function PpcBillingCycleCard({
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-amber/15 text-accent-amber"><Gauge size={17} /></span>
           <div>
             <h2 className="font-semibold text-zinc-100">Ciclo addebito PPC Amazon</h2>
-            <p className="text-[11px] text-zinc-500">Reset soltanto sul movimento PPC reale nei settlement</p>
+            <p className="text-[11px] text-zinc-500">Spesa Ads Amazon.it dall’ultimo addebito reale della fattura</p>
           </div>
         </div>
         {cycle && (
@@ -79,7 +83,7 @@ export function PpcBillingCycleCard({
                   <span className="text-[9px] uppercase text-zinc-500">del ciclo</span>
                 </div>
               </div>
-              <div><div className="text-[10px] uppercase tracking-wider text-zinc-500">Accumulato</div><div className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtEur(cycle.accumulatedSpend)}</div><div className="mt-1 text-xs text-zinc-500">su soglia {fmtEur(cycle.threshold)}</div></div>
+              <div><div className="text-[10px] uppercase tracking-wider text-zinc-500">Accumulato</div><div className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtEur(cycle.accumulatedSpend)}</div><div className="mt-1 text-xs text-zinc-500">su soglia {fmtEur(cycle.threshold)}</div>{cycle.carryOver > 0 && <div className="mt-0.5 text-[10px] text-zinc-500">di cui {fmtEur(cycle.carryOver)} dal giorno dell’addebito</div>}</div>
             </div>
 
             <div>
@@ -97,7 +101,13 @@ export function PpcBillingCycleCard({
 
             <div className="space-y-2">
               <div className="rounded-xl border border-accent-amber/25 bg-accent-amber/10 p-3"><div className="text-[10px] uppercase text-accent-amber">Manca alla soglia</div><div className="mt-1 text-xl font-bold tabular-nums text-accent-amber">{fmtEur(cycle.remaining)}</div><div className="mt-1 text-[10px] text-zinc-500">{cycle.estimatedDaysToThreshold == null ? "Ritmo non ancora stimabile" : `≈ ${cycle.estimatedDaysToThreshold} gg al ritmo attuale`}</div></div>
-              <div className="rounded-xl bg-bg-base p-3"><div className="flex justify-between text-[10px] text-zinc-500"><span>Ultimo addebito reale</span><strong className="text-zinc-300">{cycle.lastCharge ? fmtDate(cycle.lastCharge.date) : "Non rilevato"}</strong></div>{cycle.lastCharge && <div className="mt-1 flex justify-between text-[11px]"><span className="text-zinc-500">Importo PPC</span><strong className="tabular-nums text-zinc-200">{fmtEur(cycle.lastCharge.amount)}</strong></div>}</div>
+              <div className="rounded-xl bg-bg-base p-3"><div className="flex justify-between text-[10px] text-zinc-500"><span>Ultimo addebito reale</span><strong className="text-zinc-300">{cycle.lastCharge ? fmtDate(cycle.lastCharge.date) : "Non rilevato"}</strong></div>{cycle.lastCharge && (
+                  <>
+                    <div className="mt-1 flex justify-between text-[11px]"><span className="text-zinc-500">Imponibile fattura</span><strong className="tabular-nums text-zinc-200">{fmtEurCents(cycle.lastCharge.amount)}</strong></div>
+                    <div className="mt-0.5 flex justify-between text-[11px]"><span className="text-zinc-500">Scalato dal saldo (IVA incl.)</span><strong className="tabular-nums text-zinc-300">{fmtEurCents(cycle.lastCharge.totalAmount)}</strong></div>
+                    {cycle.lastCharge.source === "settlement" && <div className="mt-1 text-[10px] text-zinc-500">Data da liquidazione: in attesa degli eventi finanziari Amazon</div>}
+                  </>
+                )}</div>
             </div>
           </div>
           <div className="grid gap-2 border-t border-bg-border bg-bg-hover/20 px-5 py-3 text-xs sm:grid-cols-4">

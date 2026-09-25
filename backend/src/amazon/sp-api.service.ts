@@ -255,3 +255,41 @@ export async function fetchFbaInventory(marketplaceId: string, region: SpRegion 
   console.log(`[FBA Inventory] ${marketplaceId}: ${items.length} items`);
   return items;
 }
+
+/** Finances API allows 0.5 requests per second (burst 30). */
+const FINANCES_PAGE_DELAY_MS = 2_000;
+
+/**
+ * Sponsored Ads invoice payment events posted since `postedAfter`
+ * (Finances API v0, ProductAdsPaymentEventList). Returned raw so the caller
+ * can validate and keep the original payload. The window must stay within
+ * 180 days, otherwise Amazon answers with an empty list.
+ */
+export async function fetchProductAdsPaymentEvents(
+  postedAfter: Date,
+  pageDelayMs = FINANCES_PAGE_DELAY_MS,
+  region: SpRegion = "EU",
+): Promise<unknown[]> {
+  const events: unknown[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    // Amazon requires the same arguments again alongside NextToken.
+    const params = new URLSearchParams({
+      PostedAfter:       postedAfter.toISOString(),
+      MaxResultsPerPage: "100",
+    });
+    if (nextToken) {
+      params.set("NextToken", nextToken);
+      await sleep(pageDelayMs);
+    }
+
+    const response = await spRequest("GET", `/finances/v0/financialEvents?${params}`, undefined, 3, region);
+    const page: unknown = response?.payload?.FinancialEvents?.ProductAdsPaymentEventList;
+    if (Array.isArray(page)) events.push(...page);
+
+    nextToken = response?.payload?.NextToken ?? undefined;
+  } while (nextToken);
+
+  return events;
+}
