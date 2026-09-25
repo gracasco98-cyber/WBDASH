@@ -43,13 +43,13 @@ const mockProducts = vi.fn(async (_params: unknown): Promise<{
 }));
 const mockTimeseries = vi.fn(async (_params: unknown) => [] as { time: string; revenue: number; count: number }[]);
 const mockPpcBillingCycle = vi.fn(async (_params: unknown) => ({
-  threshold: 600,
+  threshold: 500,
   cycles: [{
-    accountId: "acc-1", accountName: "Amazon EU", threshold: 600,
-    accumulatedSpend: 412.8, carryOver: 0, progressPct: 68.8, remaining: 187.2,
+    accountId: "acc-1", accountName: "Amazon EU", threshold: 500,
+    accumulatedSpend: 412.8, carryOver: 0, progressPct: 82.6, remaining: 87.2,
     status: "accumulating" as const, averageDailySpend7d: 46.8,
     estimatedDaysToThreshold: 4, updatedThrough: "2026-09-24",
-    lastCharge: { invoiceId: "IT-INV-1", date: "2026-09-18", amount: 600, totalAmount: 732, source: "financial_events" as const },
+    lastCharge: { invoiceId: "IT-INV-1", date: "2026-09-18", amount: 500, totalAmount: 610, source: "financial_events" as const },
     daily: [{ date: "2026-09-24", spend: 48.2, cumulative: 412.8 }],
   }],
 }));
@@ -114,9 +114,9 @@ describe("PeriodTiles", () => {
   it("shows the Adspay score from the last ads invoice charge only in the Oggi tile", async () => {
     render(<PeriodTiles />);
     const adspay = await screen.findByRole("progressbar", { name: /adspay/i });
-    expect(adspay).toHaveAttribute("aria-valuenow", "69");
+    expect(adspay).toHaveAttribute("aria-valuenow", "83");
     expect(screen.getByText("dal 18 set")).toBeInTheDocument();
-    expect(screen.getByText("mancano € 187,20")).toBeInTheDocument();
+    expect(screen.getByText("mancano € 87,20")).toBeInTheDocument();
     expect(screen.getAllByRole("progressbar", { name: /adspay/i })).toHaveLength(1);
   });
 

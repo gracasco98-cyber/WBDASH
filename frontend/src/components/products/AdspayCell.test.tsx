@@ -6,16 +6,16 @@ import type { AmazonPpcBillingCycle } from "@/lib/api";
 const cycle = (overrides: Partial<AmazonPpcBillingCycle> = {}): AmazonPpcBillingCycle => ({
   accountId: "acc-1",
   accountName: "Amazon EU",
-  threshold: 600,
+  threshold: 500,
   accumulatedSpend: 412.8,
   carryOver: 0,
-  progressPct: 68.8,
-  remaining: 187.2,
+  progressPct: 82.6,
+  remaining: 87.2,
   status: "accumulating",
   averageDailySpend7d: 46.8,
   estimatedDaysToThreshold: 4,
   updatedThrough: "2026-09-25",
-  lastCharge: { invoiceId: "IT-INV-1", date: "2026-09-18", amount: 600.37, totalAmount: 732.45, source: "financial_events" },
+  lastCharge: { invoiceId: "IT-INV-1", date: "2026-09-18", amount: 500.37, totalAmount: 610.45, source: "financial_events" },
   daily: [{ date: "2026-09-25", spend: 48.2, cumulative: 412.8 }],
   ...overrides,
 });
@@ -25,19 +25,19 @@ describe("AdspayCell", () => {
     render(<AdspayCell cycle={cycle()} />);
 
     expect(screen.getByText("Adspay")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: /adspay/i })).toHaveAttribute("aria-valuenow", "69");
-    expect(screen.getByText("69")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: /adspay/i })).toHaveAttribute("aria-valuenow", "83");
+    expect(screen.getByText("83")).toBeInTheDocument();
     expect(screen.getByText("€ 412,80")).toBeInTheDocument();
-    expect(screen.getByText("/ € 600,00")).toBeInTheDocument();
+    expect(screen.getByText("/ € 500,00 + IVA")).toBeInTheDocument();
   });
 
   it("shows the day of the last invoice charge and what is left to the threshold", () => {
     render(<AdspayCell cycle={cycle()} />);
 
     expect(screen.getByText("dal 18 set")).toBeInTheDocument();
-    expect(screen.getByText("mancano € 187,20")).toBeInTheDocument();
+    expect(screen.getByText("mancano € 87,20")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: /adspay/i }).closest("[title]"))
-      .toHaveAttribute("title", expect.stringContaining("Ultimo addebito 18 set: € 600,37"));
+      .toHaveAttribute("title", expect.stringContaining("Ultimo addebito 18 set: € 500,37"));
   });
 
   it("says when no ads charge has been found yet", () => {

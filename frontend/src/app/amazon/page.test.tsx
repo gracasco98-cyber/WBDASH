@@ -19,7 +19,7 @@ vi.mock("@/lib/api", () => ({
       products: vi.fn().mockResolvedValue({ products: [], kpis: null }),
       dashboard: vi.fn().mockResolvedValue(null),
       catalogImages: vi.fn().mockResolvedValue({}),
-      ppcBillingCycle: vi.fn().mockResolvedValue({ threshold: 600, cycles: [] }),
+      ppcBillingCycle: vi.fn().mockResolvedValue({ threshold: 500, cycles: [] }),
     },
   },
 }));

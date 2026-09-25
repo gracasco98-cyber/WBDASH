@@ -45,7 +45,7 @@ export default function AdspayCell({ cycle }: Props) {
       </div>
       <div className="flex flex-wrap items-baseline gap-x-1 tabular-nums">
         <span className="text-[11px] font-semibold text-zinc-300">{eur(cycle.accumulatedSpend)}</span>
-        <span className="text-[9px] text-zinc-500">/ {eur(cycle.threshold)}</span>
+        <span className="text-[9px] text-zinc-500">/ {eur(cycle.threshold)}{" +\u00A0IVA"}</span>
       </div>
       <div
         role="progressbar"

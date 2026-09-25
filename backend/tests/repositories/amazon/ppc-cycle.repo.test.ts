@@ -85,7 +85,7 @@ describe("findPpcBillingCycles", () => {
 
     const [cycle] = await cyclesFor();
     expect(cycle.accumulatedSpend).toBe(300);
-    expect(cycle.progressPct).toBe(50);
+    expect(cycle.progressPct).toBe(60);
     expect(cycle.lastCharge).toEqual({
       invoiceId: "INV-1", date: "2026-09-18", amount: 600, totalAmount: 732, source: "financial_events",
     });
@@ -103,6 +103,16 @@ describe("findPpcBillingCycles", () => {
     expect(cycle.carryOver).toBe(50);
     expect(cycle.accumulatedSpend).toBe(80);
     expect(cycle.lastCharge).toMatchObject({ amount: 600, totalAmount: 732 });
+  });
+
+  it("scores the cycle against Amazon's €500 (+ VAT) invoice threshold", async () => {
+    await addSpend("2026-09-20", 450);
+
+    const [cycle] = await cyclesFor();
+    expect(cycle.threshold).toBe(500);
+    expect(cycle.progressPct).toBe(90);
+    expect(cycle.remaining).toBe(50);
+    expect(cycle.status).toBe("accumulating");
   });
 
   it("uses the Italian calendar day of the charge", async () => {

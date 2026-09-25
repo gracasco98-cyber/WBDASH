@@ -24,7 +24,7 @@ export default function AdsThresholdCard() {
   const { primary: cycle, isLoading, hasError } = usePpcBillingCycle(selectedAccountId ?? "ALL", tick);
 
   const score = cycle?.progressPct ?? 0;
-  const threshold = cycle?.threshold ?? 600;
+  const threshold = cycle?.threshold ?? 500;
   const reached = cycle?.status === "charge_expected";
   const lastCharge = cycle?.lastCharge ?? null;
 
@@ -40,7 +40,7 @@ export default function AdsThresholdCard() {
         </div>
         <div className="text-right">
           <p className="text-lg font-bold tabular-nums text-zinc-100">€ {fmtCents(cycle?.accumulatedSpend ?? 0)}</p>
-          <p className="text-[10px] text-zinc-500">di € {threshold.toLocaleString("it-IT")}</p>
+          <p className="text-[10px] text-zinc-500">di € {threshold.toLocaleString("it-IT")} + IVA</p>
         </div>
       </div>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-bg-base">

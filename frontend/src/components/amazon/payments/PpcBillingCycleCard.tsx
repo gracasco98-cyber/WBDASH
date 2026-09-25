@@ -83,7 +83,7 @@ export function PpcBillingCycleCard({
                   <span className="text-[9px] uppercase text-zinc-500">del ciclo</span>
                 </div>
               </div>
-              <div><div className="text-[10px] uppercase tracking-wider text-zinc-500">Accumulato</div><div className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtEur(cycle.accumulatedSpend)}</div><div className="mt-1 text-xs text-zinc-500">su soglia {fmtEur(cycle.threshold)}</div>{cycle.carryOver > 0 && <div className="mt-0.5 text-[10px] text-zinc-500">di cui {fmtEur(cycle.carryOver)} dal giorno dell’addebito</div>}</div>
+              <div><div className="text-[10px] uppercase tracking-wider text-zinc-500">Accumulato</div><div className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtEur(cycle.accumulatedSpend)}</div><div className="mt-1 text-xs text-zinc-500">su soglia {fmtEur(cycle.threshold)} + IVA</div>{cycle.carryOver > 0 && <div className="mt-0.5 text-[10px] text-zinc-500">di cui {fmtEur(cycle.carryOver)} dal giorno dell’addebito</div>}</div>
             </div>
 
             <div>
