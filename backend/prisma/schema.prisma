@@ -191,6 +191,7 @@ model AmazonAccount {
   productSnapshots           AmazonProductSnapshot[]
   settlements                AmazonSettlement[]
   settlementTxns             AmazonSettlementTransaction[]
+  adsPaymentEvents           AmazonAdsPaymentEvent[]
   productCogs                AmazonProductCogs[]
   cogsPriceEntries           AmazonCogsPriceEntry[]
   inventory                  AmazonInventory[]
@@ -358,6 +359,28 @@ model AmazonSettlementTransaction {
   @@index([postedDate])
   @@index([settlementId])
   @@index([transactionType])
+}
+
+/// Sponsored Ads invoice charges deducted from the seller balance, from the
+/// SP-API Finances ProductAdsPaymentEventList. Available before the settlement
+/// closes, so they mark the start of the PPC threshold-billing cycle.
+model AmazonAdsPaymentEvent {
+  id               String        @id @default(cuid())
+  amazonAccountId  String
+  amazonAccount    AmazonAccount @relation(fields: [amazonAccountId], references: [id])
+  invoiceId        String
+  transactionType  String // charge | refund
+  postedDate       DateTime
+  baseValue        Decimal       @db.Decimal(14, 4) // net of VAT
+  taxValue         Decimal       @default(0) @db.Decimal(14, 4)
+  transactionValue Decimal       @db.Decimal(14, 4) // deducted amount, VAT included
+  currency         String        @default("EUR")
+  rawPayload       Json
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@unique([amazonAccountId, invoiceId, transactionType, postedDate])
+  @@index([amazonAccountId, postedDate])
 }
 
 // Costo del venduto per ASIN (configurabile dall'utente)

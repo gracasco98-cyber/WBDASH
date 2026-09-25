@@ -13,6 +13,7 @@ import { PaymentTimeline }       from "@/components/amazon/payments/PaymentTimel
 import { CollectedPaymentsCard } from "@/components/amazon/payments/CollectedPaymentsCard";
 import { NextPaymentCard }       from "@/components/amazon/payments/NextPaymentCard";
 import { filterByPeriod, getPeriodLabel } from "@/components/amazon/payments/paymentUtils";
+import { PpcBillingCycleCard } from "@/components/amazon/payments/PpcBillingCycleCard";
 
 function RedcareForecastCard({ rows, loading }: { rows: ChannelDailyRow[]; loading: boolean }) {
   const redcareRows = rows.filter(r => /redcare/i.test(r.marketplace));
@@ -88,6 +89,8 @@ export default function PaymentsPage() {
             <AlertCircle className="h-4 w-4 shrink-0" />{error}
           </div>
         )}
+
+        <PpcBillingCycleCard cycles={data?.ppcCycles ?? []} loading={loading} />
 
         <PaymentTimeline
           payments={data?.paymentItems ?? []}

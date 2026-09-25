@@ -9,6 +9,7 @@ import {
   finishSyncJob,
   findRecentSyncJobs,
   countSyncJobsByStatus,
+  findLatestCompletedSyncJobEnd,
 } from "../../../src/repositories/amazon/sync-jobs.repo";
 
 let db: TestDb;
@@ -135,6 +136,33 @@ describe("countSyncJobsByStatus", () => {
       expect(done).toBe(1);
       expect(failed).toBe(1);
       expect(running).toBe(1); // id3 still running
+    });
+  });
+});
+
+// ─── findLatestCompletedSyncJobEnd ────────────────────────────────────────────
+
+describe("findLatestCompletedSyncJobEnd", () => {
+  const stats = { recordsIn: 1, recordsImported: 1, recordsUpdated: 0, recordsRejected: 0 };
+  const job = (jobType: string, dateTo: string) =>
+    createSyncJob(db.prisma, { jobType, marketplace: "IT", dateFrom: new Date("2026-09-01T00:00:00Z"), dateTo: new Date(dateTo) });
+
+  it("returns the end of the newest successful job of that type", async () => {
+    await runWithAccount(accountId, async () => {
+      await finishSyncJob(db.prisma, await job("ads_charges", "2026-09-20T00:00:00Z"), stats);
+      await finishSyncJob(db.prisma, await job("ads_charges", "2026-09-24T00:00:00Z"), stats);
+      await finishSyncJob(db.prisma, await job("ads_charges", "2026-09-25T00:00:00Z"), stats, "boom");
+      await finishSyncJob(db.prisma, await job("orders_incremental", "2026-09-26T00:00:00Z"), stats);
+
+      const end = await findLatestCompletedSyncJobEnd(db.prisma, "ads_charges");
+      expect(end?.toISOString()).toBe("2026-09-24T00:00:00.000Z");
+    });
+  });
+
+  it("returns null when that job type never completed for the account", async () => {
+    await runWithAccount(accountId, async () => {
+      await job("ads_charges", "2026-09-24T00:00:00Z"); // still running
+      expect(await findLatestCompletedSyncJobEnd(db.prisma, "ads_charges")).toBeNull();
     });
   });
 });

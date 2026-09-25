@@ -5,12 +5,12 @@ import AmazonOverviewCards from "@/components/amazon/AmazonOverviewCards";
 import AmazonRevenueChart from "@/components/amazon/AmazonRevenueChart";
 import AmazonMarketplaceTable from "@/components/amazon/AmazonMarketplaceTable";
 import SellerboardKpiCards from "@/components/dashboard/SellerboardKpiCards";
+import AdsThresholdCard from "@/components/amazon/AdsThresholdCard";
 import OverviewViewTabs, { DashboardView } from "@/components/dashboard/OverviewViewTabs";
 import {
   RefreshCw, Search, ChevronUp, ChevronDown,
   Package, ArrowUpDown,
   Calendar, SlidersHorizontal, ExternalLink,
-  Gauge,
 } from "lucide-react";
 import { fmtEur, fmtNum } from "@/lib/fmt";
 import { useMarketplaceFilter } from "@/hooks/useMarketplaceFilter";
@@ -58,39 +58,6 @@ const MP_DOMAIN: Record<string, string> = {
 function amazonUrl(asin: string, marketplace: string): string {
   const domain = MP_DOMAIN[marketplace] ?? "amazon.it";
   return `https://www.${domain}/dp/${asin}`;
-}
-
-function AdsThresholdCard() {
-  const [data, setData] = useState<Awaited<ReturnType<typeof api.amazon.adsThreshold>> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const load = useCallback(() => {
-    setLoading(true);
-    api.amazon.adsThreshold().then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, []);
-  useEffect(() => {
-    load();
-    const timer = window.setInterval(load, 10 * 60_000);
-    return () => window.clearInterval(timer);
-  }, [load]);
-  const score = data?.score ?? 0;
-  const spend = data?.spend ?? 0;
-  const threshold = data?.totalThreshold ?? 600;
-  const reached = Boolean(data?.thresholdReached);
-  return (
-    <section className="rounded-xl border border-bg-border bg-bg-card px-4 py-3 sm:px-5 sm:py-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Gauge size={16} className={reached ? "text-amber-400" : "text-purple-400"} />
-          <div><p className="text-xs font-semibold text-zinc-200">Soglia Ads Amazon</p><p className="text-[10px] text-zinc-500">Accumulo verso l’addebito PPC · reset automatico dopo il charge</p></div>
-        </div>
-        <div className="text-right"><p className="text-lg font-bold tabular-nums text-zinc-100">€ {spend.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p><p className="text-[10px] text-zinc-500">di € {threshold.toLocaleString("it-IT")}</p></div>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-bg-base"><div className={`h-full rounded-full transition-all ${reached ? "bg-amber-400" : "bg-purple-500"}`} style={{ width: `${Math.min(100, score)}%` }} /></div>
-      <div className="mt-2 flex items-center justify-between text-[10px] text-zinc-500"><span>Score {score.toFixed(1).replace(".", ",")}/100</span><span>{reached ? "Soglia raggiunta · addebito in attesa" : `Mancano € ${(data?.remaining ?? threshold).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span></div>
-      {loading && !data && <p className="mt-2 text-[10px] text-zinc-600">Caricamento spesa Ads…</p>}
-      {!loading && !data && <p className="mt-2 text-[10px] text-red-400">Dati soglia non disponibili</p>}
-    </section>
-  );
 }
 
 // ─── Products table ───────────────────────────────────────────────────────────

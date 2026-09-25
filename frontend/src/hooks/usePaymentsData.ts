@@ -4,7 +4,7 @@
 // Components consume the result as pure props — no internal fetching.
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { api, AmazonPaymentForecast } from "@/lib/api";
+import { api, AmazonPaymentForecast, AmazonPpcBillingCycle } from "@/lib/api";
 import {
   Settlement, AnalyticsResult, IntelligenceResult, PaymentItem, CountryData,
   COUNTRY_NAMES, COUNTRY_FLAGS,
@@ -29,6 +29,7 @@ export interface PaymentsPageData {
   currentRange:           { from: Date; to: Date };
   compRange:              { from: Date; to: Date; label: string } | null;
   daysUntilNext:          number | null;
+  ppcCycles:              AmazonPpcBillingCycle[];
 }
 
 export interface UsePaymentsDataResult {
@@ -57,6 +58,7 @@ export function usePaymentsData(): UsePaymentsDataResult {
   // ── API state ──────────────────────────────────────────────────────────────
   const [paymentsData, setPaymentsData] = useState<any>(null);
   const [forecastData, setForecastData] = useState<AmazonPaymentForecast | null>(null);
+  const [ppcCycles, setPpcCycles] = useState<AmazonPpcBillingCycle[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState<string | null>(null);
 
@@ -84,6 +86,11 @@ export function usePaymentsData(): UsePaymentsDataResult {
       api.amazon.forecast()
         .then(d => setForecastData(d))
         .catch(e => console.error(e)),
+      // The card has its own per-account tabs, so always load every active
+      // account even when no global account has been selected yet.
+      api.amazon.ppcBillingCycle({ amazonAccountId: "ALL" })
+        .then(d => setPpcCycles(d.cycles))
+        .catch(e => { setPpcCycles([]); console.error(e); }),
     ]);
     setLoading(false);
   }, []);
@@ -265,6 +272,7 @@ export function usePaymentsData(): UsePaymentsDataResult {
         currentRange,
         compRange,
         daysUntilNext,
+        ppcCycles,
       }
     : null;
 

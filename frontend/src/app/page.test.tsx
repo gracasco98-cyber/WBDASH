@@ -59,6 +59,7 @@ vi.mock("@/lib/api", () => ({
       timeseries: vi.fn(async () => []),
       products: vi.fn(async () => ({ products: [] })),
       catalogImages: vi.fn(async () => ({})),
+      ppcBillingCycle: vi.fn(async () => ({ threshold: 600, cycles: [] })),
     },
     products: vi.fn(async () => ({ products: [] })),
     productPerformance: {

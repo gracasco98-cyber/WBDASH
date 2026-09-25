@@ -42,18 +42,32 @@ const mockProducts = vi.fn(async (_params: unknown): Promise<{
   kpis: { totalGross: 40, totalNet: 35, totalAdSpend: 99, redcareAdSpend: 6 },
 }));
 const mockTimeseries = vi.fn(async (_params: unknown) => [] as { time: string; revenue: number; count: number }[]);
+const mockPpcBillingCycle = vi.fn(async (_params: unknown) => ({
+  threshold: 600,
+  cycles: [{
+    accountId: "acc-1", accountName: "Amazon EU", threshold: 600,
+    accumulatedSpend: 412.8, carryOver: 0, progressPct: 68.8, remaining: 187.2,
+    status: "accumulating" as const, averageDailySpend7d: 46.8,
+    estimatedDaysToThreshold: 4, updatedThrough: "2026-09-24",
+    lastCharge: { invoiceId: "IT-INV-1", date: "2026-09-18", amount: 600, totalAmount: 732, source: "financial_events" as const },
+    daily: [{ date: "2026-09-24", spend: 48.2, cumulative: 412.8 }],
+  }],
+}));
 const mockRedcareList = vi.fn(async (_params: unknown): Promise<{ entries: unknown[]; total: number }> => { throw new Error("not configured"); });
 vi.mock("@/lib/api", () => ({
   api: {
     productPerformance: { get: (params: unknown) => mockGet(params) },
     products: (params: unknown) => mockProducts(params),
-    amazon: { timeseries: (params: unknown) => mockTimeseries(params) },
+    amazon: {
+      timeseries: (params: unknown) => mockTimeseries(params),
+      ppcBillingCycle: (params: unknown) => mockPpcBillingCycle(params),
+    },
     marketingRedcare: { listAdSpend: (params: unknown) => mockRedcareList(params) },
   },
 }));
 
 describe("PeriodTiles", () => {
-  beforeEach(() => { mockGet.mockClear(); mockProducts.mockClear(); mockRedcareList.mockClear(); mockRedcareList.mockRejectedValue(new Error("not configured")); mockTimeseries.mockClear(); mockTimeseries.mockResolvedValue([]); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; mockCompareMode = "none"; });
+  beforeEach(() => { mockGet.mockClear(); mockProducts.mockClear(); mockRedcareList.mockClear(); mockRedcareList.mockRejectedValue(new Error("not configured")); mockTimeseries.mockClear(); mockTimeseries.mockResolvedValue([]); mockPpcBillingCycle.mockClear(); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; mockCompareMode = "none"; });
 
   it("fetches 5 fixed presets independently of the active period", async () => {
     render(<PeriodTiles />);
@@ -94,6 +108,16 @@ describe("PeriodTiles", () => {
     for (const [params] of mockGet.mock.calls as [any][]) {
       expect(params.amazonAccountId).toBe("ALL");
     }
+    expect(mockPpcBillingCycle).toHaveBeenCalledWith({ amazonAccountId: "ALL" });
+  });
+
+  it("shows the Adspay score from the last ads invoice charge only in the Oggi tile", async () => {
+    render(<PeriodTiles />);
+    const adspay = await screen.findByRole("progressbar", { name: /adspay/i });
+    expect(adspay).toHaveAttribute("aria-valuenow", "69");
+    expect(screen.getByText("dal 18 set")).toBeInTheDocument();
+    expect(screen.getByText("mancano € 187,20")).toBeInTheDocument();
+    expect(screen.getAllByRole("progressbar", { name: /adspay/i })).toHaveLength(1);
   });
 
   it("requests only the selected account's id once one is chosen from the switcher", async () => {

@@ -16,8 +16,23 @@ import {
   computeFeeBreakdown,
   computeReimbursementsByMonth,
 } from "../../repositories/amazon/settlement.repo";
+import {
+  findPpcBillingCycles,
+  PPC_BILLING_THRESHOLD_EUR,
+} from "../../repositories/amazon/ppc-cycle.repo";
 
 export const paymentsAuxRouter = Router();
+
+// ─── GET /payments/ppc-cycle ──────────────────────────────────────────────────
+paymentsAuxRouter.get("/payments/ppc-cycle", async (_req: Request, res: Response) => {
+  try {
+    const cycles = await findPpcBillingCycles(prisma);
+    res.json({ threshold: PPC_BILLING_THRESHOLD_EUR, cycles });
+  } catch (err) {
+    console.error("[Amazon] GET /payments/ppc-cycle:", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
 
 // ─── GET /payments/dd7-reserve ────────────────────────────────────────────────
 paymentsAuxRouter.get("/payments/dd7-reserve", async (_req: Request, res: Response) => {
