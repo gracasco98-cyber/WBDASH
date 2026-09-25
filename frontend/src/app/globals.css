@@ -22,14 +22,16 @@
 
   /* Accent colors — RGB triplets (not hex) so Tailwind's <alpha-value>
      mechanism can drive text/bg/border opacity variants from one source.
+     Channels MUST be space-separated: tailwind.config.js wraps them as
+     rgb(var(--x) / <alpha-value>), which is invalid CSS with commas.
      See docs/superpowers/specs/2026-08-12-color-redesign-foundation-design.md
      §2bis — validated with the dataviz skill's palette validator, not
      chosen by eye. Primary is mode-invariant (same triplet in both themes). */
-  --accent-primary-rgb: 5, 150, 105;    /* #059669 */
-  --accent-blue-rgb:    57, 135, 229;   /* #3987e5 */
-  --accent-amber-rgb:   181, 165, 0;    /* #b5a500 */
-  --accent-red-rgb:     230, 103, 103;  /* #e66767 */
-  --accent-purple-rgb:  144, 133, 233;  /* #9085e9 */
+  --accent-primary-rgb: 5 150 105;      /* #059669 */
+  --accent-blue-rgb:    57 135 229;     /* #3987e5 */
+  --accent-amber-rgb:   181 165 0;      /* #b5a500 */
+  --accent-red-rgb:     230 103 103;    /* #e66767 */
+  --accent-purple-rgb:  144 133 233;    /* #9085e9 */
 }
 
 [data-theme="light"] {
@@ -45,11 +47,11 @@
 
   /* Accent colors — light-mode RGB triplets. Primary matches :root exactly
      (mode-invariant); blue/amber/red/purple differ — see design doc §2. */
-  --accent-primary-rgb: 5, 150, 105;    /* #059669 */
-  --accent-blue-rgb:    42, 120, 214;   /* #2a78d6 */
-  --accent-amber-rgb:   237, 161, 0;    /* #eda100 */
-  --accent-red-rgb:     227, 73, 72;    /* #e34948 */
-  --accent-purple-rgb:  124, 58, 237;   /* #7c3aed */
+  --accent-primary-rgb: 5 150 105;      /* #059669 */
+  --accent-blue-rgb:    42 120 214;     /* #2a78d6 */
+  --accent-amber-rgb:   237 161 0;      /* #eda100 */
+  --accent-red-rgb:     227 73 72;      /* #e34948 */
+  --accent-purple-rgb:  124 58 237;     /* #7c3aed */
 }
 
 * { box-sizing: border-box; }
