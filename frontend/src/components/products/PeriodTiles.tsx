@@ -398,6 +398,7 @@ export function sumAggregate(
 }
 
 export default function PeriodTiles() {
+  const { selectedAccountId } = useAmazonAccount();
   const { state, setPreset } = usePeriodFilter();
   const [tileSet, setTileSet] = useState<TileSetKey>("days");
   const activeTiles = TILE_SETS[tileSet];
@@ -427,6 +428,7 @@ export default function PeriodTiles() {
   // marketplace slice periodically so today's VAT, spend and margin are not
   // frozen at the initial render.
   const [liveTick, setLiveTick] = useState(0);
+  const [adsThreshold, setAdsThreshold] = useState<{ spend: number; cycleSpend: number; score: number; remaining: number; thresholdReached: boolean } | null>(null);
   const [manualRefresh, setManualRefresh] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -446,6 +448,15 @@ export default function PeriodTiles() {
       window.clearInterval(timer);
     };
   }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const loadThreshold = () => api.amazon.adsThreshold({ amazonAccountId: selectedAccountId ?? "ALL" })
+      .then((value) => { if (!cancelled) setAdsThreshold(value); })
+      .catch(() => { if (!cancelled) setAdsThreshold(null); });
+    loadThreshold();
+    const timer = window.setInterval(loadThreshold, 60_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [selectedAccountId]);
   // Populated for any tile that needs a comparison: either the global
   // "Confronto" mode (GlobalPeriodSelector) for the daily set, or a tile's
   // own fixedCompareRange for the monthly set (always on, e.g. "Oggi" vs
@@ -453,7 +464,6 @@ export default function PeriodTiles() {
   const [compareTotals, setCompareTotals] = useState<
     Record<string, ProductPerformanceRow | null>
   >({});
-  const { selectedAccountId } = useAmazonAccount();
   // Main dashboard default: when the user hasn't drilled into one specific
   // Amazon account, sum every active account instead of leaving the tiles
   // empty (the backend otherwise refuses to guess which account to show —
@@ -901,13 +911,23 @@ export default function PeriodTiles() {
                     {hasAny ? fmtEur(combinedNetProfit) : "—"}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-zinc-500">
                       Costi
                     </div>
                     <div className="text-[11px] font-semibold tabular-nums text-zinc-300">
                       {hasAny ? fmtEur(combinedCosts) : "—"}
+                    </div>
+                  </div>
+                  <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2 py-2">
+                    <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.08em] text-zinc-500">
+                      <span>{tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") ? "Adspay" : "Ads"}</span>
+                      {tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") && adsThreshold && <span title={`${adsThreshold.score.toFixed(1)}/100 · €${adsThreshold.cycleSpend.toFixed(2)} nel ciclo corrente`} className="relative grid h-6 w-6 place-items-center rounded-full text-[8px] font-bold text-zinc-200" style={{ background: `conic-gradient(${adsThreshold.thresholdReached ? "#fbbf24" : "#a855f7"} ${Math.min(99.9, adsThreshold.score)}%, rgba(255,255,255,.08) 0)` }}><span className="grid h-4 w-4 place-items-center rounded-full bg-bg-card">{Math.floor(adsThreshold.score)}</span></span>}
+                    </div>
+                    <div className="flex items-baseline gap-1 whitespace-nowrap text-[10px] font-semibold tabular-nums text-zinc-300">
+                      <span>{(hasAny || (tile.id === "today" && adsThreshold)) ? dash(tile.id === "today" && adsThreshold ? adsThreshold.cycleSpend : combinedAdSpend, fmtEur) : "—"}</span>
+                      {tile.id === "today" && !globalMarketplace.startsWith("REDCARE_") && adsThreshold && <span className="text-[9px] font-normal text-zinc-500">/ € 600</span>}
                     </div>
                   </div>
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">

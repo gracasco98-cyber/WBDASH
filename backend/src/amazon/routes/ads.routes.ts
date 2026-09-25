@@ -2,7 +2,7 @@
 // Search terms cache, /ppc/products, /ppc/adgroups, /ppc/search-terms are in ppc-extra.routes.ts.
 import { Router, Request, Response } from "express";
 import { prisma } from "../../db";
-import { getCurrentAccountId } from "../../context/account-context";
+import { getCurrentAccountId, getCurrentAccountIds } from "../../context/account-context";
 import {
   countAdSnapshotsByDateRange,
   groupAdSnapshotsByCampaign,
@@ -11,6 +11,99 @@ import { verifyAdsConnection, quickCampaignList, getLiveCampaigns, syncKeywordMe
 import { italyOffsetMs, getDateRange } from "../utils/datetime";
 
 export const adsRouter = Router();
+
+// ─── GET /ads/threshold ──────────────────────────────────────────────────────
+// Amazon charges accumulated advertising once the account reaches the
+// configured threshold. This endpoint tracks the open cycle, not a calendar
+// month: the cycle starts after the last advertising charge found in the
+// settlement feed and resets automatically when a new charge is imported.
+adsRouter.get("/ads/threshold", async (_req: Request, res: Response) => {
+  try {
+    const accountIds = getCurrentAccountIds();
+    const safeIds = accountIds.map(id => `'${String(id).replace(/'/g, "''")}'`).join(",");
+    const threshold = 600;
+    type ChargeRow = { amazonAccountId: string; chargeDate: string | null; chargeAmount: number | null };
+    const charges = await prisma.$queryRawUnsafe<ChargeRow[]>(`
+      SELECT "amazonAccountId",
+        MAX("postedDate")::date::text AS "chargeDate",
+        COALESCE(SUM(ABS(amount)), 0)::FLOAT8 AS "chargeAmount"
+      FROM "AmazonSettlementTransaction"
+      WHERE "amazonAccountId" IN (${safeIds})
+        AND marketplace = 'EU'
+        AND (
+          "amountType" ILIKE '%advertising%'
+          OR "amountType" ILIKE '%cost per click%'
+          OR "amountType" = 'Cost of Advertising'
+        )
+      GROUP BY "amazonAccountId"
+    `);
+    const chargeByAccount = new Map(charges.map(row => [row.amazonAccountId, row]));
+
+    type SpendRow = { amazonAccountId: string; spend: number | null; lastDate: string | null };
+    const spends = await prisma.$queryRawUnsafe<SpendRow[]>(`
+      SELECT "amazonAccountId",
+        COALESCE(SUM(spend), 0)::FLOAT8 AS spend,
+        MAX("snapshotDate")::date::text AS "lastDate"
+      FROM "AmazonAdSnapshot"
+      WHERE "amazonAccountId" IN (${safeIds})
+        AND "snapshotDate"::date > COALESCE(
+          (SELECT MAX(t."postedDate")::date FROM "AmazonSettlementTransaction" t
+           WHERE t."amazonAccountId" = "AmazonAdSnapshot"."amazonAccountId"
+             AND t.marketplace = 'EU'
+             AND (t."amountType" ILIKE '%advertising%' OR t."amountType" ILIKE '%cost per click%' OR t."amountType" = 'Cost of Advertising')),
+          DATE '2000-01-01'
+        )
+      GROUP BY "amazonAccountId"
+    `);
+    const spendByAccount = new Map(spends.map(row => [row.amazonAccountId, row]));
+    // Amazon's threshold is cyclical: every 600 EUR starts a new cycle. This
+    // also prevents a delayed settlement import from leaving the UI stuck at
+    // 99% after several threshold-sized charges have already accumulated.
+    const cycleState = (spend: number, limit: number) => {
+      const completedCycles = Math.floor(spend / limit);
+      const cycleSpend = spend - completedCycles * limit;
+      return {
+        cycleSpend: Math.round(cycleSpend * 100) / 100,
+        completedCycles,
+        score: Math.min(99.9, Math.round((cycleSpend / limit) * 1000) / 10),
+      };
+    };
+    const accounts = accountIds.map(id => {
+      const spend = Number(spendByAccount.get(id)?.spend ?? 0);
+      const charge = chargeByAccount.get(id);
+      const cycle = cycleState(spend, threshold);
+      return {
+        accountId: id,
+        spend: Math.round(spend * 100) / 100,
+        cycleSpend: cycle.cycleSpend,
+        completedCycles: cycle.completedCycles,
+        threshold,
+        score: cycle.score,
+        remaining: Math.round(Math.max(0, threshold - cycle.cycleSpend) * 100) / 100,
+        lastChargeDate: charge?.chargeDate ?? null,
+        lastChargeAmount: Number(charge?.chargeAmount ?? 0),
+        lastSpendDate: spendByAccount.get(id)?.lastDate ?? null,
+        thresholdReached: cycle.completedCycles > 0,
+      };
+    });
+    const totalSpend = accounts.reduce((sum, row) => sum + row.spend, 0);
+    const totalCycleSpend = accounts.reduce((sum, row) => sum + row.cycleSpend, 0);
+    const totalThreshold = threshold * Math.max(1, accounts.length);
+    res.json({
+      threshold,
+      spend: Math.round(totalSpend * 100) / 100,
+      cycleSpend: Math.round(totalCycleSpend * 100) / 100,
+      totalThreshold,
+      score: Math.min(99.9, Math.round((totalCycleSpend / totalThreshold) * 1000) / 10),
+      remaining: Math.round(Math.max(0, totalThreshold - totalCycleSpend) * 100) / 100,
+      thresholdReached: accounts.some(row => row.thresholdReached),
+      accounts,
+    });
+  } catch (err) {
+    console.error("[Amazon] GET /ads/threshold:", err);
+    res.status(500).json({ error: "Failed to calculate advertising threshold" });
+  }
+});
 
 // Re-export from ppc-extra.routes.ts for backwards compatibility
 // (sync.routes.ts and index.ts import _stSyncing and runSearchTermSync from here)

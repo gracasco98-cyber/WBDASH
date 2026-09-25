@@ -216,6 +216,13 @@ export const amazon = {
       totals: { spend: number; sales: number; clicks: number; impressions: number; orders: number; acos: number | null; roas: number | null; ctr: number | null; cpc: number | null };
     }>("/api/amazon/ads/daily", params),
 
+  adsThreshold: (params?: Record<string, string>) =>
+    get<{
+      threshold: number; spend: number; cycleSpend: number; totalThreshold: number; score: number;
+      remaining: number; thresholdReached: boolean;
+      accounts: Array<{ accountId: string; spend: number; threshold: number; score: number; remaining: number; lastChargeDate: string | null; lastChargeAmount: number; lastSpendDate: string | null; thresholdReached: boolean }>;
+    }>("/api/amazon/ads/threshold", params),
+
   triggerAdsSync: (days?: number) =>
     fetch(apiUrl("/api/amazon/sync/ads"), {
       method: "POST",
