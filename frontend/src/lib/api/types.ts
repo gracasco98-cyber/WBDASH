@@ -666,6 +666,36 @@ export interface AmazonPaymentForecast {
   note: string;
 }
 
+export interface AmazonPpcBillingCycle {
+  accountId: string;
+  accountName: string;
+  threshold: number;
+  accumulatedSpend: number;
+  progressPct: number;
+  remaining: number;
+  status: "accumulating" | "charge_expected";
+  averageDailySpend7d: number;
+  estimatedDaysToThreshold: number | null;
+  updatedThrough: string | null;
+  /** Spend of the charge day beyond the last invoice, carried into this cycle. */
+  carryOver: number;
+  lastCharge: {
+    invoiceId: string;
+    date: string;
+    /** Billed amount net of VAT. */
+    amount: number;
+    /** Amount deducted from the Amazon balance, VAT included. */
+    totalAmount: number;
+    source: "financial_events" | "settlement";
+  } | null;
+  daily: Array<{ date: string; spend: number; cumulative: number }>;
+}
+
+export interface AmazonPpcBillingCycleResponse {
+  threshold: number;
+  cycles: AmazonPpcBillingCycle[];
+}
+
 export interface AmazonSyncJob {
   id: string;
   jobType: string;

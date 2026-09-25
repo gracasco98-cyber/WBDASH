@@ -18,6 +18,7 @@ import type {
   AmazonPaymentForecast,
   AmazonUnreconciledResponse,
   AmazonAccountSummary,
+  AmazonPpcBillingCycleResponse,
 } from "./types";
 
 export const amazon = {
@@ -215,13 +216,6 @@ export const amazon = {
       totals: { spend: number; sales: number; clicks: number; impressions: number; orders: number; acos: number | null; roas: number | null; ctr: number | null; cpc: number | null };
     }>("/api/amazon/ads/daily", params),
 
-  adsThreshold: (params?: Record<string, string>) =>
-    get<{
-      threshold: number; spend: number; cycleSpend: number; totalThreshold: number; score: number;
-      remaining: number; thresholdReached: boolean;
-      accounts: Array<{ accountId: string; spend: number; threshold: number; score: number; remaining: number; lastChargeDate: string | null; lastChargeAmount: number; lastSpendDate: string | null; thresholdReached: boolean }>;
-    }>("/api/amazon/ads/threshold", params),
-
   triggerAdsSync: (days?: number) =>
     fetch(apiUrl("/api/amazon/sync/ads"), {
       method: "POST",
@@ -257,6 +251,9 @@ export const amazon = {
       summary: Array<{ marketplace: string; totalNet: number; totalGross: number; settlementCount: number }>;
       monthlyAdSpend: Array<{ month: string; spend: number }>;
     }>("/api/amazon/payments", params),
+
+  ppcBillingCycle: (params?: Record<string, string>) =>
+    get<AmazonPpcBillingCycleResponse>("/api/amazon/payments/ppc-cycle", params),
 
   settlementTransactions: (settlementId: string, params?: Record<string, string>) =>
     get<{

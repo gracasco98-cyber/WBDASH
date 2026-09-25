@@ -52,6 +52,8 @@ export type {
   AmazonForecastMarketplace,
   AmazonForecastAdditionalEU,
   AmazonPaymentForecast,
+  AmazonPpcBillingCycle,
+  AmazonPpcBillingCycleResponse,
   AmazonSyncJob,
   ProductPerformanceRow,
   ProductPerformanceGroup,
