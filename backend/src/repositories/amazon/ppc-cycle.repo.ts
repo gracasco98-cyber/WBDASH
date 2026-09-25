@@ -8,8 +8,12 @@ import { getCurrentAccountId, getCurrentAccountIds } from "../../context/account
 import { italyDateString } from "../../amazon/utils/datetime";
 import { summarizePpcCycle, type PpcCharge, type PpcCycleSummary } from "../../amazon/ppc-cycle";
 
-export const PPC_BILLING_THRESHOLD_EUR = 600;
-/** The €600 threshold invoice covers Amazon.it campaigns only. */
+/**
+ * Amazon charges the ads invoice at €500 + VAT. The threshold is net of VAT,
+ * like the Ads API spend it is compared with.
+ */
+export const PPC_BILLING_THRESHOLD_EUR = 500;
+/** The threshold invoice covers Amazon.it campaigns only. */
 export const PPC_BILLING_MARKETPLACE = "IT";
 /** How far back charges and spend are replayed through the ledger. */
 const LEDGER_LOOKBACK_DAYS = 90;
@@ -172,7 +176,7 @@ async function findItalySpendByDay(
 /**
  * One threshold cycle per account in scope. The latest real ads charge
  * (Finances events, or settlements until those are synced) starts the cycle;
- * reaching €600 alone never resets it.
+ * reaching the threshold alone never resets it.
  */
 export async function findPpcBillingCycles(
   prisma: PrismaClient,
