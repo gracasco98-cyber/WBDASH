@@ -1,7 +1,7 @@
 "use client";
 
 import type { AmazonPpcBillingCycle } from "@/lib/api";
-import { fmtEur } from "./MetricRow";
+import { fmtEur, fmtEurNoWrap as eur } from "./MetricRow";
 
 type Props = {
   cycle: AmazonPpcBillingCycle;
@@ -10,9 +10,8 @@ type Props = {
 const fmtShortDate = (date: string) =>
   new Date(`${date}T12:00:00`).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
 
-/** Non-breaking spaces keep "€ 600,00" and "18 set" on one line in narrow tiles. */
-const keepTogether = (text: string) => text.replace(/ /g, " ");
-const eur = (value: number) => keepTogether(fmtEur(value));
+/** A non-breaking space keeps "18 set" on one line in narrow tiles. */
+const keepTogether = (text: string) => text.replace(/ /g, "\u00A0");
 
 // Inline rgb(var(--…)) works with both the comma and the space-separated
 // form of the theme triplets, unlike Tailwind's `/ <alpha-value>` utilities.

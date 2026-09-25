@@ -3,6 +3,8 @@ import type { ProductPerformanceRow } from "@/lib/api";
 
 // ── Shared formatters ────────────────────────────────────────────────────────
 export const fmtEur = (n: number) => `€ ${n.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** fmtEur with a non-breaking space: narrow tiles must not split "€" from the amount. */
+export const fmtEurNoWrap = (n: number) => fmtEur(n).replace(" ", "\u00A0");
 export const fmtPct = (n: number) => `${(n * 100).toLocaleString("it-IT", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
 export const dash = (v: number | null, fmt: (n: number) => string) => (v === null ? "—" : fmt(v));
 
