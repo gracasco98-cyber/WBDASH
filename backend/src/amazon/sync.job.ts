@@ -7,7 +7,7 @@ import { parseTsv, ingestOrderRows, IngestStats } from "./ingest.service";
 import { runAmazonSnapshotJob, computeAllAmazonHistoricalSnapshots } from "./snapshot.service";
 import { syncSettlementReports } from "./settlement.service";
 import { syncAdsDaily, syncAdsBackfill, refreshLiveCampaignCache, syncKeywordMetrics, syncAdsCatchUp, syncAdvertisedProductDaily } from "./ads-sync.service";
-import { syncAdsIntraday } from "./ads-intraday.service";
+import { syncAdsCampaignIntraday, syncAdvertisedProductIntraday } from "./ads-intraday.service";
 import { syncAdsPaymentEvents } from "./ads-charges.service";
 import { reconcileForecastSnapshots, computeAndSaveForecasts } from "./forecast";
 import { broadcast } from "../sse/sse";
@@ -23,9 +23,11 @@ import { hasNACredentials } from "./token.service";
 export { syncAdsBackfill };
 
 export const ADS_INTRADAY_INTERVAL_MS = 10 * 60_000;
+export const ADS_PRODUCT_INTRADAY_INTERVAL_MS = 30 * 60_000;
 let adsIntradayCycleRunning = false;
+let adsProductIntradayCycleRunning = false;
 
-/** Update today's campaign and per-ASIN Ads metrics without overlapping slow reports. */
+/** Update today's campaign totals for Adspay without overlapping reports. */
 export async function runAdsIntradayCycle(): Promise<void> {
   if (adsIntradayCycleRunning) {
     console.log("[Amazon Sync] Ads intraday cycle still running — skipping overlapping tick");
@@ -35,10 +37,27 @@ export async function runAdsIntradayCycle(): Promise<void> {
   adsIntradayCycleRunning = true;
   try {
     await forEachActiveAccount("ads intraday sync", async () => {
-      await syncAdsIntraday();
+      await syncAdsCampaignIntraday();
     });
   } finally {
     adsIntradayCycleRunning = false;
+  }
+}
+
+/** Update slower per-ASIN Ads metrics without blocking the Adspay cycle. */
+export async function runAdsProductIntradayCycle(): Promise<void> {
+  if (adsProductIntradayCycleRunning) {
+    console.log("[Amazon Sync] Ads product intraday cycle still running — skipping overlapping tick");
+    return;
+  }
+
+  adsProductIntradayCycleRunning = true;
+  try {
+    await forEachActiveAccount("ads product intraday sync", async () => {
+      await syncAdvertisedProductIntraday();
+    });
+  } finally {
+    adsProductIntradayCycleRunning = false;
   }
 }
 
@@ -356,9 +375,9 @@ export function startAmazonSnapshotPolling(): void {
     forEachActiveAccount("ads campaign cache pre-warm", refreshLiveCampaignCache).catch(console.error);
   }, 10_000);
 
-  // ── Ads intraday metrics: every 10 minutes ───────────────────────────────
+  // ── Ads campaign totals for Adspay: every 10 minutes ────────────────────
   setInterval(() => {
-    console.log("[Amazon Sync] Running scheduled 10-min ads intraday sync...");
+    console.log("[Amazon Sync] Running scheduled 10-min Ads campaign sync...");
     runAdsIntradayCycle().catch(console.error);
   }, ADS_INTRADAY_INTERVAL_MS);
 
@@ -366,6 +385,18 @@ export function startAmazonSnapshotPolling(): void {
   setTimeout(() => {
     runAdsIntradayCycle().catch(console.error);
   }, 90_000);
+
+  // Per-ASIN reporting is slower and not needed by Adspay. Its independent
+  // cycle prevents a long product report from suppressing campaign refreshes.
+  setInterval(() => {
+    console.log("[Amazon Sync] Running scheduled 30-min Ads product sync...");
+    runAdsProductIntradayCycle().catch(console.error);
+  }, ADS_PRODUCT_INTRADAY_INTERVAL_MS);
+
+  // First per-ASIN refresh after the campaign counter has had time to run.
+  setTimeout(() => {
+    runAdsProductIntradayCycle().catch(console.error);
+  }, 5 * 60_000);
 
   // ── Previous-day Ads finalization: every 24h ─────────────────────────────
   setInterval(() => {

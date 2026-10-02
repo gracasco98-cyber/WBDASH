@@ -19,7 +19,11 @@ vi.mock("../../src/repositories/amazon/ad-spend.repo", () => ({
   upsertAdvertisedProductSnapshot: productUpsertMock,
 }));
 
-import { syncAdsIntraday } from "../../src/amazon/ads-intraday.service";
+import {
+  syncAdsCampaignIntraday,
+  syncAdsIntraday,
+  syncAdvertisedProductIntraday,
+} from "../../src/amazon/ads-intraday.service";
 
 describe("syncAdsIntraday", () => {
   beforeEach(() => {
@@ -65,16 +69,30 @@ describe("syncAdsIntraday", () => {
     expect(productReportMock).toHaveBeenCalledTimes(1);
   });
 
+  it("refreshes Adspay campaign totals without waiting for the per-ASIN report", async () => {
+    await syncAdsCampaignIntraday(new Date("2026-08-27T10:00:00Z"));
+
+    expect(campaignSyncMock).toHaveBeenCalledTimes(2);
+    expect(productReportMock).not.toHaveBeenCalled();
+    expect(productUpsertMock).not.toHaveBeenCalled();
+  });
+
+  it("refreshes per-ASIN metrics without starting another campaign report", async () => {
+    await syncAdvertisedProductIntraday(new Date("2026-08-27T10:00:00Z"));
+
+    expect(campaignSyncMock).not.toHaveBeenCalled();
+    expect(productReportMock).toHaveBeenCalledTimes(2);
+    expect(productUpsertMock).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps syncing remaining marketplaces when one profile's campaign sync fails", async () => {
     campaignSyncMock.mockRejectedValueOnce(new Error("Amazon report timed out"));
 
-    await syncAdsIntraday(new Date("2026-08-27T10:00:00Z"));
+    await syncAdsCampaignIntraday(new Date("2026-08-27T10:00:00Z"));
 
     expect(campaignSyncMock).toHaveBeenCalledTimes(2);
     expect(campaignSyncMock).toHaveBeenCalledWith("p-it", "IT", "2026-08-27", "2026-08-27");
     expect(campaignSyncMock).toHaveBeenCalledWith("p-de", "DE", "2026-08-27", "2026-08-27");
-    // The failed profile's per-ASIN report is skipped, but DE's still runs.
-    expect(productReportMock).toHaveBeenCalledTimes(1);
-    expect(productReportMock).toHaveBeenCalledWith("p-de", "2026-08-27", "2026-08-27");
+    expect(productReportMock).not.toHaveBeenCalled();
   });
 });
