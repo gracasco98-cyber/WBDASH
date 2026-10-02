@@ -26,6 +26,7 @@ export default function AdsThresholdCard() {
   const score = cycle?.progressPct ?? 0;
   const threshold = cycle?.threshold ?? 500;
   const reached = cycle?.status === "charge_expected";
+  const monthEndChargeExpected = cycle?.chargeReason === "month_end";
   const lastCharge = cycle?.lastCharge ?? null;
 
   return (
@@ -34,13 +35,13 @@ export default function AdsThresholdCard() {
         <div className="flex items-center gap-2">
           <Gauge size={16} className={reached ? "text-amber-400" : "text-purple-400"} />
           <div>
-            <p className="text-xs font-semibold text-zinc-200">Soglia Ads Amazon</p>
-            <p className="text-[10px] text-zinc-500">Spesa Ads Amazon.it dall’ultimo addebito reale della fattura</p>
+            <p className="text-xs font-semibold text-zinc-200">Ciclo addebito Ads Amazon</p>
+            <p className="text-[10px] text-zinc-500">Addebito al limite oppure alla chiusura del mese</p>
           </div>
         </div>
         <div className="text-right">
           <p className="text-lg font-bold tabular-nums text-zinc-100">€ {fmtCents(cycle?.accumulatedSpend ?? 0)}</p>
-          <p className="text-[10px] text-zinc-500">di € {threshold.toLocaleString("it-IT")} + IVA</p>
+          <p className="text-[10px] text-zinc-500">limite max € {threshold.toLocaleString("it-IT")} + IVA</p>
         </div>
       </div>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-bg-base">
@@ -48,7 +49,11 @@ export default function AdsThresholdCard() {
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] text-zinc-500">
         <span>Score {score.toFixed(1).replace(".", ",")}/100</span>
-        <span>{reached ? "Soglia raggiunta · addebito in attesa" : `Mancano € ${fmtCents(cycle?.remaining ?? threshold)}`}</span>
+        <span>{monthEndChargeExpected
+          ? "Chiusura mese · addebito in attesa"
+          : reached
+            ? "Limite raggiunto · addebito in attesa"
+            : `Mancano € ${fmtCents(cycle?.remaining ?? threshold)} al limite`}</span>
       </div>
       {lastCharge && (
         <p className="mt-1 text-[10px] text-zinc-500">

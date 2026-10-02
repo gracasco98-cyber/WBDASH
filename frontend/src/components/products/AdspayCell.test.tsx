@@ -12,6 +12,7 @@ const cycle = (overrides: Partial<AmazonPpcBillingCycle> = {}): AmazonPpcBilling
   progressPct: 82.6,
   remaining: 87.2,
   status: "accumulating",
+  chargeReason: null,
   averageDailySpend7d: 46.8,
   estimatedDaysToThreshold: 4,
   updatedThrough: "2026-09-25",
@@ -28,14 +29,14 @@ describe("AdspayCell", () => {
     expect(screen.getByRole("progressbar", { name: /adspay/i })).toHaveAttribute("aria-valuenow", "83");
     expect(screen.getByText("83")).toBeInTheDocument();
     expect(screen.getByText("€ 412,80")).toBeInTheDocument();
-    expect(screen.getByText("/ € 500,00 + IVA")).toBeInTheDocument();
+    expect(screen.getByText("/ max € 500,00 + IVA")).toBeInTheDocument();
   });
 
   it("shows the day of the last invoice charge and what is left to the threshold", () => {
     render(<AdspayCell cycle={cycle()} />);
 
     expect(screen.getByText("dal 18 set")).toBeInTheDocument();
-    expect(screen.getByText("mancano € 87,20")).toBeInTheDocument();
+    expect(screen.getByText("mancano € 87,20 al limite")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: /adspay/i }).closest("[title]"))
       .toHaveAttribute("title", expect.stringContaining("Ultimo addebito 18 set: € 500,37"));
   });
@@ -47,9 +48,16 @@ describe("AdspayCell", () => {
   });
 
   it("flags the expected charge once the threshold is reached", () => {
-    render(<AdspayCell cycle={cycle({ accumulatedSpend: 612, progressPct: 100, remaining: 0, status: "charge_expected" })} />);
+    render(<AdspayCell cycle={cycle({ accumulatedSpend: 612, progressPct: 100, remaining: 0, status: "charge_expected", chargeReason: "threshold" })} />);
 
     expect(screen.getByText("100")).toBeInTheDocument();
-    expect(screen.getByText("addebito in arrivo")).toBeInTheDocument();
+    expect(screen.getByText("limite raggiunto · addebito atteso")).toBeInTheDocument();
+  });
+
+  it("explains a month-end charge below the maximum limit", () => {
+    render(<AdspayCell cycle={cycle({ progressPct: 70, status: "charge_expected", chargeReason: "month_end" })} />);
+
+    expect(screen.getByText("70")).toBeInTheDocument();
+    expect(screen.getByText("fine mese · addebito atteso")).toBeInTheDocument();
   });
 });

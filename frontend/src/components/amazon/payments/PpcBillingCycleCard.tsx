@@ -37,6 +37,7 @@ export function PpcBillingCycleCard({
   const recentDays = useMemo(() => cycle?.daily.slice(-7) ?? [], [cycle]);
   const maxDailySpend = Math.max(...recentDays.map((day) => day.spend), 1);
   const progress = Math.max(0, Math.min(100, cycle?.progressPct ?? 0));
+  const monthEndChargeExpected = cycle?.chargeReason === "month_end";
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
@@ -49,12 +50,16 @@ export function PpcBillingCycleCard({
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-amber/15 text-accent-amber"><Gauge size={17} /></span>
           <div>
             <h2 className="font-semibold text-zinc-100">Ciclo addebito PPC Amazon</h2>
-            <p className="text-[11px] text-zinc-500">Spesa Ads Amazon.it dall’ultimo addebito reale della fattura</p>
+            <p className="text-[11px] text-zinc-500">Amazon addebita al limite oppure alla chiusura del mese</p>
           </div>
         </div>
         {cycle && (
           <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${cycle.status === "charge_expected" ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-accent-amber/30 bg-bg-card text-accent-amber"}`}>
-            {cycle.status === "charge_expected" ? "100% · addebito atteso" : "In accumulo"}
+            {monthEndChargeExpected
+              ? `${Math.round(progress)}% · chiusura mese`
+              : cycle.status === "charge_expected"
+                ? "100% · limite raggiunto"
+                : "In accumulo"}
           </span>
         )}
       </div>
@@ -83,7 +88,7 @@ export function PpcBillingCycleCard({
                   <span className="text-[9px] uppercase text-zinc-500">del ciclo</span>
                 </div>
               </div>
-              <div><div className="text-[10px] uppercase tracking-wider text-zinc-500">Accumulato</div><div className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtEur(cycle.accumulatedSpend)}</div><div className="mt-1 text-xs text-zinc-500">su soglia {fmtEur(cycle.threshold)} + IVA</div>{cycle.carryOver > 0 && <div className="mt-0.5 text-[10px] text-zinc-500">di cui {fmtEur(cycle.carryOver)} dal giorno dell’addebito</div>}</div>
+              <div><div className="text-[10px] uppercase tracking-wider text-zinc-500">Accumulato</div><div className="mt-1 text-2xl font-bold tabular-nums text-zinc-100">{fmtEur(cycle.accumulatedSpend)}</div><div className="mt-1 text-xs text-zinc-500">su limite max {fmtEur(cycle.threshold)} + IVA</div>{cycle.carryOver > 0 && <div className="mt-0.5 text-[10px] text-zinc-500">di cui {fmtEur(cycle.carryOver)} dal giorno dell’addebito</div>}</div>
             </div>
 
             <div>
@@ -100,7 +105,7 @@ export function PpcBillingCycleCard({
             </div>
 
             <div className="space-y-2">
-              <div className="rounded-xl border border-accent-amber/25 bg-accent-amber/10 p-3"><div className="text-[10px] uppercase text-accent-amber">Manca alla soglia</div><div className="mt-1 text-xl font-bold tabular-nums text-accent-amber">{fmtEur(cycle.remaining)}</div><div className="mt-1 text-[10px] text-zinc-500">{cycle.estimatedDaysToThreshold == null ? "Ritmo non ancora stimabile" : `≈ ${cycle.estimatedDaysToThreshold} gg al ritmo attuale`}</div></div>
+              <div className="rounded-xl border border-accent-amber/25 bg-accent-amber/10 p-3"><div className="text-[10px] uppercase text-accent-amber">{monthEndChargeExpected ? "Addebito mensile" : "Manca al limite massimo"}</div><div className="mt-1 text-xl font-bold tabular-nums text-accent-amber">{monthEndChargeExpected ? "In elaborazione" : fmtEur(cycle.remaining)}</div><div className="mt-1 text-[10px] text-zinc-500">{monthEndChargeExpected ? "Il saldo del mese precedente può essere addebitato sotto € 500" : cycle.estimatedDaysToThreshold == null ? "Ritmo non ancora stimabile" : `≈ ${cycle.estimatedDaysToThreshold} gg al ritmo attuale`}</div></div>
               <div className="rounded-xl bg-bg-base p-3"><div className="flex justify-between text-[10px] text-zinc-500"><span>Ultimo addebito reale</span><strong className="text-zinc-300">{cycle.lastCharge ? fmtDate(cycle.lastCharge.date) : "Non rilevato"}</strong></div>{cycle.lastCharge && (
                   <>
                     <div className="mt-1 flex justify-between text-[11px]"><span className="text-zinc-500">Imponibile fattura</span><strong className="tabular-nums text-zinc-200">{fmtEurCents(cycle.lastCharge.amount)}</strong></div>
