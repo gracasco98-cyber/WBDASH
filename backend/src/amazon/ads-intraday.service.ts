@@ -11,25 +11,41 @@ import { filterScheduledAdsProfiles } from "./ads-profile-filter";
 import { syncMarketplaceDateRange } from "./ads-sync.service";
 import { italyDateString } from "./utils/datetime";
 
-/** Refresh today's campaign and per-ASIN metrics for scheduled marketplaces. */
-export async function syncAdsIntraday(now = new Date()): Promise<void> {
+/** Refresh today's campaign totals used by Adspay. Kept independent from the
+ * slower per-ASIN report so that product reporting cannot stall the billing
+ * counter's 10-minute refresh cycle. */
+export async function syncAdsCampaignIntraday(now = new Date()): Promise<void> {
   if (!(await isAdsConfigured())) {
-    console.log("[Ads Sync] Advertising API not configured — skipping intraday sync");
+    console.log("[Ads Sync] Advertising API not configured — skipping campaign intraday sync");
     return;
   }
 
   const date = italyDateString(now);
   const profiles = filterScheduledAdsProfiles(await getConfiguredProfiles());
-  console.log(`[Ads Sync] Intraday sync for ${date} — ${profiles.length} marketplaces`);
+  console.log(`[Ads Sync] Campaign intraday sync for ${date} — ${profiles.length} marketplaces`);
 
   for (const profile of profiles) {
     try {
       await syncMarketplaceDateRange(profile.profileId, profile.marketplace, date, date);
     } catch (err) {
       console.error(`[Ads Sync] ${profile.marketplace} campaign intraday failed:`, err);
-      continue;
     }
+  }
+  console.log("[Ads Sync] Campaign intraday sync complete");
+}
 
+/** Refresh today's slower per-ASIN metrics on their own schedule. */
+export async function syncAdvertisedProductIntraday(now = new Date()): Promise<void> {
+  if (!(await isAdsConfigured())) {
+    console.log("[Ads Sync] Advertising API not configured — skipping advertised-product intraday sync");
+    return;
+  }
+
+  const date = italyDateString(now);
+  const profiles = filterScheduledAdsProfiles(await getConfiguredProfiles());
+  console.log(`[Ads Sync] Advertised-product intraday sync for ${date} — ${profiles.length} marketplaces`);
+
+  for (const profile of profiles) {
     try {
       const rows = await fetchSPAdvertisedProductReport(profile.profileId, date, date);
       for (const row of rows) {
@@ -51,5 +67,11 @@ export async function syncAdsIntraday(now = new Date()): Promise<void> {
       console.error(`[Ads Sync] ${profile.marketplace} advertised-product intraday failed:`, err);
     }
   }
-  console.log("[Ads Sync] Intraday sync complete");
+  console.log("[Ads Sync] Advertised-product intraday sync complete");
+}
+
+/** Full refresh retained for explicit/manual callers and focused tests. */
+export async function syncAdsIntraday(now = new Date()): Promise<void> {
+  await syncAdsCampaignIntraday(now);
+  await syncAdvertisedProductIntraday(now);
 }

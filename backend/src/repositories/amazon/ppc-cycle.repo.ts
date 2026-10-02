@@ -204,6 +204,7 @@ export async function findPpcBillingCycles(
       spend: spend.filter((day) => day.accountId === accountId),
       charges,
       threshold: PPC_BILLING_THRESHOLD_EUR,
+      asOfDate: italyDateString(now),
     });
 
     return {

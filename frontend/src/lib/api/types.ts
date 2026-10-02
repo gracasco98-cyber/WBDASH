@@ -674,6 +674,7 @@ export interface AmazonPpcBillingCycle {
   progressPct: number;
   remaining: number;
   status: "accumulating" | "charge_expected";
+  chargeReason: "threshold" | "month_end" | null;
   averageDailySpend7d: number;
   estimatedDaysToThreshold: number | null;
   updatedThrough: string | null;

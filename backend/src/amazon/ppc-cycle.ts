@@ -98,6 +98,7 @@ export interface PpcCycleSummary extends Omit<PpcCycleLedger, "cycleDays"> {
   progressPct: number;
   remaining: number;
   status: "accumulating" | "charge_expected";
+  chargeReason: "threshold" | "month_end" | null;
   averageDailySpend7d: number;
   estimatedDaysToThreshold: number | null;
   updatedThrough: string | null;
@@ -128,12 +129,27 @@ export function summarizePpcCycle(input: {
   spend: PpcSpendDay[];
   charges: PpcCharge[];
   threshold: number;
+  /** Italian civil date used to detect an unbilled previous calendar month. */
+  asOfDate: string;
 }): PpcCycleSummary {
   const spend = [...input.spend].sort((a, b) => a.date.localeCompare(b.date));
   const { cycleDays, ...ledger } = computePpcCycle({ spend, charges: input.charges });
   const { threshold } = input;
   const remaining = round2(Math.max(0, threshold - ledger.accumulatedSpend));
   const averageDailySpend7d = averageDailySpend(spend);
+  const currentMonthStart = `${input.asOfDate.slice(0, 7)}-01`;
+  const hasUnbilledPreviousMonthSpend = cycleDays.some(
+    (day) => day.date < currentMonthStart && day.spend > 0,
+  ) || (
+    ledger.carryOver > 0
+    && ledger.lastCharge !== null
+    && ledger.lastCharge.date < currentMonthStart
+  );
+  const chargeReason = ledger.accumulatedSpend >= threshold
+    ? "threshold"
+    : hasUnbilledPreviousMonthSpend
+      ? "month_end"
+      : null;
 
   let cumulative = ledger.carryOver;
   const daily = cycleDays.map((day) => {
@@ -146,7 +162,8 @@ export function summarizePpcCycle(input: {
     threshold,
     progressPct: round1(Math.min(100, (ledger.accumulatedSpend / threshold) * 100)),
     remaining,
-    status: ledger.accumulatedSpend >= threshold ? "charge_expected" : "accumulating",
+    status: chargeReason ? "charge_expected" : "accumulating",
+    chargeReason,
     averageDailySpend7d,
     estimatedDaysToThreshold: remaining > 0 && averageDailySpend7d > 0
       ? Math.ceil(remaining / averageDailySpend7d)

@@ -113,6 +113,7 @@ describe("findPpcBillingCycles", () => {
     expect(cycle.progressPct).toBe(90);
     expect(cycle.remaining).toBe(50);
     expect(cycle.status).toBe("accumulating");
+    expect(cycle.chargeReason).toBeNull();
   });
 
   it("uses the Italian calendar day of the charge", async () => {
@@ -192,6 +193,23 @@ describe("findPpcBillingCycles", () => {
     expect(cycle.progressPct).toBe(100);
     expect(cycle.remaining).toBe(0);
     expect(cycle.status).toBe("charge_expected");
+    expect(cycle.chargeReason).toBe("threshold");
+  });
+
+  it("expects a month-end charge for an unbilled balance below the threshold", async () => {
+    await addSpend("2026-09-29", 200);
+    await addSpend("2026-09-30", 150);
+
+    const cycles = await runWithAccount(accountId, () =>
+      findPpcBillingCycles(db.prisma, new Date("2026-10-02T12:00:00Z")),
+    );
+
+    expect(cycles[0]).toMatchObject({
+      accumulatedSpend: 350,
+      progressPct: 70,
+      status: "charge_expected",
+      chargeReason: "month_end",
+    });
   });
 
   it("keeps independent cycles for every selected Amazon account", async () => {

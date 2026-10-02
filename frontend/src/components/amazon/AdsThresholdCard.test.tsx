@@ -17,6 +17,7 @@ const cycle = (overrides: Partial<AmazonPpcBillingCycle> = {}): AmazonPpcBilling
   progressPct: 82.6,
   remaining: 87.2,
   status: "accumulating",
+  chargeReason: null,
   averageDailySpend7d: 46.8,
   estimatedDaysToThreshold: 4,
   updatedThrough: "2026-09-25",
@@ -34,20 +35,30 @@ describe("AdsThresholdCard", () => {
 
     expect(await screen.findByText("€ 412,80")).toBeInTheDocument();
     expect(ppcBillingCycleMock).toHaveBeenCalledWith({ amazonAccountId: "ALL" });
-    expect(screen.getByText("di € 500 + IVA")).toBeInTheDocument();
+    expect(screen.getByText("limite max € 500 + IVA")).toBeInTheDocument();
     expect(screen.getByText("Score 82,6/100")).toBeInTheDocument();
-    expect(screen.getByText("Mancano € 87,20")).toBeInTheDocument();
+    expect(screen.getByText("Mancano € 87,20 al limite")).toBeInTheDocument();
     expect(screen.getByText("Ultimo addebito 18 set · € 500,37 + IVA")).toBeInTheDocument();
   });
 
   it("flags the expected charge once the threshold is reached", async () => {
     ppcBillingCycleMock.mockResolvedValue({
       threshold: 500,
-      cycles: [cycle({ accumulatedSpend: 612, progressPct: 100, remaining: 0, status: "charge_expected" })],
+      cycles: [cycle({ accumulatedSpend: 612, progressPct: 100, remaining: 0, status: "charge_expected", chargeReason: "threshold" })],
     });
     render(<AdsThresholdCard />);
 
-    expect(await screen.findByText("Soglia raggiunta · addebito in attesa")).toBeInTheDocument();
+    expect(await screen.findByText("Limite raggiunto · addebito in attesa")).toBeInTheDocument();
+  });
+
+  it("explains a month-end charge below the maximum limit", async () => {
+    ppcBillingCycleMock.mockResolvedValue({
+      threshold: 500,
+      cycles: [cycle({ progressPct: 70, status: "charge_expected", chargeReason: "month_end" })],
+    });
+    render(<AdsThresholdCard />);
+
+    expect(await screen.findByText("Chiusura mese · addebito in attesa")).toBeInTheDocument();
   });
 
   it("tells the user when the threshold data cannot be loaded", async () => {

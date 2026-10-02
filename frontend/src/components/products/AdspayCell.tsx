@@ -27,12 +27,14 @@ export default function AdspayCell({ cycle }: Props) {
   const progress = Math.max(0, Math.min(100, cycle.progressPct));
   const score = Math.round(progress);
   const chargeExpected = cycle.status === "charge_expected";
+  const monthEndChargeExpected = cycle.chargeReason === "month_end";
   const lastCharge = cycle.lastCharge;
   const tooltip = [
     `Score ${score}/100 · ${fmtEur(cycle.accumulatedSpend)} spesi da${lastCharge ? "ll’ultimo addebito" : " inizio dati"}`,
     lastCharge
       ? `Ultimo addebito ${fmtShortDate(lastCharge.date)}: ${fmtEur(lastCharge.amount)} + IVA (${fmtEur(lastCharge.totalAmount)} scalati)`
       : "Nessun addebito Ads rilevato",
+    "Amazon addebita al limite oppure alla chiusura del mese.",
   ].join("\n");
 
   return (
@@ -45,7 +47,7 @@ export default function AdspayCell({ cycle }: Props) {
       </div>
       <div className="flex flex-wrap items-baseline gap-x-1 tabular-nums">
         <span className="text-[11px] font-semibold text-zinc-300">{eur(cycle.accumulatedSpend)}</span>
-        <span className="text-[9px] text-zinc-500">/ {eur(cycle.threshold)}{" +\u00A0IVA"}</span>
+        <span className="text-[9px] text-zinc-500">/ max {eur(cycle.threshold)}{" +\u00A0IVA"}</span>
       </div>
       <div
         role="progressbar"
@@ -62,7 +64,11 @@ export default function AdspayCell({ cycle }: Props) {
       </div>
       <div className="mt-1 flex flex-wrap justify-between gap-x-2 text-[9px] text-zinc-500">
         <span>{lastCharge ? `dal ${keepTogether(fmtShortDate(lastCharge.date))}` : "nessun addebito rilevato"}</span>
-        <span>{chargeExpected ? "addebito in arrivo" : `mancano ${eur(cycle.remaining)}`}</span>
+        <span>{monthEndChargeExpected
+          ? "fine mese · addebito atteso"
+          : chargeExpected
+            ? "limite raggiunto · addebito atteso"
+            : `mancano ${eur(cycle.remaining)} al limite`}</span>
       </div>
     </div>
   );

@@ -47,7 +47,7 @@ const mockPpcBillingCycle = vi.fn(async (_params: unknown) => ({
   cycles: [{
     accountId: "acc-1", accountName: "Amazon EU", threshold: 500,
     accumulatedSpend: 412.8, carryOver: 0, progressPct: 82.6, remaining: 87.2,
-    status: "accumulating" as const, averageDailySpend7d: 46.8,
+    status: "accumulating" as const, chargeReason: null, averageDailySpend7d: 46.8,
     estimatedDaysToThreshold: 4, updatedThrough: "2026-09-24",
     lastCharge: { invoiceId: "IT-INV-1", date: "2026-09-18", amount: 500, totalAmount: 610, source: "financial_events" as const },
     daily: [{ date: "2026-09-24", spend: 48.2, cumulative: 412.8 }],
@@ -116,7 +116,7 @@ describe("PeriodTiles", () => {
     const adspay = await screen.findByRole("progressbar", { name: /adspay/i });
     expect(adspay).toHaveAttribute("aria-valuenow", "83");
     expect(screen.getByText("dal 18 set")).toBeInTheDocument();
-    expect(screen.getByText("mancano € 87,20")).toBeInTheDocument();
+    expect(screen.getByText("mancano € 87,20 al limite")).toBeInTheDocument();
     expect(screen.getAllByRole("progressbar", { name: /adspay/i })).toHaveLength(1);
   });
 

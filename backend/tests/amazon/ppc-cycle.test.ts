@@ -100,6 +100,7 @@ describe("summarizePpcCycle", () => {
       spend: spendDays([["2026-09-19", 100], ["2026-09-20", 200]]),
       charges: [charge("2026-09-18", 600)],
       threshold: 600,
+      asOfDate: "2026-09-20",
     });
 
     expect(summary).toMatchObject({
@@ -107,6 +108,7 @@ describe("summarizePpcCycle", () => {
       progressPct: 50,
       remaining: 300,
       status: "accumulating",
+      chargeReason: null,
       updatedThrough: "2026-09-20",
     });
   });
@@ -116,11 +118,13 @@ describe("summarizePpcCycle", () => {
       spend: spendDays([["2026-09-20", 650]]),
       charges: [],
       threshold: 600,
+      asOfDate: "2026-09-20",
     });
 
     expect(summary.progressPct).toBe(100);
     expect(summary.remaining).toBe(0);
     expect(summary.status).toBe("charge_expected");
+    expect(summary.chargeReason).toBe("threshold");
     expect(summary.estimatedDaysToThreshold).toBeNull();
   });
 
@@ -133,6 +137,7 @@ describe("summarizePpcCycle", () => {
       ]),
       charges: [charge("2026-09-15", 600)],
       threshold: 600,
+      asOfDate: "2026-09-18",
     });
 
     expect(summary.accumulatedSpend).toBe(120);
@@ -145,6 +150,7 @@ describe("summarizePpcCycle", () => {
       spend: spendDays([["2026-09-02", 300], ["2026-09-10", 350], ["2026-09-11", 30], ["2026-09-12", 20]]),
       charges: [charge("2026-09-01", 600), charge("2026-09-10", 600)],
       threshold: 600,
+      asOfDate: "2026-09-12",
     });
 
     expect(summary.carryOver).toBe(50);
@@ -152,5 +158,32 @@ describe("summarizePpcCycle", () => {
       { date: "2026-09-11", spend: 30, cumulative: 80 },
       { date: "2026-09-12", spend: 20, cumulative: 100 },
     ]);
+  });
+
+  it("flags the previous month's balance even when it is below the threshold", () => {
+    const summary = summarizePpcCycle({
+      spend: spendDays([["2026-09-29", 200], ["2026-09-30", 150], ["2026-10-01", 20]]),
+      charges: [charge("2026-09-18", 500)],
+      threshold: 500,
+      asOfDate: "2026-10-02",
+    });
+
+    expect(summary.progressPct).toBe(74);
+    expect(summary.remaining).toBe(130);
+    expect(summary.status).toBe("charge_expected");
+    expect(summary.chargeReason).toBe("month_end");
+  });
+
+  it("returns to accumulation after the month-end charge is observed", () => {
+    const summary = summarizePpcCycle({
+      spend: spendDays([["2026-09-29", 200], ["2026-09-30", 150], ["2026-10-01", 20]]),
+      charges: [charge("2026-09-18", 500), charge("2026-10-01", 350)],
+      threshold: 500,
+      asOfDate: "2026-10-02",
+    });
+
+    expect(summary.accumulatedSpend).toBe(20);
+    expect(summary.status).toBe("accumulating");
+    expect(summary.chargeReason).toBeNull();
   });
 });
