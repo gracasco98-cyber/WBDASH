@@ -5,11 +5,14 @@ import { promisify } from "util";
 import {
   EU_ENDPOINT,
   NA_ENDPOINT,
+  MARKETPLACE_IDS,
   ORDER_REPORT_TYPE,
   REPORT_POLL_INTERVAL_MS,
   REPORT_MAX_POLLS,
 } from "./config";
 import { getSpApiToken, getSpApiTokenNA, invalidateTokens } from "./token.service";
+import { getCurrentAccountId } from "../context/account-context";
+import { italyDateString, italyOffsetHours } from "./utils/datetime";
 
 const gunzip = promisify(zlib.gunzip);
 
@@ -183,6 +186,69 @@ export async function fetchOrderReport(
   const reportId = await requestOrderReport(marketplaceIds, dateFrom, dateTo, region);
   const docId    = await pollReport(reportId, region);
   return downloadReport(docId, region);
+}
+
+// ── Sales API live metrics ────────────────────────────────────────────────────
+
+export interface LiveOrderMetric {
+  marketplace: string;
+  totalSales: number;
+  orderCount: number;
+  orderItemCount: number;
+  unitCount: number;
+  currencyCode: string;
+}
+
+const LIVE_SALES_MARKETPLACES = ["IT", "DE", "FR", "ES", "PL", "UK"] as const;
+const LIVE_SALES_CACHE_MS = 60_000;
+const liveSalesCache = new Map<string, { expiresAt: number; value: LiveOrderMetric }>();
+const liveSalesRequests = new Map<string, Promise<LiveOrderMetric>>();
+
+function italyOffsetString(): string {
+  return `+${String(italyOffsetHours()).padStart(2, "0")}:00`;
+}
+
+async function fetchTodayMetric(marketplace: typeof LIVE_SALES_MARKETPLACES[number]): Promise<LiveOrderMetric> {
+  const today = italyDateString(new Date());
+  const cacheKey = `${getCurrentAccountId()}:${today}:${marketplace}`;
+  const cached = liveSalesCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const pending = liveSalesRequests.get(cacheKey);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const offset = italyOffsetString();
+    const params = new URLSearchParams({
+      marketplaceIds: MARKETPLACE_IDS[marketplace],
+      interval: `${today}T00:00:00${offset}--${today}T23:59:59${offset}`,
+      granularity: "Total",
+    });
+    const json = await spRequest("GET", `/sales/v1/orderMetrics?${params}`);
+    const metric = json?.payload?.[0];
+    const value: LiveOrderMetric = {
+      marketplace,
+      totalSales: Number(metric?.totalSales?.amount ?? 0),
+      orderCount: Number(metric?.orderCount ?? 0),
+      orderItemCount: Number(metric?.orderItemCount ?? 0),
+      unitCount: Number(metric?.unitCount ?? 0),
+      currencyCode: String(metric?.totalSales?.currencyCode ?? "EUR"),
+    };
+    liveSalesCache.set(cacheKey, { expiresAt: Date.now() + LIVE_SALES_CACHE_MS, value });
+    return value;
+  })().finally(() => liveSalesRequests.delete(cacheKey));
+
+  liveSalesRequests.set(cacheKey, request);
+  return request;
+}
+
+/** Accurate near-real-time sales totals, including pending Amazon orders. */
+export async function fetchTodayOrderMetrics(marketplace?: string): Promise<Record<string, LiveOrderMetric>> {
+  const marketplaces = marketplace && marketplace !== "all"
+    ? LIVE_SALES_MARKETPLACES.filter((code) => code === marketplace)
+    : [...LIVE_SALES_MARKETPLACES];
+  const metrics = await Promise.all(marketplaces.map(fetchTodayMetric));
+  return Object.fromEntries(metrics.map((metric) => [metric.marketplace, metric]));
 }
 
 // ── FBA Inventory API ──────────────────────────────────────────────────────────
