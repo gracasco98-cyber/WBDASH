@@ -6,8 +6,8 @@ WORKDIR /app
 ARG NEXT_PUBLIC_API_URL=http://192.168.1.43:3001
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 RUN npm run build
