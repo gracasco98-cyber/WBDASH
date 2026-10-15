@@ -68,6 +68,42 @@ export async function countAmazonOrders(
   return prisma.amazonOrder.count({ where });
 }
 
+export interface AmazonOrderSummaryRow {
+  marketplace: string;
+  orderCount: number;
+  unitsSold: number;
+  grossRevenue: number;
+}
+
+/** Aggregate valid Amazon orders by marketplace for a bounded purchase window. */
+export async function summarizeAmazonOrdersByMarketplace(
+  prisma: PrismaClient,
+  params: { from: Date; to: Date; marketplace?: string }
+): Promise<AmazonOrderSummaryRow[]> {
+  const accountId = getCurrentAccountId();
+  const marketplaceFilter = params.marketplace
+    ? Prisma.sql`AND o.marketplace = ${params.marketplace}`
+    : Prisma.empty;
+  return prisma.$queryRaw<AmazonOrderSummaryRow[]>`
+    SELECT
+      o.marketplace,
+      COUNT(DISTINCT o."amazonOrderId")::INTEGER AS "orderCount",
+      COALESCE(SUM(i."quantityOrdered"), 0)::INTEGER AS "unitsSold",
+      COALESCE(SUM(i."itemPrice"), 0)::FLOAT8 AS "grossRevenue"
+    FROM "AmazonOrder" o
+    LEFT JOIN "AmazonOrderItem" i
+      ON i."amazonAccountId" = o."amazonAccountId"
+      AND i."amazonOrderId" = o."amazonOrderId"
+    WHERE o."purchaseDate" >= ${params.from}
+      AND o."purchaseDate" <= ${params.to}
+      AND o."orderStatus" NOT IN ('Canceled', 'Cancelled')
+      AND o."salesChannel" != 'Non-Amazon'
+      AND o."amazonAccountId" = ${accountId}
+      ${marketplaceFilter}
+    GROUP BY o.marketplace
+  `;
+}
+
 /**
  * Count all AmazonOrder rows (no filter). Used for DB stats / verification.
  */

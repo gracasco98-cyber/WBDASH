@@ -4,9 +4,11 @@ import { prisma } from "../../db";
 import {
   countAmazonOrders,
   findAmazonOrdersWithItems,
+  summarizeAmazonOrdersByMarketplace,
 } from "../../repositories/amazon/orders.repo";
 import { italyOffsetMs, italyDayStart, getDateRange } from "../utils/datetime";
 import { getCurrentAccountId } from "../../context/account-context";
+import { fetchTodayOrderMetrics } from "../sp-api.service";
 
 export const ordersRouter = Router();
 
@@ -240,6 +242,51 @@ ordersRouter.get("/summary", async (req: Request, res: Response) => {
       totalUnits   += units;
     }
 
+    // Reports can remain queued for hours. For any range containing today,
+    // replace only today's DB slice with Sales API metrics, which include
+    // pending orders and are available near real time. Historical days remain
+    // sourced from the item-level reports.
+    const todayStart = italyDayStart(new Date());
+    const todayEnd = new Date(todayStart.getTime() + 86400000 - 1);
+    let liveSalesUpdatedAt: string | null = null;
+    if (dateFrom <= todayEnd && dateTo >= todayStart) {
+      try {
+        const todayRows = await summarizeAmazonOrdersByMarketplace(prisma, {
+          from: todayStart,
+          to: todayEnd,
+          marketplace: marketplace && marketplace !== "all" ? marketplace : undefined,
+        });
+        const dbToday = new Map(todayRows.map((row) => [row.marketplace, {
+          revenue: Number(row.grossRevenue),
+          orders: Number(row.orderCount),
+          units: Number(row.unitsSold),
+        }]));
+        const liveToday = await fetchTodayOrderMetrics(
+          marketplace && marketplace !== "all" ? marketplace : undefined
+        );
+
+        for (const [mp, live] of Object.entries(liveToday)) {
+          const current = byMarketplace[mp] ?? { revenue: 0, orders: 0, units: 0 };
+          const stale = dbToday.get(mp) ?? { revenue: 0, orders: 0, units: 0 };
+          const adjusted = {
+            revenue: current.revenue - stale.revenue + live.totalSales,
+            orders: current.orders - stale.orders + live.orderCount,
+            units: current.units - stale.units + live.unitCount,
+          };
+          if (adjusted.revenue || adjusted.orders || adjusted.units || byMarketplace[mp]) {
+            byMarketplace[mp] = adjusted;
+          }
+        }
+
+        totalRevenue = Object.values(byMarketplace).reduce((sum, row) => sum + row.revenue, 0);
+        totalOrders = Object.values(byMarketplace).reduce((sum, row) => sum + row.orders, 0);
+        totalUnits = Object.values(byMarketplace).reduce((sum, row) => sum + row.units, 0);
+        liveSalesUpdatedAt = new Date().toISOString();
+      } catch (err) {
+        console.warn("[Amazon Sales] Live metrics unavailable, using report data:", err);
+      }
+    }
+
     // PPC totals from AmazonAdSnapshot
     const _summaryItz = italyOffsetMs();
     const _adFrom = new Date(dateFrom.getTime() + _summaryItz).toISOString().split("T")[0];
@@ -281,6 +328,7 @@ ordersRouter.get("/summary", async (req: Request, res: Response) => {
       acos: Math.round(acos * 100) / 100,
       estimatedPayout,
       byMarketplace,
+      liveSalesUpdatedAt,
     });
   } catch (err) {
     console.error("[Amazon] GET /summary:", err);
