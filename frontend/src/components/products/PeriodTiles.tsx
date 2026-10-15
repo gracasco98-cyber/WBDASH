@@ -477,16 +477,39 @@ export default function PeriodTiles() {
                 amazonAccountId,
               }),
               typeof api.amazon?.summary === "function"
-                ? api.amazon.summary({ filter: "custom", from, to })
+                ? api.amazon.summary({
+                    filter: "custom",
+                    from,
+                    to,
+                    amazonAccountId,
+                    ...(productMarketplace !== "all"
+                      ? { marketplace: productMarketplace }
+                      : {}),
+                  }).catch(() => null)
                 : Promise.resolve(null),
             ]);
             const aggregate = sumAggregate(performance.groups.map((g) => g.aggregate));
-            // Refunds are financial events and may not be attached to an active
-            // ASIN/product row yet. Prefer the Amazon financial aggregate for
-            // the card, while retaining the product-performance fallback.
+            // Product rows depend on the asynchronous orders report, while the
+            // summary replaces today's stale report slice with Amazon's live
+            // Sales API total. Use that authoritative aggregate for the card's
+            // revenue and units; product-attributed costs/profit remain on the
+            // report-backed rows until Amazon delivers their ASIN detail.
+            // Refunds are financial events and may likewise not be attached to
+            // an active ASIN/product row yet.
             if (aggregate && financial) {
+              aggregate.sales = financial.totalRevenue;
+              aggregate.units = financial.unitsSold;
               aggregate.refundsAmount = Math.max(aggregate.refundsAmount, financial.refunds ?? 0);
               aggregate.refundsCount = Math.max(aggregate.refundsCount, financial.refundCount ?? 0);
+              aggregate.avgSellingPrice = aggregate.units > 0
+                ? aggregate.sales / aggregate.units
+                : 0;
+              aggregate.realAcos = aggregate.adsSpend !== null && aggregate.sales > 0
+                ? aggregate.adsSpend / aggregate.sales
+                : null;
+              aggregate.margin = aggregate.sales > 0
+                ? aggregate.netProfit / aggregate.sales
+                : 0;
             }
             return [id, aggregate] as const;
           }),
