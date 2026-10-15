@@ -42,6 +42,18 @@ const mockProducts = vi.fn(async (_params: unknown): Promise<{
   kpis: { totalGross: 40, totalNet: 35, totalAdSpend: 99, redcareAdSpend: 6 },
 }));
 const mockTimeseries = vi.fn(async (_params: unknown) => [] as { time: string; revenue: number; count: number }[]);
+const mockAmazonSummary = vi.fn(async (_params: unknown) => ({
+  totalRevenue: 100,
+  netRevenue: 100,
+  orderCount: 4,
+  unitsSold: 5,
+  refunds: 0,
+  refundCount: 0,
+  adSpend: 5,
+  acos: 5,
+  estimatedPayout: 100,
+  byMarketplace: {},
+}));
 const mockPpcBillingCycle = vi.fn(async (_params: unknown) => ({
   threshold: 500,
   cycles: [{
@@ -59,6 +71,7 @@ vi.mock("@/lib/api", () => ({
     productPerformance: { get: (params: unknown) => mockGet(params) },
     products: (params: unknown) => mockProducts(params),
     amazon: {
+      summary: (params: unknown) => mockAmazonSummary(params),
       timeseries: (params: unknown) => mockTimeseries(params),
       ppcBillingCycle: (params: unknown) => mockPpcBillingCycle(params),
     },
@@ -67,7 +80,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("PeriodTiles", () => {
-  beforeEach(() => { mockGet.mockClear(); mockProducts.mockClear(); mockRedcareList.mockClear(); mockRedcareList.mockRejectedValue(new Error("not configured")); mockTimeseries.mockClear(); mockTimeseries.mockResolvedValue([]); mockPpcBillingCycle.mockClear(); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; mockCompareMode = "none"; });
+  beforeEach(() => { mockGet.mockClear(); mockProducts.mockClear(); mockAmazonSummary.mockClear(); mockAmazonSummary.mockResolvedValue({ totalRevenue: 100, netRevenue: 100, orderCount: 4, unitsSold: 5, refunds: 0, refundCount: 0, adSpend: 5, acos: 5, estimatedPayout: 100, byMarketplace: {} }); mockRedcareList.mockClear(); mockRedcareList.mockRejectedValue(new Error("not configured")); mockTimeseries.mockClear(); mockTimeseries.mockResolvedValue([]); mockPpcBillingCycle.mockClear(); setPreset.mockClear(); mockMarketplace = "all"; mockSelectedAccountId = null; mockCompareMode = "none"; });
 
   it("fetches 5 fixed presets independently of the active period", async () => {
     render(<PeriodTiles />);
@@ -108,7 +121,22 @@ describe("PeriodTiles", () => {
     for (const [params] of mockGet.mock.calls as [any][]) {
       expect(params.amazonAccountId).toBe("ALL");
     }
+    for (const [params] of mockAmazonSummary.mock.calls as [any][]) {
+      expect(params.amazonAccountId).toBe("ALL");
+    }
     expect(mockPpcBillingCycle).toHaveBeenCalledWith({ amazonAccountId: "ALL" });
+  });
+
+  it("uses the live Amazon summary for dashboard revenue and units", async () => {
+    mockAmazonSummary
+      .mockResolvedValueOnce({ totalRevenue: 415.43, netRevenue: 415.43, orderCount: 34, unitsSold: 37, refunds: 0, refundCount: 0, adSpend: 92.6, acos: 22.3, estimatedPayout: 415.43, byMarketplace: {} })
+      .mockResolvedValue({ totalRevenue: 100, netRevenue: 100, orderCount: 4, unitsSold: 5, refunds: 0, refundCount: 0, adSpend: 5, acos: 5, estimatedPayout: 100, byMarketplace: {} });
+
+    render(<PeriodTiles />);
+
+    // €415.43 Amazon live + €40 from the Shopify/Redcare side of the tile.
+    expect(await screen.findByText("€ 455,43")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /oggi/i })).toHaveTextContent("39 unità");
   });
 
   it("shows the Adspay score from the last ads invoice charge only in the Oggi tile", async () => {
