@@ -66,5 +66,5 @@ export const REPORT_MAX_DAYS = 30;
 /** Polling interval for report status (ms) */
 export const REPORT_POLL_INTERVAL_MS = 5_000;
 
-/** Maximum poll attempts before giving up */
-export const REPORT_MAX_POLLS = 120;
+/** Maximum poll attempts before giving up (45 minutes at the interval above) */
+export const REPORT_MAX_POLLS = 540;

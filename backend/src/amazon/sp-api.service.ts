@@ -94,13 +94,20 @@ export async function requestOrderReport(
 
 /** Poll until report is DONE or CANCELLED/FATAL. Returns reportDocumentId */
 export async function pollReport(reportId: string, region: SpRegion = "EU"): Promise<string> {
+  let lastStatus: string | undefined;
+
   for (let attempt = 0; attempt < REPORT_MAX_POLLS; attempt++) {
     await sleep(REPORT_POLL_INTERVAL_MS);
 
     const json = await spRequest("GET", `/reports/2021-06-30/reports/${reportId}`, undefined, 3, region);
     const status: string = json.processingStatus;
 
-    console.log(`[SP-API ${region}] Report ${reportId} status: ${status} (attempt ${attempt + 1})`);
+    // Queue waits can be long. Log status changes and a one-minute heartbeat
+    // without flooding production logs every five seconds.
+    if (status !== lastStatus || attempt % 12 === 0) {
+      console.log(`[SP-API ${region}] Report ${reportId} status: ${status} (attempt ${attempt + 1})`);
+      lastStatus = status;
+    }
 
     if (status === "DONE") {
       if (!json.reportDocumentId) throw new Error(`[SP-API] Report DONE but no reportDocumentId`);

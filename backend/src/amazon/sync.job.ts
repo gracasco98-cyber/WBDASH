@@ -26,6 +26,7 @@ export const ADS_INTRADAY_INTERVAL_MS = 10 * 60_000;
 export const ADS_PRODUCT_INTRADAY_INTERVAL_MS = 30 * 60_000;
 let adsIntradayCycleRunning = false;
 let adsProductIntradayCycleRunning = false;
+const incrementalSyncAccounts = new Set<string>();
 
 /** Update today's campaign totals for Adspay without overlapping reports. */
 export async function runAdsIntradayCycle(): Promise<void> {
@@ -272,21 +273,32 @@ async function runIncrementalForRegion(region: "EU" | "NA"): Promise<void> {
 
 /** Incremental sync: fetch orders updated in the last 2 days (EU + NA if configured) */
 export async function runAmazonIncrementalSync(): Promise<void> {
+  const accountId = getCurrentAccountId();
+  if (incrementalSyncAccounts.has(accountId)) {
+    console.log(`[Amazon Sync] Incremental sync still running for account ${accountId} — skipping overlapping tick`);
+    return;
+  }
+
   // Skip if full sync is running — avoid SP-API report contention
   if (_fullSyncRunning) {
     console.log("[Amazon Sync] Skipping incremental — full sync in progress");
     return;
   }
 
-  // Always run EU
-  await runIncrementalForRegion("EU");
+  incrementalSyncAccounts.add(accountId);
+  try {
+    // Always run EU
+    await runIncrementalForRegion("EU");
 
-  // Run NA only if the current account has NA-region SP-API credentials configured
-  if (await hasNACredentials()) {
-    await runIncrementalForRegion("NA");
+    // Run NA only if the current account has NA-region SP-API credentials configured
+    if (await hasNACredentials()) {
+      await runIncrementalForRegion("NA");
+    }
+
+    await runAmazonSnapshotJob();
+  } finally {
+    incrementalSyncAccounts.delete(accountId);
   }
-
-  await runAmazonSnapshotJob();
 }
 
 /** Start 5-minute incremental polling (all active Amazon accounts, sequentially) */
