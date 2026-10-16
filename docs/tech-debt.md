@@ -141,6 +141,14 @@ Questi sono comportamenti del codice corrente che i test hanno **lockato in** (p
 - **Effort**: S (decidere)
 - **Origine**: PR 9
 
+### A.16 — Importi Orders API provvisori possono differire dal report ordini
+
+- **File**: `backend/src/amazon/live-orders-sync.service.ts`
+- **Problema**: il dettaglio quasi real-time di Orders API può esporre un `ItemPrice` leggermente diverso dal flat-file definitivo (osservato €11,79 API vs €11,90 report sullo stesso ordine).
+- **Impatto**: vendita prodotto, payout e margine live sono stime provvisorie; il report resta la fonte di riconciliazione e sovrascrive successivamente i valori.
+- **Mitigazione**: il live sync non sovrascrive una riga di report arrivata mentre scarica il dettaglio e limita il refresh agli ordini nuovi o aggiornati.
+- **Origine**: incidente live 2026-10-15/16, fix Orders API.
+
 ---
 
 ## B. File-size debt (sopra i limiti soft)
