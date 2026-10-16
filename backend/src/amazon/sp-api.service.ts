@@ -188,6 +188,83 @@ export async function fetchOrderReport(
   return downloadReport(docId, region);
 }
 
+// ── Orders API live detail ────────────────────────────────────────────────────
+
+interface MoneyAmount {
+  Amount?: string;
+  CurrencyCode?: string;
+}
+
+export interface SpApiOrder {
+  AmazonOrderId: string;
+  PurchaseDate?: string;
+  LastUpdateDate?: string;
+  OrderStatus?: string;
+  SalesChannel?: string;
+  MarketplaceId?: string;
+  FulfillmentChannel?: string;
+  ShippingAddress?: { CountryCode?: string };
+  OrderTotal?: MoneyAmount;
+  IsBusinessOrder?: boolean;
+}
+
+export interface SpApiOrderItem {
+  OrderItemId?: string;
+  ASIN?: string;
+  SellerSKU?: string;
+  Title?: string;
+  QuantityOrdered?: number;
+  QuantityShipped?: number;
+  ItemPrice?: MoneyAmount;
+  ItemTax?: MoneyAmount;
+  PromotionDiscount?: MoneyAmount;
+}
+
+/** List recent orders, following Orders API pagination. */
+export async function fetchOrdersCreatedSince(
+  marketplaceIds: string[],
+  createdAfter: Date,
+  region: SpRegion = "EU"
+): Promise<SpApiOrder[]> {
+  const orders: SpApiOrder[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams();
+    if (nextToken) {
+      params.set("NextToken", nextToken);
+    } else {
+      params.set("CreatedAfter", createdAfter.toISOString());
+      params.set("MaxResultsPerPage", "100");
+      marketplaceIds.forEach((id) => params.append("MarketplaceIds", id));
+    }
+    const json = await spRequest("GET", `/orders/v0/orders?${params}`, undefined, 3, region);
+    orders.push(...(json?.payload?.Orders ?? []));
+    nextToken = json?.payload?.NextToken;
+  } while (nextToken);
+
+  return orders;
+}
+
+/** List every item for one order, following Orders API pagination. */
+export async function fetchOrderItems(
+  amazonOrderId: string,
+  region: SpRegion = "EU"
+): Promise<SpApiOrderItem[]> {
+  const items: SpApiOrderItem[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const params = nextToken ? `?${new URLSearchParams({ NextToken: nextToken })}` : "";
+    const path = `/orders/v0/orders/${encodeURIComponent(amazonOrderId)}/orderItems${params}`;
+    const json = await spRequest("GET", path, undefined, 3, region);
+    items.push(...(json?.payload?.OrderItems ?? []));
+    nextToken = json?.payload?.NextToken;
+  } while (nextToken);
+
+  return items;
+}
+
 // ── Sales API live metrics ────────────────────────────────────────────────────
 
 export interface LiveOrderMetric {

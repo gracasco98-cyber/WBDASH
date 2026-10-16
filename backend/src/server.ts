@@ -18,7 +18,7 @@ import statsRouter from "./routes/stats.routes";
 import productsRouter from "./routes/products.routes";
 import { runInitialSync, startPolling, startSnapshotPolling } from "./jobs/sync.job";
 import amazonRouter from "./amazon/routes";
-import { startAmazonPolling, startAmazonSnapshotPolling, forEachActiveAccount } from "./amazon/sync.job";
+import { startAmazonLiveOrdersPolling, startAmazonPolling, startAmazonSnapshotPolling, forEachActiveAccount } from "./amazon/sync.job";
 import { startMiraklPolling } from "./mirakl/syncOrders.job";
 import { bootstrapCalibration, bootstrapFromExcel, bootstrapComponentModel, runDailyCalibration } from "./amazon/forecast";
 import chatRouter from "./routes/chat.routes";
@@ -222,6 +222,7 @@ async function bootstrap() {
 
   // ── Amazon module ──
   if (process.env.AMAZON_EU_REFRESH_TOKEN) {
+    startAmazonLiveOrdersPolling();
     startAmazonPolling();
     startAmazonSnapshotPolling();
 

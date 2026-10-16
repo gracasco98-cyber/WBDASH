@@ -3,6 +3,7 @@
 import { prisma } from "../db";
 import { ALL_EU_MARKETPLACE_IDS, ALL_NA_MARKETPLACE_IDS, MARKETPLACE_IDS, MARKETPLACE_REGION, REPORT_MAX_DAYS } from "./config";
 import { fetchOrderReport } from "./sp-api.service";
+import { runAmazonLiveOrdersSync } from "./live-orders-sync.service";
 import { parseTsv, ingestOrderRows, IngestStats } from "./ingest.service";
 import { runAmazonSnapshotJob, computeAllAmazonHistoricalSnapshots } from "./snapshot.service";
 import { syncSettlementReports } from "./settlement.service";
@@ -308,6 +309,15 @@ export function startAmazonPolling(): void {
   const run = () => forEachActiveAccount("incremental sync", runAmazonIncrementalSync);
   // First run after 15s to let DB settle
   setTimeout(() => { run().catch(console.error); }, 15_000);
+  setInterval(() => { run().catch(console.error); }, INTERVAL_MS);
+}
+
+/** Start the fast Orders API detail sync independently from report generation. */
+export function startAmazonLiveOrdersPolling(): void {
+  const INTERVAL_MS = 2 * 60_000;
+  console.log("[Amazon Live Orders] Starting 2-min polling...");
+  const run = () => forEachActiveAccount("live orders sync", runAmazonLiveOrdersSync);
+  setTimeout(() => { run().catch(console.error); }, 5_000);
   setInterval(() => { run().catch(console.error); }, INTERVAL_MS);
 }
 

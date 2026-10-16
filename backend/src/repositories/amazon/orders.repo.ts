@@ -452,6 +452,36 @@ export async function countAllAmazonOrderItems(prisma: PrismaClient): Promise<nu
   return prisma.amazonOrderItem.count({ where: { amazonAccountId: getCurrentAccountId() } });
 }
 
+export interface AmazonOrderSyncState {
+  amazonOrderId: string;
+  lastUpdatedDate: Date;
+  itemCount: number;
+}
+
+/** Minimal local state used to decide whether Orders API detail needs refresh. */
+export async function findAmazonOrderSyncStates(
+  prisma: PrismaClient,
+  amazonOrderIds: string[]
+): Promise<AmazonOrderSyncState[]> {
+  if (amazonOrderIds.length === 0) return [];
+  const rows = await prisma.amazonOrder.findMany({
+    where: {
+      amazonAccountId: getCurrentAccountId(),
+      amazonOrderId: { in: amazonOrderIds },
+    },
+    select: {
+      amazonOrderId: true,
+      lastUpdatedDate: true,
+      _count: { select: { items: true } },
+    },
+  });
+  return rows.map((row) => ({
+    amazonOrderId: row.amazonOrderId,
+    lastUpdatedDate: row.lastUpdatedDate,
+    itemCount: row._count.items,
+  }));
+}
+
 /**
  * Group order items by ASIN and marketplace for snapshot computation.
  * Returns aggregated unitsSold, grossRevenue, and count.

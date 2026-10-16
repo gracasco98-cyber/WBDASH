@@ -11,6 +11,7 @@ import {
   countAmazonOrders,
   countAllAmazonOrders,
   countAllAmazonOrderItems,
+  findAmazonOrderSyncStates,
   groupAmazonOrdersByMarketplace,
   groupAmazonItemsByAsin,
   findAmazonOrderDateRange,
@@ -157,6 +158,17 @@ describe("countAllAmazonOrderItems", () => {
     await runWithAccount(accountId, async () => {
       const count = await countAllAmazonOrderItems(db.prisma);
       expect(count).toBe(sampleAmazonOrderItems.length);
+    });
+  });
+});
+
+describe("findAmazonOrderSyncStates", () => {
+  it("returns scoped update timestamps and item counts", async () => {
+    await runWithAccount(accountId, async () => {
+      const states = await findAmazonOrderSyncStates(db.prisma, ["AZ-IT-001", "missing"]);
+      expect(states).toHaveLength(1);
+      expect(states[0]).toMatchObject({ amazonOrderId: "AZ-IT-001", itemCount: 2 });
+      expect(states[0].lastUpdatedDate).toBeInstanceOf(Date);
     });
   });
 });
