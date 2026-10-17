@@ -8,7 +8,11 @@ import type {
 } from "@/lib/api";
 import { api } from "@/lib/api";
 import { getMeta } from "@/lib/marketplaces";
-import MetricRow, { fmtEur } from "./MetricRow";
+import MetricRow, {
+  fmtEur,
+  IDENTITY_COLUMN_CLASS,
+  METRIC_COLUMN_CLASSES,
+} from "./MetricRow";
 import { renderMarkdown } from "@/components/ChatWidget";
 import {
   ChevronDown,
@@ -25,6 +29,7 @@ import {
   Sparkles,
   Loader2,
   RotateCcw,
+  TrendingUp,
 } from "lucide-react";
 
 export type GroupBy = "marketplace" | "product" | "brand" | "paese";
@@ -915,13 +920,13 @@ export default function ProductsPerformanceTable({
             <img
               src={thumb}
               alt=""
-              className="mr-2 h-10 w-10 shrink-0 rounded-lg object-cover md:mr-1.5 md:h-[20px] md:w-[20px] md:rounded-[4px]"
+              className="mr-2 h-10 w-10 shrink-0 rounded-lg object-cover md:mr-3 md:h-11 md:w-11 md:rounded-md"
             />
           ) : (
-            <div className="mr-2 h-10 w-10 shrink-0 rounded-lg bg-bg-hover md:mr-1.5 md:h-[20px] md:w-[20px] md:rounded-[4px]" />
+            <div className="mr-2 h-10 w-10 shrink-0 rounded-lg bg-bg-hover md:mr-3 md:h-11 md:w-11 md:rounded-md" />
           ))}
         {marketplaceIdentity && (
-          <span aria-hidden="true" className="mr-2 text-xl leading-none md:text-base">
+          <span aria-hidden="true" className="mr-3 text-xl leading-none md:text-2xl">
             {marketplaceIdentity.flag}
           </span>
         )}
@@ -929,22 +934,19 @@ export default function ProductsPerformanceTable({
           aria-label={`Espandi ${entry.label}`}
           aria-expanded={isOpen}
           onClick={() => toggle(entry.key)}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 border-none bg-transparent text-left text-inherit transition-colors hover:text-accent-primary"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 border-none bg-transparent text-left text-inherit transition-colors hover:text-accent-primary"
         >
           {isOpen ? (
-            <ChevronDown size={13} className="text-accent-primary" />
+            <ChevronDown size={16} className="shrink-0 text-accent-primary" />
           ) : (
-            <ChevronRight size={13} className="text-zinc-400" />
+            <ChevronRight size={16} className="shrink-0 text-zinc-400" />
           )}
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold md:text-[11.5px] md:font-medium">
+            <span className="block truncate text-sm font-semibold md:text-[13px] md:font-semibold">
               {entry.label}
             </span>
             {groupBy === "marketplace" ? (
-              <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[9px] font-normal text-zinc-500">
-                <span className="rounded bg-accent-amber/15 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-accent-amber">
-                  Marketplace
-                </span>
+              <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-normal text-zinc-500">
                 {marketplaceIdentity?.country && <span>{marketplaceIdentity.country}</span>}
                 <span>·</span>
                 <span>{productCount} {productCount === 1 ? "prodotto" : "prodotti"}</span>
@@ -979,28 +981,48 @@ export default function ProductsPerformanceTable({
     // il backend restituisce già l'imageUrl del prodotto su metrics.imageUrl.
     const thumb = images[child.metrics.asin] ?? child.metrics.imageUrl ?? null;
     const hasIdentifiers = Boolean(child.metrics.asin || child.metrics.sku);
+    const hasUnitCogs =
+      child.metrics.costDataAvailable !== false && child.metrics.units > 0;
+    const unitCogs = hasUnitCogs
+      ? child.metrics.cogs / child.metrics.units
+      : null;
+    const stockClass =
+      child.metrics.hasStockData && child.metrics.stock <= 20
+        ? "text-accent-red"
+        : "text-accent-amber";
     return (
       <>
-        <div className="ml-5 flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-3 md:ml-7">
           {thumb ? (
             <img
               src={thumb}
               alt=""
-              className="w-[22px] h-[22px] rounded-[5px] object-cover shrink-0"
+              className="h-12 w-12 shrink-0 rounded-md border border-bg-border object-contain bg-white"
             />
           ) : (
-            <div className="w-[22px] h-[22px] rounded-[5px] bg-bg-hover shrink-0" />
+            <div className="h-12 w-12 shrink-0 rounded-md border border-bg-border bg-bg-hover" />
           )}
-          <CornerDownRight size={11} className="shrink-0 text-zinc-400" />
-          <span className="min-w-0">
-            <span className="block truncate font-medium text-zinc-300">{child.label}</span>
+          <CornerDownRight size={13} className="hidden shrink-0 text-zinc-400 md:block" />
+          <span className="min-w-0 flex-1">
             {hasIdentifiers && (
-              <span className="mt-0.5 block truncate font-mono text-[9px] text-zinc-500">
+              <span className="block truncate font-mono text-[10px] leading-tight text-zinc-500">
                 {child.metrics.asin && <>ASIN <span>{child.metrics.asin}</span></>}
                 {child.metrics.asin && child.metrics.sku && " · "}
                 {child.metrics.sku && <>SKU <span>{child.metrics.sku}</span></>}
               </span>
             )}
+            <span className="mt-1 block truncate text-[13px] font-medium leading-tight text-zinc-200">
+              {child.label}
+            </span>
+            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-normal text-zinc-500">
+              <span>{fmtEur(child.metrics.avgSellingPrice)}</span>
+              {unitCogs !== null && <span>COGS/u {fmtEur(unitCogs)}</span>}
+              {child.metrics.hasStockData && (
+                <span className={`inline-flex items-center gap-1 ${stockClass}`}>
+                  <TrendingUp size={11} /> FBA stock: {child.metrics.stock.toLocaleString("it-IT")}
+                </span>
+              )}
+            </span>
           </span>
         </div>
         {groupBy === "product" && (
@@ -1228,14 +1250,14 @@ export default function ProductsPerformanceTable({
           <p className="px-3 pb-1 pt-3 text-[10px] text-zinc-500 md:hidden">
             Tocca un prodotto per vedere tutte le metriche e il dettaglio per canale.
           </p>
-          <table className="block w-full border-separate text-[11.5px] md:table md:min-w-[1540px] md:border-collapse">
+          <table className="block w-full border-separate text-[11.5px] md:table md:w-max md:min-w-[2580px] md:border-collapse">
             <thead className="hidden md:table-header-group">
               <tr className="text-[9px] uppercase tracking-wider text-zinc-500 text-left bg-bg-hover/80 border-b border-bg-border">
                 <th
-                  className="sticky left-0 z-20 bg-bg-hover/95 px-2.5 py-1.5 font-semibold text-zinc-500"
+                  className={`${IDENTITY_COLUMN_CLASS} sticky left-0 z-20 bg-bg-hover/95 px-4 py-3 text-left text-[11px] font-semibold text-zinc-500`}
                   rowSpan={2}
                 >
-                  Identità
+                  Marketplace / Prodotto
                 </th>
                 {COLUMN_GROUPS.map(({ label, className, columns }) => {
                   const visibleCount = columns.filter(
@@ -1245,7 +1267,7 @@ export default function ProductsPerformanceTable({
                   return (
                     <th
                       key={label}
-                      className={`px-2.5 py-1.5 text-center font-semibold ${className}`}
+                      className={`border-l border-bg-border/70 px-3 py-2 text-center text-[10px] font-semibold ${className}`}
                       colSpan={visibleCount}
                     >
                       {label}
@@ -1253,11 +1275,11 @@ export default function ProductsPerformanceTable({
                   );
                 })}
               </tr>
-              <tr className="text-zinc-500 text-left bg-bg-hover border-b border-bg-border">
+              <tr className="bg-bg-hover text-right text-zinc-500 border-b border-bg-border">
                 {COLUMNS.slice(1)
                   .filter((c) => !hiddenColumns.has(c))
                   .map((c) => (
-                    <th key={c} className="px-2.5 py-2.5 font-medium">
+                    <th key={c} className={`${METRIC_COLUMN_CLASSES[c] ?? ""} border-l border-bg-border/70 px-3 py-3 text-right text-[11px] font-medium leading-tight`}>
                       {c}
                     </th>
                   ))}
