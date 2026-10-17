@@ -82,6 +82,10 @@ export interface ProductPerformance {
   adSpend?: number;
   /** VAT included in Redcare gross prices, calculated at the configured 10% rate. */
   vatAmount?: number;
+  /** Configured product cost for the sold units, including inbound/unit cost. */
+  cogsTotal?: number;
+  /** True when the SKU was resolved to a configured COGS record. */
+  hasCogs?: boolean;
   /** True while Amazon itemTax is unavailable and the configured vatRate is used. */
   vatEstimated?: boolean;
 }

@@ -23,6 +23,9 @@ import { getDateRange } from "../amazon/utils/datetime";
 import { italyDateString } from "../amazon/utils/datetime";
 import { findDailyAdSpends } from "../repositories/marketing/marketplaceAdSpend.repo";
 import { calculateRedcareShippingCost } from "../config/redcare-costs";
+import { findProductsByIdentifierSkus } from "../repositories/amazon/product.repo";
+import { findCogsForAsins } from "../repositories/amazon/cogs.repo";
+import { channelCogsKey, resolveChannelCogsBySku } from "../services/channel-cogs.service";
 
 const router = Router();
 
@@ -93,9 +96,46 @@ router.get("/", async (req: Request, res: Response) => {
           avgUnitPrice: g._avg.unitPrice ?? 0,
           totalDiscount: g._sum.totalDiscount ?? 0,
           vatAmount,
+          cogsTotal: 0,
+          hasCogs: false,
         };
       })
     );
+
+    // Redcare rows arrive from Shopify keyed by SKU, while the existing COGS
+    // source is keyed by Amazon ASIN. ProductIdentifier is the canonical bridge
+    // between the two, so reuse the configured Amazon cost instead of showing
+    // Redcare COGS as zero.
+    const redcareRequests = products
+      .filter((product) => product.marketplace.startsWith("REDCARE_") && product.sku)
+      .map((product) => ({ sku: product.sku!, marketplace: product.marketplace }));
+    if (redcareRequests.length > 0) {
+      const redcareSkus = [...new Set(redcareRequests.map((request) => request.sku))];
+      const matchedProducts = await findProductsByIdentifierSkus(prisma, redcareSkus);
+      const asins = [...new Set(
+        matchedProducts.flatMap((product) =>
+          product.identifiers
+            .filter((identifier) => identifier.channelType === "AMAZON" && identifier.asin)
+            .map((identifier) => identifier.asin!),
+        ),
+      )];
+      const cogsRows = asins.length > 0
+        ? await findCogsForAsins(prisma, { asins, marketplace: "all" })
+        : [];
+      const cogsByChannelSku = resolveChannelCogsBySku(
+        redcareRequests,
+        matchedProducts,
+        cogsRows,
+      );
+
+      for (const product of products) {
+        if (!product.sku || !product.marketplace.startsWith("REDCARE_")) continue;
+        const resolved = cogsByChannelSku.get(channelCogsKey(product.marketplace, product.sku));
+        if (!resolved) continue;
+        product.cogsTotal = resolved.totalPerUnit * product.unitsSold;
+        product.hasCogs = true;
+      }
+    }
 
     const adRows = await findDailyAdSpends(prisma, {
       from: new Date(`${italyDateString(dateFrom)}T00:00:00.000Z`),
@@ -133,6 +173,8 @@ router.get("/", async (req: Request, res: Response) => {
         avgUnitPrice: 0,
         totalDiscount: 0,
         vatAmount: 0,
+        cogsTotal: 0,
+        hasCogs: false,
         adSpend,
       } as (typeof products)[number]);
     }

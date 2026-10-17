@@ -219,6 +219,34 @@ describe("ProductsPerformanceTable", () => {
     expect(mockCatalogImages).not.toHaveBeenCalled();
   });
 
+  it("includes configured Redcare COGS in product and marketplace profitability", () => {
+    const redcareProduct: ProductPerformance = {
+      shopifyProductId: "gid://shopify/Product/1",
+      productTitle: "Naturplan VENAVIL",
+      sku: "VENAVIL",
+      imageUrl: null,
+      marketplace: "REDCARE_IT",
+      unitsSold: 4,
+      grossRevenue: 100,
+      refundedAmount: 0,
+      netRevenue: 100,
+      orderCount: 4,
+      avgUnitPrice: 25,
+      totalDiscount: 0,
+      vatAmount: 10,
+      cogsTotal: 12,
+      hasCogs: true,
+    };
+
+    const [redcare] = buildShopifyMarketplaceRows([redcareProduct], { REDCARE_IT: 5 });
+    expect(redcare.metrics.cogs).toBe(12);
+    expect(redcare.metrics.hasRealCogs).toBe(true);
+    expect(redcare.metrics.grossProfit).toBe(63); // 100 - 10 IVA - 15 fee - 12 COGS
+    expect(redcare.metrics.netProfit).toBe(58); // gross profit - 5 ads
+    expect(redcare.metrics.roi).toBeCloseTo(58 / 12, 6);
+    expect(redcare.children?.[0].metrics.cogs).toBe(12);
+  });
+
   it("groups 'ACOS reale' under the 'Efficienza' header and 'BSR' under 'Inventario' (not the reverse)", () => {
     const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
     const groupHeaderCells = Array.from(container.querySelectorAll("thead tr:first-child th")).slice(1); // drop "Identità"

@@ -230,34 +230,33 @@ const COUNTRY_LABEL: Record<string, string> = {
  * Builds marketplace-grouped rows for non-Amazon channels from the plain
  * per-product Shopify performance list (/api/products), in the same RowEntry
  * shape ProductsPerformanceTable already renders — so Redcare/Temu/eBay/...
- * show up alongside Amazon.xx in the "marketplace" grouping. Cost/profit
- * columns are intentionally blank (costDataAvailable: false): fees and COGS
- * are not tracked for these channels yet, unlike Amazon's estimated-vs-real
- * distinction (hasRealFees/hasRealCogs), which assumes SOME cost figure exists.
+ * show up alongside Amazon.xx in the "marketplace" grouping. Redcare reuses
+ * the configured Amazon COGS through the shared ProductIdentifier SKU/ASIN;
+ * channels without a cost model keep their cost/profit columns blank.
  */
 export function buildShopifyMarketplaceRows(
   products: ProductPerformance[],
   adSpendByMarketplace: Record<string, number> = {},
 ): RowEntry[] {
-  const redcareMetrics = (base: { sales: number; refundsAmount: number; adsSpend: number | null; vatAmount?: number }) => {
+  const redcareMetrics = (base: { sales: number; refundsAmount: number; adsSpend: number | null; vatAmount?: number; cogs: number; hasCogs: boolean }) => {
     const vatAmount = base.vatAmount ?? 0;
     const fees = Math.max(0, base.sales - base.refundsAmount) * 0.15;
     const ads = base.adsSpend ?? 0;
-    const grossProfit = base.sales - base.refundsAmount - vatAmount - fees;
+    const grossProfit = base.sales - base.refundsAmount - vatAmount - fees - base.cogs;
     const netProfit = grossProfit - ads;
     return {
       vatAmount,
       amazonFees: fees,
-      cogs: 0,
+      cogs: base.cogs,
       grossProfit,
       netProfit,
       estimatedPayout: base.sales - base.refundsAmount - vatAmount - fees - ads,
       margin: base.sales > 0 ? netProfit / base.sales : 0,
-      roi: fees > 0 ? netProfit / fees : 0,
+      roi: base.cogs > 0 ? netProfit / base.cogs : 0,
       realAcos: base.sales > 0 ? ads / base.sales : null,
       costDataAvailable: true,
       hasRealFees: false,
-      hasRealCogs: false,
+      hasRealCogs: base.hasCogs,
       feeKind: "redcare" as const,
     };
   };
@@ -293,6 +292,9 @@ export function buildShopifyMarketplaceRows(
     const sales = items.reduce((s, p) => s + p.grossRevenue, 0);
     const refundsAmount = items.reduce((s, p) => s + p.refundedAmount, 0);
     const isRedcare = mp === "REDCARE_IT";
+    const soldItems = items.filter((item) => item.unitsSold > 0);
+    const cogs = items.reduce((sum, item) => sum + (item.cogsTotal ?? 0), 0);
+    const hasCogs = soldItems.length > 0 && soldItems.every((item) => item.hasCogs === true);
     return {
       key: `shopify-${mp}`,
       label: getMeta(mp).label,
@@ -308,7 +310,7 @@ export function buildShopifyMarketplaceRows(
         adsSpend: Object.prototype.hasOwnProperty.call(adSpendByMarketplace, mp)
           ? adSpendByMarketplace[mp]
           : null,
-        ...(isRedcare ? redcareMetrics({ sales, refundsAmount, adsSpend: adSpendByMarketplace[mp] ?? null, vatAmount: items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0) }) : {}),
+        ...(isRedcare ? redcareMetrics({ sales, refundsAmount, adsSpend: adSpendByMarketplace[mp] ?? null, vatAmount: items.reduce((sum, item) => sum + (item.vatAmount ?? 0), 0), cogs, hasCogs }) : {}),
       },
       children: items.map((p) => {
         const productAds = sales > 0
@@ -327,7 +329,7 @@ export function buildShopifyMarketplaceRows(
           refundPct: p.grossRevenue > 0 ? p.refundedAmount / p.grossRevenue : 0,
           avgSellingPrice: p.avgUnitPrice,
           adsSpend: isRedcare ? productAds : (p.adSpend ?? null),
-          ...(isRedcare ? redcareMetrics({ sales: p.grossRevenue, refundsAmount: p.refundedAmount, adsSpend: productAds, vatAmount: p.vatAmount ?? 0 }) : {}),
+          ...(isRedcare ? redcareMetrics({ sales: p.grossRevenue, refundsAmount: p.refundedAmount, adsSpend: productAds, vatAmount: p.vatAmount ?? 0, cogs: p.cogsTotal ?? 0, hasCogs: p.hasCogs === true }) : {}),
           imageUrl: p.imageUrl,
         },
       }; }),
