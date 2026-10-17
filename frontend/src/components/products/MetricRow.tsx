@@ -8,6 +8,33 @@ export const fmtEurNoWrap = (n: number) => fmtEur(n).replace(" ", "\u00A0");
 export const fmtPct = (n: number) => `${(n * 100).toLocaleString("it-IT", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
 export const dash = (v: number | null, fmt: (n: number) => string) => (v === null ? "—" : fmt(v));
 
+/** Desktop widths deliberately mirror the roomy marketplace table used as the
+ * visual reference for this dashboard. The table scrolls horizontally instead
+ * of squeezing labels and monetary values into unreadable cells. */
+export const IDENTITY_COLUMN_CLASS =
+  "md:w-[480px] md:min-w-[480px] md:max-w-[480px]";
+
+export const METRIC_COLUMN_CLASSES: Record<string, string> = {
+  "Unità": "md:w-[88px] md:min-w-[88px]",
+  "Resi": "md:w-[112px] md:min-w-[112px]",
+  "Ricavi": "md:w-[132px] md:min-w-[132px]",
+  "Promo": "md:w-[112px] md:min-w-[112px]",
+  "Ads": "md:w-[112px] md:min-w-[112px]",
+  "% Resi": "md:w-[96px] md:min-w-[96px]",
+  "Fee marketplace": "md:w-[148px] md:min-w-[148px]",
+  "COGS": "md:w-[132px] md:min-w-[132px]",
+  "IVA": "md:w-[120px] md:min-w-[120px]",
+  "Profitto lordo": "md:w-[150px] md:min-w-[150px]",
+  "Profitto netto": "md:w-[150px] md:min-w-[150px]",
+  "Payout stimato": "md:w-[150px] md:min-w-[150px]",
+  "Margine": "md:w-[112px] md:min-w-[112px]",
+  "ROI": "md:w-[104px] md:min-w-[104px]",
+  "ACOS reale": "md:w-[112px] md:min-w-[112px]",
+  "Prezzo medio": "md:w-[132px] md:min-w-[132px]",
+  "BSR": "md:w-[96px] md:min-w-[96px]",
+  "Stock": "md:w-[104px] md:min-w-[104px]",
+};
+
 /** accent-primary (#6ee7b7) is this app's positive/success token — same one
  *  GlobalSidebar uses for active links. accent-red (#f87171) is its negative
  *  counterpart. Both are theme tokens, so the table follows the theme toggle. */
@@ -91,7 +118,19 @@ export default function MetricRow({
 
   const cells: { column: string; node: React.ReactNode }[] = [
     { column: "Unità", node: m.units },
-    { column: "Resi", node: fmtEur(m.refundsAmount) },
+    {
+      column: "Resi",
+      node: (
+        <span className="inline-flex flex-col items-end leading-tight">
+          <span className={m.refundsCount > 0 ? "text-accent-blue" : ""}>
+            {m.refundsCount}
+          </span>
+          <span className="mt-0.5 text-[9px] font-normal text-zinc-500">
+            {fmtEur(m.refundsAmount)}
+          </span>
+        </span>
+      ),
+    },
     { column: "Ricavi", node: fmtEur(m.sales) },
     { column: "Promo", node: fmtEur(m.promo) },
     { column: "Ads", node: dash(m.adsSpend, fmtEur) },
@@ -192,15 +231,15 @@ export default function MetricRow({
 
   return (
     <tr
-      className={`grid grid-cols-2 overflow-hidden rounded-xl border shadow-sm md:table-row md:rounded-none md:border-0 md:shadow-none ${
+      className={`grid grid-cols-2 overflow-hidden rounded-xl border shadow-sm transition-colors md:table-row md:rounded-none md:border-0 md:shadow-none md:hover:bg-bg-hover/35 ${
         isChild
-          ? "mx-2 border-accent-blue/20 bg-bg-hover/50"
+          ? "mx-2 border-bg-border bg-bg-card md:border-b md:border-bg-border/70"
           : tone === "marketplace"
-            ? "border-accent-amber/30 bg-accent-amber/5 md:border-b md:border-accent-amber/20"
+            ? "border-bg-border bg-bg-card md:border-b md:border-bg-border"
           : "border-bg-border bg-bg-card md:border-b md:border-bg-border/60"
       }`}
     >
-      <MetricCell className={`col-span-2 block border-b px-3 py-3 font-medium md:sticky md:left-0 md:z-10 md:table-cell md:border-b-0 md:border-r md:px-2.5 md:py-2.5 ${tone === "marketplace" && !isChild ? "border-accent-amber/20 bg-accent-amber/5" : "border-bg-border/70 bg-bg-card"}`}>
+      <MetricCell className={`${IDENTITY_COLUMN_CLASS} col-span-2 block border-b px-3 py-3 font-medium md:sticky md:left-0 md:z-10 md:table-cell md:border-b-0 md:border-r md:px-4 ${isChild ? "md:py-3.5" : "md:py-4"} ${tone === "marketplace" && !isChild ? "border-bg-border bg-bg-card" : "border-bg-border/70 bg-bg-card"}`}>
         {label}
       </MetricCell>
       {cells.map((c) => {
@@ -212,12 +251,12 @@ export default function MetricRow({
           <td
             key={c.column}
             data-mobile-metric={c.column}
-            className={`${visibleOnMobile ? "flex" : "hidden"} ${desktopVisibility} min-w-0 flex-col gap-1 border-b border-bg-border/50 px-3 py-2.5 odd:border-r md:border-0 md:px-2.5 md:py-2.5`}
+            className={`${visibleOnMobile ? "flex" : "hidden"} ${desktopVisibility} ${METRIC_COLUMN_CLASSES[c.column] ?? ""} min-w-0 flex-col gap-1 border-b border-bg-border/50 px-3 py-2.5 odd:border-r md:border-b-0 md:border-l md:border-bg-border/70 md:px-3 md:py-4 md:text-right md:align-middle`}
           >
             <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-zinc-500 md:hidden">
               {c.column}
             </span>
-            <span className="truncate text-sm font-semibold tabular-nums text-zinc-300 md:text-[11.5px] md:font-normal">
+            <span className="text-sm font-semibold tabular-nums text-zinc-300 md:whitespace-nowrap md:text-[12.5px] md:font-normal">
               {c.node}
             </span>
           </td>

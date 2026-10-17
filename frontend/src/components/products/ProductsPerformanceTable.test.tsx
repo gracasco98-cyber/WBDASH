@@ -69,6 +69,17 @@ describe("ProductsPerformanceTable", () => {
     expect(screen.getByText("B0ABC123")).toBeInTheDocument();
   });
 
+  it("shows the compact product identity details used by the expanded marketplace table", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groups} groupBy="marketplace" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /espandi amazon\.it/i }));
+
+    expect(screen.getByText("COGS/u € 4,50")).toBeInTheDocument();
+    expect(screen.getByText("FBA stock: 184")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Marketplace / Prodotto" })).toBeInTheDocument();
+  });
+
   it("renders a compact mobile product card and reveals every metric on expansion", async () => {
     const user = userEvent.setup();
     const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
