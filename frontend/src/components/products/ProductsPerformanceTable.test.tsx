@@ -80,6 +80,20 @@ describe("ProductsPerformanceTable", () => {
     expect(screen.getByRole("columnheader", { name: "Marketplace / Prodotto" })).toBeInTheDocument();
   });
 
+  it("defaults to a responsive KPI summary and can reveal the complete metric set", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groups} groupBy="marketplace" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Sintesi" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("columnheader", { name: "COGS" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Profitto netto" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Tutte le metriche" }));
+
+    expect(screen.getByRole("button", { name: "Tutte le metriche" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("columnheader", { name: "COGS" })).toBeInTheDocument();
+  });
+
   it("renders a compact mobile product card and reveals every metric on expansion", async () => {
     const user = userEvent.setup();
     const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
@@ -260,6 +274,7 @@ describe("ProductsPerformanceTable", () => {
 
   it("groups 'ACOS reale' under the 'Efficienza' header and 'BSR' under 'Inventario' (not the reverse)", () => {
     const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tutte le metriche" }));
     const groupHeaderCells = Array.from(container.querySelectorAll("thead tr:first-child th")).slice(1); // drop "Identità"
     const columnLabels = Array.from(container.querySelectorAll("thead tr:nth-child(2) th")).map((th) => th.textContent);
 
@@ -438,6 +453,7 @@ describe("ProductsPerformanceTable — column visibility (Colonne)", () => {
   it("hides a column's header and cells once unchecked in the Colonne picker", async () => {
     const user = userEvent.setup();
     render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Tutte le metriche" }));
     expect(screen.getByRole("columnheader", { name: "BSR" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /colonne/i }));
@@ -449,6 +465,7 @@ describe("ProductsPerformanceTable — column visibility (Colonne)", () => {
   it("shrinks the group header's colSpan when one of its columns is hidden", async () => {
     const user = userEvent.setup();
     const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Tutte le metriche" }));
     const inventarioHeader = () => Array.from(container.querySelectorAll("thead tr:first-child th")).find((th) => th.textContent === "Inventario")!;
     expect(inventarioHeader().getAttribute("colSpan")).toBe("2");
 
