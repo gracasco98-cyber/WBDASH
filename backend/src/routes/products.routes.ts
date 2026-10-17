@@ -22,7 +22,7 @@ import { findSnapshotsByProductId } from "../repositories/shopify/product-snapsh
 import { getDateRange } from "../amazon/utils/datetime";
 import { italyDateString } from "../amazon/utils/datetime";
 import { findDailyAdSpends } from "../repositories/marketing/marketplaceAdSpend.repo";
-import { calculateRedcareShippingCost } from "../config/redcare-costs";
+import { calculateRedcareKpis, extractVat, REDCARE_VAT_RATE } from "../config/redcare-costs";
 import { findProductsByIdentifierSkus } from "../repositories/amazon/product.repo";
 import { findCogsForAsins } from "../repositories/amazon/cogs.repo";
 import { channelCogsKey, resolveChannelCogsBySku } from "../services/channel-cogs.service";
@@ -78,10 +78,10 @@ router.get("/", async (req: Request, res: Response) => {
         });
         const grossRevenue = g._sum.lineTotal ?? 0;
         const refundedAmount = g._sum.refundedAmount ?? 0;
-        // Redcare IT uses the operational sales VAT rule: turnover is the
-        // taxable amount, so 400 € of turnover produces 40 € of VAT (10%).
+        // Redcare IT turnover is VAT-inclusive: 440 € of turnover holds 40 €
+        // of VAT at the operational 10% rate.
         const taxableRevenue = Math.max(0, grossRevenue - Number(refundedAmount));
-        const vatAmount = g.marketplace === "REDCARE_IT" ? taxableRevenue * 0.10 : 0;
+        const vatAmount = g.marketplace === "REDCARE_IT" ? extractVat(taxableRevenue, REDCARE_VAT_RATE) : 0;
         return {
           shopifyProductId: g.shopifyProductId,
           productTitle: sample?.productTitle ?? "Unknown",
@@ -218,21 +218,27 @@ router.get("/", async (req: Request, res: Response) => {
     // orders synced moments ago. Refunds reduce the taxable base.
     const redcareGross = Number(orderKpis[0]?.redcareGross ?? 0);
     const redcareRefunds = Number(orderKpis[0]?.redcareRefunds ?? 0);
-    const redcareVat = Math.max(0, redcareGross - redcareRefunds) * 0.10;
-    const redcareFee = Math.max(0, redcareGross - redcareRefunds) * 0.15;
-    const redcareShippingCost = calculateRedcareShippingCost(
-      Number(orderKpis[0]?.redcareOrderCount ?? 0),
-    );
+    const { redcareVat, redcareFee, redcareShippingCost, redcareCogs, totalNet } = calculateRedcareKpis({
+      gross: redcareGross,
+      refunds: redcareRefunds,
+      net: Number(orderKpis[0]?.net ?? 0),
+      adSpend: totalAdSpend,
+      orderCount: Number(orderKpis[0]?.redcareOrderCount ?? 0),
+      cogs: products
+        .filter((p) => p.marketplace.startsWith("REDCARE_"))
+        .reduce((s, p) => s + p.cogsTotal, 0),
+    });
 
     res.json({
       products,
       kpis: {
         totalGross:   Number(orderKpis[0]?.gross   ?? 0),
-        totalNet:     Number(orderKpis[0]?.net     ?? 0) - totalAdSpend - redcareVat - redcareFee - redcareShippingCost,
+        totalNet,
         totalAdSpend,
         redcareVat,
         redcareFee,
         redcareShippingCost,
+        redcareCogs,
         // All manually maintained MarketplaceAdSpend rows currently represent
         // Redcare (IT/DE). Keep the explicit field so dashboard consumers can
         // distinguish this daily channel cost from future ad sources.
@@ -365,7 +371,7 @@ router.get("/channel-daily", async (req: Request, res: Response) => {
       const refunded = Number(r.refundedAmount);
       const net = Number(r.netRevenue);
       const vatAmount = r.marketplace === "REDCARE_IT"
-        ? Math.max(0, gross - refunded) * 0.10
+        ? extractVat(gross - refunded, REDCARE_VAT_RATE)
         : 0;
       const dateStr = r.date instanceof Date ? r.date.toISOString().split("T")[0] : String(r.date).split("T")[0];
       const adSpend = adSpendMap.get(`${dateStr}|${r.marketplace}`) ?? 0;

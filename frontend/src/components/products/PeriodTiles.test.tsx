@@ -36,6 +36,7 @@ const mockProducts = vi.fn(async (_params: unknown): Promise<{
     totalAdSpend: number;
     redcareAdSpend: number;
     redcareShippingCost?: number;
+    redcareCogs?: number;
   };
 }> => ({
   products: [{ grossRevenue: 40, unitsSold: 2 }],
@@ -205,6 +206,24 @@ describe("PeriodTiles", () => {
     render(<PeriodTiles />);
     await vi.waitFor(() => expect(screen.getAllByText("€ 11,00")).toHaveLength(5));
     expect(screen.getAllByText("€ 46,00")).toHaveLength(5);
+  });
+
+  it("labels the tile as incasso, Amazon payout and net margin", async () => {
+    render(<PeriodTiles />);
+    await vi.waitFor(() => expect(screen.getAllByText("Margine pulito")).toHaveLength(5));
+    expect(screen.getAllByText("Incasso (IVA incl.)")).toHaveLength(5);
+    expect(screen.getAllByText("Payout Amazon")).toHaveLength(5);
+  });
+
+  it("adds Redcare COGS to the total-cost field", async () => {
+    for (let i = 0; i < 5; i += 1) {
+      mockProducts.mockResolvedValueOnce({
+        products: [{ grossRevenue: 40, unitsSold: 2 }],
+        kpis: { totalGross: 40, totalNet: 35, totalAdSpend: 99, redcareAdSpend: 6, redcareCogs: 7 },
+      });
+    }
+    render(<PeriodTiles />);
+    await vi.waitFor(() => expect(screen.getAllByText("€ 53,00")).toHaveLength(5));
   });
 
   it("includes Redcare shipping in profit, costs and the dashboard breakdown", async () => {

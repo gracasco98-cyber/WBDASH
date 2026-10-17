@@ -101,6 +101,8 @@ export interface ProductKpis {
   redcareFee?: number;
   /** Redcare IT shipping cost (4.36 EUR per order). */
   redcareShippingCost?: number;
+  /** Configured COGS of the Redcare units sold in the period. */
+  redcareCogs?: number;
   totalUnits: number;
   totalRefunds: number;
   /** Number of orders with a non-zero refund in the period. */

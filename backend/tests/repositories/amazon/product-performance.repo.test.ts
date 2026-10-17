@@ -57,7 +57,7 @@ describe("resolveProductPerformance", () => {
     });
   });
 
-  it("sums real itemTax into vatAmount, and surfaces the identifier's manually entered vatRate", async () => {
+  it("extracts VAT from VAT-inclusive turnover at the identifier's vatRate, ignoring partial itemTax", async () => {
     await runWithAccount(accountId, async () => {
       const product = await createProduct(db.prisma, { name: "Resveratrolo 500mg" });
       const identifier = await createIdentifier(db.prisma, { productId: product.id, channelType: "AMAZON", marketplace: "IT", asin: "B0ABC123", sku: "SKU-RSV-01" });
@@ -75,9 +75,10 @@ describe("resolveProductPerformance", () => {
         marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
       });
       const group = groups.find(g => g.product.id === product.id)!;
-      expect(group.rows[0].vatAmount).toBe(44);
+      // Amazon itemPrice is VAT-inclusive: 200 € at 22% contains 200 × 22/122 of VAT.
+      expect(group.rows[0].vatAmount).toBeCloseTo(36.07, 2);
       expect(group.rows[0].vatRate).toBe(22);
-      expect(group.aggregate.vatAmount).toBe(44);
+      expect(group.aggregate.vatAmount).toBeCloseTo(36.07, 2);
     });
   });
 
@@ -183,7 +184,26 @@ describe("resolveProductPerformance", () => {
       });
       const row = groups[0].rows[0];
       expect(row.cogs).toBeCloseTo(45, 2); // (4 + 0.5) * 10
-      expect(row.grossProfit).toBeCloseTo(row.sales - row.refundsAmount - row.amazonFees - row.cogs, 2);
+      expect(row.grossProfit).toBeCloseTo(row.sales - row.refundsAmount - row.vatAmount - row.amazonFees - row.cogs, 2);
+    });
+  });
+
+  it("net margin is what stays in pocket: Amazon payout minus sales VAT minus COGS", async () => {
+    await runWithAccount(accountId, async () => {
+      await seedOneProductWithSales();
+      await upsertCogs(db.prisma, { asin: "B0ABC123", marketplace: "IT", cogsPerUnit: 4, shippingCost: 0.5 });
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+        adsSpendByKey: new Map([["IT::B0ABC123", { spend: 20 }]]),
+      });
+      const row = groups[0].rows[0];
+      // Default operational VAT rate is 10%, extracted from the 200 € VAT-inclusive turnover.
+      expect(row.vatAmount).toBeCloseTo(200 * 10 / 110, 2);
+      // Payout is the cash Amazon pays out: VAT is still inside it, COGS were paid separately.
+      expect(row.estimatedPayout).toBeCloseTo(200 - row.amazonFees - 20, 2);
+      expect(row.netProfit).toBeCloseTo(row.estimatedPayout - row.vatAmount - row.cogs, 2);
+      expect(row.margin).toBeCloseTo(row.netProfit / row.sales, 4);
+      expect(groups[0].aggregate.netProfit).toBeCloseTo(row.netProfit, 2);
     });
   });
 

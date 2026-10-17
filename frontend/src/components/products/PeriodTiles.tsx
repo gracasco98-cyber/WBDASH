@@ -421,7 +421,7 @@ export default function PeriodTiles() {
   const [shopifyTotals, setShopifyTotals] = useState<
     Record<
       string,
-      { sales: number; units: number; netProfit: number; adSpend: number; vatAmount: number; redcareFee: number; redcareShippingCost: number; refunds: number; refundCount: number }
+      { sales: number; units: number; netProfit: number; adSpend: number; vatAmount: number; redcareFee: number; redcareShippingCost: number; redcareCogs: number; refunds: number; refundCount: number }
     >
   >({});
   // Redcare Ads and orders can arrive after the page was opened. Refresh the
@@ -612,6 +612,7 @@ export default function PeriodTiles() {
                 vatAmount: Number(kpis.redcareVat ?? 0),
                 redcareFee: Number(kpis.redcareFee ?? 0),
                 redcareShippingCost: Number(kpis.redcareShippingCost ?? 0),
+                redcareCogs: Number(kpis.redcareCogs ?? 0),
                 refunds: Number(kpis.totalRefunds ?? 0),
                 refundCount: Number(kpis.totalRefundCount ?? 0),
               },
@@ -794,6 +795,7 @@ export default function PeriodTiles() {
               vatAmount: row.vatAmount * forecastMultiplier,
               redcareFee: row.redcareFee * forecastMultiplier,
               redcareShippingCost: row.redcareShippingCost * forecastMultiplier,
+              redcareCogs: row.redcareCogs * forecastMultiplier,
               refunds: row.refunds * forecastMultiplier,
               refundCount: Math.round(row.refundCount * forecastMultiplier),
             };
@@ -833,7 +835,8 @@ export default function PeriodTiles() {
             (totalRow?.cogs ?? 0) +
             combinedAdSpend +
             (shopifyRow?.redcareFee ?? 0) +
-            (shopifyRow?.redcareShippingCost ?? 0);
+            (shopifyRow?.redcareShippingCost ?? 0) +
+            (shopifyRow?.redcareCogs ?? 0);
           const active = state.preset === preset;
           const showAdspay = id === "today" && !globalMarketplace.startsWith("REDCARE_");
           // Amazon-only on both sides (no Shopify comparison fetch, to keep
@@ -882,7 +885,7 @@ export default function PeriodTiles() {
                     className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.1em]"
                     style={{ color: accent }}
                   >
-                    <span>Ricavi netti</span>
+                    <span>Incasso (IVA incl.)</span>
                     <VariationBadge variation={salesVariation} />
                   </div>
                   {/* Scales with the tile (cqw) instead of splitting "€" from the amount. */}
@@ -899,7 +902,7 @@ export default function PeriodTiles() {
                 </div>
                 <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2.5">
                   <div className="flex items-center justify-between text-zinc-500 text-[10px] uppercase tracking-[0.08em]">
-                    <span>Profitto netto</span>
+                    <span>Margine pulito</span>
                     <VariationBadge variation={profitVariation} dark />
                   </div>
                   <div
@@ -955,7 +958,7 @@ export default function PeriodTiles() {
                   </div>
                   <div className="pt-1.5 border-t border-bg-border">
                     <div className="text-zinc-500 text-[10px]">
-                      Payout stimato
+                      Payout Amazon
                     </div>
                     <div className="text-zinc-300 tabular-nums">
                       {totalRow ? fmtEurNoWrap(totalRow.estimatedPayout) : "—"}
@@ -1008,7 +1011,7 @@ export default function PeriodTiles() {
                       profit: combinedNetProfit, amazonFees: totalRow?.amazonFees ?? 0,
                       redcareFee: shopifyRow?.redcareFee ?? 0, ads: combinedAdSpend,
                       redcareShippingCost: shopifyRow?.redcareShippingCost ?? 0,
-                      cogs: totalRow?.cogs ?? 0, vat: combinedVat,
+                      cogs: (totalRow?.cogs ?? 0) + (shopifyRow?.redcareCogs ?? 0), vat: combinedVat,
                       refunds: combinedRefunds, units: combinedUnits,
                     });
                   }}
@@ -1021,7 +1024,7 @@ export default function PeriodTiles() {
                         profit: combinedNetProfit, amazonFees: totalRow?.amazonFees ?? 0,
                         redcareFee: shopifyRow?.redcareFee ?? 0, ads: combinedAdSpend,
                         redcareShippingCost: shopifyRow?.redcareShippingCost ?? 0,
-                        cogs: totalRow?.cogs ?? 0, vat: combinedVat,
+                        cogs: (totalRow?.cogs ?? 0) + (shopifyRow?.redcareCogs ?? 0), vat: combinedVat,
                         refunds: combinedRefunds, units: combinedUnits,
                       });
                     }

@@ -17,7 +17,7 @@ import { findSyncState } from "../repositories/shopify/sync-state.repo";
 import { findRecentErrors } from "../repositories/shopify/error-log.repo";
 import { findDailyAdSpends } from "../repositories/marketing/marketplaceAdSpend.repo";
 import { italyDateString } from "../amazon/utils/datetime";
-import { calculateRedcareShippingCost } from "../config/redcare-costs";
+import { calculateRedcareShippingCost, extractVat, REDCARE_VAT_RATE } from "../config/redcare-costs";
 
 const router = Router();
 
@@ -169,7 +169,7 @@ router.get("/summary", async (req: Request, res: Response) => {
     const adSpend = adRows.reduce((sum, ad) => sum + Number(ad.amount), 0);
     const redcareVat = mpRows
       .filter((row) => row.marketplace === "REDCARE_IT")
-      .reduce((sum, row) => sum + Math.max(0, Number(row.revenue) - Number(row.refunds)) * 0.10, 0);
+      .reduce((sum, row) => sum + extractVat(Number(row.revenue) - Number(row.refunds), REDCARE_VAT_RATE), 0);
     const redcareFee = mpRows
       .filter((row) => row.marketplace === "REDCARE_IT")
       .reduce((sum, row) => sum + Math.max(0, Number(row.revenue) - Number(row.refunds)) * 0.15, 0);

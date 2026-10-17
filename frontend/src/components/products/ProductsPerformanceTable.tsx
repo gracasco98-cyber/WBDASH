@@ -83,7 +83,7 @@ const COLUMNS = [
   "Marketplace / Prodotto",
   "Unità",
   "Resi",
-  "Ricavi",
+  "Incasso",
   "Promo",
   "Ads",
   "% Resi",
@@ -91,8 +91,8 @@ const COLUMNS = [
   "COGS",
   "IVA",
   "Profitto lordo",
-  "Profitto netto",
-  "Payout stimato",
+  "Margine pulito",
+  "Payout",
   "Margine",
   "ROI",
   "ACOS reale",
@@ -106,7 +106,7 @@ const COLUMNS = [
  *  more of its member columns. */
 const COLUMN_GROUPS: { label: string; className: string; columns: string[] }[] =
   [
-    { label: "Volume", className: "", columns: ["Unità", "Resi", "Ricavi"] },
+    { label: "Volume", className: "", columns: ["Unità", "Resi", "Incasso"] },
     {
       label: "Vendite",
       className: "text-accent-blue/80",
@@ -122,8 +122,8 @@ const COLUMN_GROUPS: { label: string; className: string; columns: string[] }[] =
       className: "text-accent-primary/90",
       columns: [
         "Profitto lordo",
-        "Profitto netto",
-        "Payout stimato",
+        "Margine pulito",
+        "Payout",
         "Margine",
       ],
     },
@@ -148,7 +148,11 @@ function loadHiddenColumns(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
     const raw = window.localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY);
-    return raw ? new Set(JSON.parse(raw)) : new Set();
+    // Drop names of renamed/removed columns: a stale entry would otherwise
+    // inflate hiddenColumns.size and shrink the "no rows" colSpan.
+    return raw
+      ? new Set((JSON.parse(raw) as string[]).filter((c) => COLUMNS.includes(c)))
+      : new Set();
   } catch {
     return new Set();
   }
@@ -255,7 +259,9 @@ export function buildShopifyMarketplaceRows(
       cogs: base.cogs,
       grossProfit,
       netProfit,
-      estimatedPayout: base.sales - base.refundsAmount - vatAmount - fees - ads,
+      // Payout is the cash Redcare pays out; the VAT inside it is owed later
+      // and is removed from the net margin instead.
+      estimatedPayout: base.sales - base.refundsAmount - fees - ads,
       margin: base.sales > 0 ? netProfit / base.sales : 0,
       roi: base.cogs > 0 ? netProfit / base.cogs : 0,
       realAcos: base.sales > 0 ? ads / base.sales : null,

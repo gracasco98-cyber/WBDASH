@@ -55,15 +55,17 @@ const FEE_ESTIMATE_PCT = 0.15;
 const FEE_ESTIMATE_PER_UNIT = 3.80;
 
 function deriveMetrics(base: {
-  sales: number; refundsAmount: number; amazonFees: number; cogs: number; adsSpend: number | null; units: number;
+  sales: number; refundsAmount: number; amazonFees: number; cogs: number; adsSpend: number | null; units: number; vatAmount: number;
 }): { grossProfit: number; netProfit: number; estimatedPayout: number; margin: number; roi: number; avgSellingPrice: number } {
   const ads = base.adsSpend ?? 0;
-  // Gross profit stops at marketplace fees and COGS; Ads are a selling cost.
-  const grossProfit = base.sales - base.refundsAmount - base.amazonFees - base.cogs;
-  const netProfit = grossProfit - ads;
-  // Dashboard payout is an operational estimate after known Ads costs. It is
-  // distinct from the actual Amazon settlement shown in Pagamenti.
+  // Payout is the cash Amazon pays out: turnover (VAT included) minus refunds,
+  // marketplace fees and Ads. It is distinct from the actual Amazon settlement
+  // shown in Pagamenti.
   const estimatedPayout = base.sales - base.refundsAmount - base.amazonFees - ads;
+  // Gross profit stops at marketplace fees, sales VAT and COGS; Ads are a selling cost.
+  const grossProfit = base.sales - base.refundsAmount - base.vatAmount - base.amazonFees - base.cogs;
+  // Net margin is what stays in pocket: payout minus the VAT owed on sales and COGS.
+  const netProfit = grossProfit - ads;
   const margin = base.sales > 0 ? netProfit / base.sales : 0;
   const roi = base.cogs > 0 ? netProfit / base.cogs : 0;
   const avgSellingPrice = base.units > 0 ? base.sales / base.units : 0;
@@ -184,14 +186,15 @@ export async function resolveProductPerformance(
       const configuredVatRate = ident.vatRate != null && Number(ident.vatRate) > 0
         ? Number(ident.vatRate)
         : 10;
-      // The dashboard VAT rule is deterministic: always apply the configured
-      // rate (10% by default) to turnover net of refunds. Do not mix it with
-      // Amazon's optional itemTax field, which can be partial (e.g. €41 on a
-      // €613 day) and was the source of the inconsistent card total.
+      // The dashboard VAT rule is deterministic: extract the configured rate
+      // (10% by default) from turnover net of refunds. Amazon itemPrice is
+      // VAT-inclusive, so €110 of turnover holds €10 of VAT, not €11. Do not
+      // mix it with Amazon's optional itemTax field, which can be partial
+      // (e.g. €41 on a €613 day) and was the source of the inconsistent card total.
       const vatEstimated = sold.sales > 0;
-      const vatAmount = Math.max(0, sold.sales - refund.amount) * configuredVatRate / 100;
+      const vatAmount = Math.max(0, sold.sales - refund.amount) * configuredVatRate / (100 + configuredVatRate);
 
-      const derived = deriveMetrics({ sales: sold.sales, refundsAmount: refund.amount, amazonFees, cogs, adsSpend, units: sold.units });
+      const derived = deriveMetrics({ sales: sold.sales, refundsAmount: refund.amount, amazonFees, cogs, adsSpend, units: sold.units, vatAmount });
 
       return {
         identifierId: ident.id,
@@ -248,7 +251,7 @@ export async function resolveProductPerformance(
 
     const aggDerived = deriveMetrics({
       sales: aggBase.sales, refundsAmount: aggBase.refundsAmount, amazonFees: aggBase.amazonFees,
-      cogs: aggBase.cogs, adsSpend: aggBase.adsSpend, units: aggBase.units,
+      cogs: aggBase.cogs, adsSpend: aggBase.adsSpend, units: aggBase.units, vatAmount: aggBase.vatAmount,
     });
 
     const aggregate: ProductPerformanceRow = {

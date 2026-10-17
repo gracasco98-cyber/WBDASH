@@ -17,7 +17,7 @@ export const IDENTITY_COLUMN_CLASS =
 export const METRIC_COLUMN_CLASSES: Record<string, string> = {
   "Unità": "md:w-[88px] md:min-w-[88px]",
   "Resi": "md:w-[112px] md:min-w-[112px]",
-  "Ricavi": "md:w-[132px] md:min-w-[132px]",
+  "Incasso": "md:w-[132px] md:min-w-[132px]",
   "Promo": "md:w-[112px] md:min-w-[112px]",
   "Ads": "md:w-[112px] md:min-w-[112px]",
   "% Resi": "md:w-[96px] md:min-w-[96px]",
@@ -25,8 +25,8 @@ export const METRIC_COLUMN_CLASSES: Record<string, string> = {
   "COGS": "md:w-[132px] md:min-w-[132px]",
   "IVA": "md:w-[120px] md:min-w-[120px]",
   "Profitto lordo": "md:w-[150px] md:min-w-[150px]",
-  "Profitto netto": "md:w-[150px] md:min-w-[150px]",
-  "Payout stimato": "md:w-[150px] md:min-w-[150px]",
+  "Margine pulito": "md:w-[150px] md:min-w-[150px]",
+  "Payout": "md:w-[150px] md:min-w-[150px]",
   "Margine": "md:w-[112px] md:min-w-[112px]",
   "ROI": "md:w-[104px] md:min-w-[104px]",
   "ACOS reale": "md:w-[112px] md:min-w-[112px]",
@@ -93,9 +93,9 @@ interface MetricRowProps {
 const NO_COST_DATA_TITLE = "Costi non tracciati per questo canale";
 const MOBILE_SUMMARY_COLUMNS = new Set([
   "Unità",
-  "Ricavi",
+  "Incasso",
   "Ads",
-  "Profitto netto",
+  "Margine pulito",
   "Margine",
   "ACOS reale",
 ]);
@@ -131,7 +131,7 @@ export default function MetricRow({
         </span>
       ),
     },
-    { column: "Ricavi", node: fmtEur(m.sales) },
+    { column: "Incasso", node: fmtEur(m.sales) },
     { column: "Promo", node: fmtEur(m.promo) },
     { column: "Ads", node: dash(m.adsSpend, fmtEur) },
     { column: "% Resi", node: fmtPct(m.refundPct) },
@@ -180,7 +180,7 @@ export default function MetricRow({
       ),
     },
     {
-      column: "Profitto netto",
+      column: "Margine pulito",
       node: hasCostData ? (
         <>
           <span className={`font-semibold ${profitClass(m.netProfit)}`}>
@@ -193,7 +193,7 @@ export default function MetricRow({
       ),
     },
     {
-      column: "Payout stimato",
+      column: "Payout",
       node: hasCostData ? fmtEur(m.estimatedPayout) : noCost,
     },
     {
