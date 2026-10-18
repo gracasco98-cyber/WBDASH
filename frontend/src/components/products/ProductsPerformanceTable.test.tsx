@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ProductsPerformanceTable, { buildShopifyMarketplaceRows, buildProductsCsv } from "./ProductsPerformanceTable";
+import ProductsPerformanceTable, { buildShopifyMarketplaceRows, buildProductsCsv, sortRowsByAdvertisingMetric } from "./ProductsPerformanceTable";
 import type { ProductPerformanceGroup, ProductPerformance, AmazonOrdersResponse } from "@/lib/api";
 
 const mockCatalogImages = vi.fn(async (_asins: string[]) => ({}) as Record<string, string | null>);
@@ -95,6 +95,44 @@ describe("ProductsPerformanceTable", () => {
 
     expect(screen.getByRole("button", { name: "Tutte le metriche" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("columnheader", { name: "COGS" })).toBeInTheDocument();
+  });
+
+  it("sorts ACOS from lowest to highest by default and can reverse it from the header", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
+
+    expect(screen.getByLabelText("Ordina prodotti")).toHaveValue("ACOS-asc");
+    expect(screen.getByRole("columnheader", { name: "ACOS" })).toHaveAttribute("aria-sort", "ascending");
+
+    await user.click(screen.getByTitle("Ordina ACOS dal valore più alto"));
+
+    expect(screen.getByLabelText("Ordina prodotti")).toHaveValue("ACOS-desc");
+    expect(screen.getByRole("columnheader", { name: "ACOS" })).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("sorts groups and their products while always keeping missing advertising metrics last", () => {
+    const rows = [
+      {
+        key: "middle",
+        label: "Medio",
+        metrics: { ...baseRow, acos: 0.3, tacos: 0.08 },
+        children: [
+          { key: "missing-child", label: "Senza dato", metrics: { ...baseRow, acos: null, tacos: null } },
+          { key: "high-child", label: "Alto", metrics: { ...baseRow, acos: 0.6, tacos: 0.12 } },
+          { key: "low-child", label: "Basso", metrics: { ...baseRow, acos: 0.1, tacos: 0.03 } },
+        ],
+      },
+      { key: "missing", label: "Senza dato", metrics: { ...baseRow, acos: null, tacos: null } },
+      { key: "best", label: "Migliore", metrics: { ...baseRow, acos: 0.1, tacos: 0.02 } },
+    ];
+
+    const ascending = sortRowsByAdvertisingMetric(rows, { column: "ACOS", direction: "asc" });
+    expect(ascending.map((row) => row.key)).toEqual(["best", "middle", "missing"]);
+    expect(ascending[1].children?.map((row) => row.key)).toEqual(["low-child", "high-child", "missing-child"]);
+
+    const descending = sortRowsByAdvertisingMetric(rows, { column: "ACOS", direction: "desc" });
+    expect(descending.map((row) => row.key)).toEqual(["middle", "best", "missing"]);
+    expect(descending[0].children?.map((row) => row.key)).toEqual(["high-child", "low-child", "missing-child"]);
   });
 
   it("renders a compact mobile product card and reveals every metric on expansion", async () => {
