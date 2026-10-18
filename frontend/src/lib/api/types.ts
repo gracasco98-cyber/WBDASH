@@ -730,6 +730,13 @@ export interface ProductPerformanceRow {
   refundsCount: number;
   refundPct: number;
   adsSpend: number | null;
+  /** Sales attributed to Ads for this product/ASIN in the selected period. */
+  adSales?: number | null;
+  /** Ads spend divided by ad-attributed sales. */
+  acos?: number | null;
+  /** Ads spend divided by total product sales. */
+  tacos?: number | null;
+  /** @deprecated Compatibility alias for TACOS. */
   realAcos: number | null;
   amazonFees: number;
   hasRealFees: boolean;

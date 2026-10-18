@@ -28,7 +28,7 @@ describe("ad-spend.repo", () => {
       const rows = await findAdSpendForAsins(db.prisma, {
         asins: ["B0ABC123"], dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-03"),
       });
-      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "IT", spend: 15 }]);
+      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "IT", spend: 15, sales: 150 }]);
     });
   });
 
@@ -46,7 +46,7 @@ describe("ad-spend.repo", () => {
       const rows = await findAdSpendForAsins(db.prisma, {
         asins: ["B0ABC123"], dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-01"),
       });
-      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "IT", spend: 12 }]);
+      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "IT", spend: 12, sales: 110 }]);
     });
   });
 
@@ -71,7 +71,7 @@ describe("ad-spend.repo", () => {
         dateTo: new Date("2026-08-27T21:59:59.999Z"),
       });
 
-      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "IT", spend: 49.96 }]);
+      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "IT", spend: 49.96, sales: 50 }]);
     });
   });
 
@@ -89,7 +89,7 @@ describe("ad-spend.repo", () => {
       const rows = await findAdSpendForAsins(db.prisma, {
         asins: ["B0ABC123"], marketplace: "DE", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-01"),
       });
-      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "DE", spend: 7 }]);
+      expect(rows).toEqual([{ asin: "B0ABC123", marketplace: "DE", spend: 7, sales: 70 }]);
     });
   });
 
@@ -108,8 +108,8 @@ describe("ad-spend.repo", () => {
         asins: ["B0ABC123"], marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-01"),
       });
       expect(rows).toHaveLength(2);
-      expect(rows).toContainEqual({ asin: "B0ABC123", marketplace: "IT", spend: 10 });
-      expect(rows).toContainEqual({ asin: "B0ABC123", marketplace: "DE", spend: 7 });
+      expect(rows).toContainEqual({ asin: "B0ABC123", marketplace: "IT", spend: 10, sales: 100 });
+      expect(rows).toContainEqual({ asin: "B0ABC123", marketplace: "DE", spend: 7, sales: 70 });
     });
   });
 });

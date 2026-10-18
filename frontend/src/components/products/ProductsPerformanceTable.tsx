@@ -13,6 +13,7 @@ import MetricRow, {
   IDENTITY_COLUMN_CLASS,
   METRIC_COLUMN_CLASSES,
   SUMMARY_IDENTITY_COLUMN_CLASS,
+  SUMMARY_METRIC_COLUMN_CLASSES,
 } from "./MetricRow";
 import { renderMarkdown } from "@/components/ChatWidget";
 import {
@@ -87,8 +88,11 @@ const COLUMNS = [
   "Resi",
   "Ricavi",
   "Promo",
-  "Ads",
   "% Resi",
+  "Ads",
+  "Vendite Ads",
+  "ACOS",
+  "TACOS",
   "Fee marketplace",
   "COGS",
   "IVA",
@@ -97,7 +101,6 @@ const COLUMNS = [
   "Payout stimato",
   "Margine",
   "ROI",
-  "ACOS reale",
   "Prezzo medio",
   "BSR",
   "Stock",
@@ -112,7 +115,12 @@ const COLUMN_GROUPS: { label: string; className: string; columns: string[] }[] =
     {
       label: "Vendite",
       className: "text-accent-blue/80",
-      columns: ["Promo", "Ads", "% Resi"],
+      columns: ["Promo", "% Resi"],
+    },
+    {
+      label: "Advertising",
+      className: "text-accent-purple/80",
+      columns: ["Ads", "Vendite Ads", "ACOS", "TACOS"],
     },
     {
       label: "Costi",
@@ -132,7 +140,7 @@ const COLUMN_GROUPS: { label: string; className: string; columns: string[] }[] =
     {
       label: "Efficienza",
       className: "text-accent-purple/80",
-      columns: ["ROI", "ACOS reale", "Prezzo medio"],
+      columns: ["ROI", "Prezzo medio"],
     },
     {
       label: "Inventario",
@@ -148,12 +156,33 @@ const HIDDEN_COLUMNS_STORAGE_KEY = "products_table_hidden_columns_v1";
 
 const SUMMARY_COLUMNS = new Set([
   "Unità",
-  "Resi",
   "Ricavi",
   "Ads",
+  "Vendite Ads",
+  "ACOS",
+  "TACOS",
   "Profitto netto",
   "Margine",
+  "Stock",
 ]);
+
+function adEfficiency(
+  adsSpend: number | null,
+  adSales: number | null,
+  totalSales: number,
+) {
+  const tacos = adsSpend !== null && totalSales > 0 ? adsSpend / totalSales : null;
+  return {
+    adSales,
+    acos: adsSpend !== null && adSales !== null && adSales > 0
+      ? adsSpend / adSales
+      : null,
+    tacos,
+    // Kept for older dashboard consumers until they migrate to the explicit
+    // ACOS/TACOS fields. Historically this value was TACOS.
+    realAcos: tacos,
+  };
+}
 
 function loadHiddenColumns(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -192,6 +221,9 @@ const EMPTY_COST_ROW: Omit<
   promo: 0,
   refundsCount: 0,
   adsSpend: null,
+  adSales: null,
+  acos: null,
+  tacos: null,
   realAcos: null,
   amazonFees: 0,
   cogs: 0,
@@ -269,7 +301,7 @@ export function buildShopifyMarketplaceRows(
       estimatedPayout: base.sales - base.refundsAmount - vatAmount - fees - ads,
       margin: base.sales > 0 ? netProfit / base.sales : 0,
       roi: base.cogs > 0 ? netProfit / base.cogs : 0,
-      realAcos: base.sales > 0 ? ads / base.sales : null,
+      ...adEfficiency(base.adsSpend, null, base.sales),
       costDataAvailable: true,
       hasRealFees: false,
       hasRealCogs: base.hasCogs,
@@ -399,6 +431,8 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
         vatAmount: (acc.vatAmount ?? 0) + (r.vatAmount ?? 0),
         adsSpend:
           r.adsSpend !== null ? (acc.adsSpend ?? 0) + r.adsSpend : acc.adsSpend,
+        adSales:
+          r.adSales != null ? (acc.adSales ?? 0) + r.adSales : acc.adSales,
       }),
       {
         units: 0,
@@ -414,6 +448,7 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
         estimatedPayout: 0,
         vatAmount: 0,
         adsSpend: null as number | null,
+        adSales: null as number | null,
       },
     );
     const aggregate: ProductPerformanceRow = {
@@ -426,10 +461,7 @@ function buildRowsByMarketplace(groups: ProductPerformanceGroup[]): RowEntry[] {
       hasRealCogs: rows.every((r) => r.hasRealCogs),
       hasStockData: rows.every((r) => r.hasStockData),
       refundPct: sum.sales > 0 ? sum.refundsAmount / sum.sales : 0,
-      realAcos:
-        sum.adsSpend !== null && sum.sales > 0
-          ? sum.adsSpend / sum.sales
-          : null,
+      ...adEfficiency(sum.adsSpend, sum.adSales, sum.sales),
       margin: sum.sales > 0 ? sum.netProfit / sum.sales : 0,
       roi: sum.cogs > 0 ? sum.netProfit / sum.cogs : 0,
       avgSellingPrice: sum.units > 0 ? sum.sales / sum.units : 0,
@@ -475,6 +507,10 @@ function buildRowsByBrand(groups: ProductPerformanceGroup[]): RowEntry[] {
           g.aggregate.adsSpend !== null
             ? (acc.adsSpend ?? 0) + g.aggregate.adsSpend
             : acc.adsSpend,
+        adSales:
+          g.aggregate.adSales != null
+            ? (acc.adSales ?? 0) + g.aggregate.adSales
+            : acc.adSales,
       }),
       {
         units: 0,
@@ -489,6 +525,7 @@ function buildRowsByBrand(groups: ProductPerformanceGroup[]): RowEntry[] {
         netProfit: 0,
         estimatedPayout: 0,
         adsSpend: null as number | null,
+        adSales: null as number | null,
       },
     );
     const aggregate: ProductPerformanceRow = {
@@ -501,10 +538,7 @@ function buildRowsByBrand(groups: ProductPerformanceGroup[]): RowEntry[] {
       hasRealCogs: brandGroups.every((g) => g.aggregate.hasRealCogs),
       hasStockData: brandGroups.every((g) => g.aggregate.hasStockData),
       refundPct: sum.sales > 0 ? sum.refundsAmount / sum.sales : 0,
-      realAcos:
-        sum.adsSpend !== null && sum.sales > 0
-          ? sum.adsSpend / sum.sales
-          : null,
+      ...adEfficiency(sum.adsSpend, sum.adSales, sum.sales),
       margin: sum.sales > 0 ? sum.netProfit / sum.sales : 0,
       roi: sum.cogs > 0 ? sum.netProfit / sum.cogs : 0,
       avgSellingPrice: sum.units > 0 ? sum.sales / sum.units : 0,
@@ -556,6 +590,10 @@ function buildRowsByCountry(
           e.metrics.adsSpend !== null
             ? (acc.adsSpend ?? 0) + e.metrics.adsSpend
             : acc.adsSpend,
+        adSales:
+          e.metrics.adSales != null
+            ? (acc.adSales ?? 0) + e.metrics.adSales
+            : acc.adSales,
       }),
       {
         units: 0,
@@ -570,6 +608,7 @@ function buildRowsByCountry(
         netProfit: 0,
         estimatedPayout: 0,
         adsSpend: null as number | null,
+        adSales: null as number | null,
       },
     );
     const aggregate: ProductPerformanceRow = {
@@ -593,10 +632,7 @@ function buildRowsByCountry(
       hasRealCogs: entries.every((e) => e.metrics.hasRealCogs),
       hasStockData: entries.every((e) => e.metrics.hasStockData),
       refundPct: sum.sales > 0 ? sum.refundsAmount / sum.sales : 0,
-      realAcos:
-        sum.adsSpend !== null && sum.sales > 0
-          ? sum.adsSpend / sum.sales
-          : null,
+      ...adEfficiency(sum.adsSpend, sum.adSales, sum.sales),
       margin: sum.sales > 0 ? sum.netProfit / sum.sales : 0,
       roi: sum.cogs > 0 ? sum.netProfit / sum.cogs : 0,
       avgSellingPrice: sum.units > 0 ? sum.sales / sum.units : 0,
@@ -632,8 +668,13 @@ export function buildProductsCsv(rows: RowEntry[]): string {
       String(m.refundsCount),
       m.sales.toFixed(2),
       m.promo.toFixed(2),
-      m.adsSpend !== null ? m.adsSpend.toFixed(2) : "",
       (m.refundPct * 100).toFixed(1),
+      m.adsSpend !== null ? m.adsSpend.toFixed(2) : "",
+      m.adSales != null ? m.adSales.toFixed(2) : "",
+      m.acos != null ? (m.acos * 100).toFixed(1) : "",
+      (m.tacos ?? m.realAcos) !== null
+        ? ((m.tacos ?? m.realAcos)! * 100).toFixed(1)
+        : "",
       m.feeKind === "mixed" ? "" : m.amazonFees.toFixed(2),
       m.cogs.toFixed(2),
       (m.vatAmount ?? 0).toFixed(2),
@@ -642,7 +683,6 @@ export function buildProductsCsv(rows: RowEntry[]): string {
       m.estimatedPayout.toFixed(2),
       (m.margin * 100).toFixed(1),
       m.roi.toFixed(2),
-      m.realAcos !== null ? (m.realAcos * 100).toFixed(1) : "",
       m.avgSellingPrice.toFixed(2),
       m.bsr !== null ? String(m.bsr) : "",
       String(m.stock),
@@ -768,6 +808,10 @@ export default function ProductsPerformanceTable({
     tableLayout === "summary"
       ? SUMMARY_IDENTITY_COLUMN_CLASS
       : IDENTITY_COLUMN_CLASS;
+  const metricColumnClasses =
+    tableLayout === "summary"
+      ? SUMMARY_METRIC_COLUMN_CLASSES
+      : METRIC_COLUMN_CLASSES;
 
   const filteredRows = (() => {
     const q = search.trim().toLowerCase();
@@ -1132,7 +1176,7 @@ export default function ProductsPerformanceTable({
                 onClick={() => setTableLayout("summary")}
                 className={`px-2.5 py-1.5 transition-colors ${tableLayout === "summary" ? "bg-accent-blue/12 text-accent-blue" : "text-zinc-400 hover:bg-bg-hover"}`}
               >
-                Sintesi
+                KPI essenziali
               </button>
               <button
                 type="button"
@@ -1241,7 +1285,7 @@ export default function ProductsPerformanceTable({
             {filteredRows.length} marketplace · {filteredRows.reduce((total, row) => total + (row.children?.length ?? 0), 0)} listing
           </span>
           <span className="rounded-full border border-accent-blue/20 bg-accent-blue/5 px-2.5 py-1 font-medium text-accent-blue">
-            {tableLayout === "summary" ? "Sintesi responsive" : "Vista completa"}
+            {tableLayout === "summary" ? "KPI essenziali" : "Vista completa"}
           </span>
         </div>
       )}
@@ -1300,7 +1344,7 @@ export default function ProductsPerformanceTable({
           <p className="px-3 pb-1 pt-3 text-[10px] text-zinc-500 md:hidden">
             Tocca un prodotto per vedere tutte le metriche e il dettaglio per canale.
           </p>
-          <table className={`block w-full border-separate text-[11.5px] md:table md:border-collapse ${tableLayout === "summary" ? "md:w-full md:min-w-[1060px] md:table-fixed" : "md:w-max md:min-w-[2580px]"}`}>
+          <table className={`block w-full border-separate text-[11.5px] md:table md:border-collapse ${tableLayout === "summary" ? "md:w-full md:min-w-[1040px] md:table-fixed" : "md:w-max md:min-w-[2820px]"}`}>
             <thead className="hidden md:table-header-group">
               <tr className="text-[9px] uppercase tracking-wider text-zinc-500 text-left bg-bg-hover/80 border-b border-bg-border">
                 <th
@@ -1329,7 +1373,7 @@ export default function ProductsPerformanceTable({
                 {COLUMNS.slice(1)
                   .filter((c) => !effectiveHiddenColumns.has(c))
                   .map((c) => (
-                    <th key={c} className={`${METRIC_COLUMN_CLASSES[c] ?? ""} border-l border-bg-border/70 px-3 py-3 text-right text-[11px] font-medium leading-tight`}>
+                    <th key={c} className={`${metricColumnClasses[c] ?? ""} border-l border-bg-border/70 px-2 py-3 text-right text-[11px] font-medium leading-tight`}>
                       {c}
                     </th>
                   ))}
@@ -1364,6 +1408,7 @@ export default function ProductsPerformanceTable({
                         metrics={entry.metrics}
                         hiddenColumns={effectiveHiddenColumns}
                         identityColumnClass={identityColumnClass}
+                        metricColumnClasses={metricColumnClasses}
                         mobileExpanded={isOpen}
                         tone={groupBy === "marketplace" ? "marketplace" : "default"}
                       />
@@ -1376,6 +1421,7 @@ export default function ProductsPerformanceTable({
                             isChild
                             hiddenColumns={effectiveHiddenColumns}
                             identityColumnClass={identityColumnClass}
+                            metricColumnClasses={metricColumnClasses}
                             mobileExpanded
                             vatEditor={
                               child.metrics.identifierId ? (
