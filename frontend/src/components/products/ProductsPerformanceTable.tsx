@@ -149,9 +149,9 @@ const HIDDEN_COLUMNS_STORAGE_KEY = "products_table_hidden_columns_v1";
 const SUMMARY_COLUMNS = new Set([
   "Unità",
   "Resi",
-  "Ricavi",
+  "Incasso",
   "Ads",
-  "Profitto netto",
+  "Margine pulito",
   "Margine",
 ]);
 

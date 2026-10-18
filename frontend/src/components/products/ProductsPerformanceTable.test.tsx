@@ -86,7 +86,7 @@ describe("ProductsPerformanceTable", () => {
 
     expect(screen.getByRole("button", { name: "Sintesi" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("columnheader", { name: "COGS" })).not.toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Profitto netto" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Margine pulito" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Tutte le metriche" }));
 
