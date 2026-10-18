@@ -12,6 +12,7 @@ import MetricRow, {
   fmtEur,
   IDENTITY_COLUMN_CLASS,
   METRIC_COLUMN_CLASSES,
+  SUMMARY_IDENTITY_COLUMN_CLASS,
 } from "./MetricRow";
 import { renderMarkdown } from "@/components/ChatWidget";
 import {
@@ -34,6 +35,7 @@ import {
 
 export type GroupBy = "marketplace" | "product" | "brand" | "paese";
 export type ViewMode = "product" | "orders";
+type TableLayout = "summary" | "complete";
 
 interface Props {
   groups: ProductPerformanceGroup[];
@@ -143,6 +145,15 @@ const INSIGHT_QUESTION =
   "Analizza le performance dei prodotti in questo periodo: quali sono i migliori e i peggiori per fatturato e margine, ci sono resi anomali o prodotti senza dati di costo/margine? Dammi 2-3 suggerimenti concreti e azionabili.";
 
 const HIDDEN_COLUMNS_STORAGE_KEY = "products_table_hidden_columns_v1";
+
+const SUMMARY_COLUMNS = new Set([
+  "Unità",
+  "Resi",
+  "Ricavi",
+  "Ads",
+  "Profitto netto",
+  "Margine",
+]);
 
 function loadHiddenColumns(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -713,6 +724,7 @@ export default function ProductsPerformanceTable({
   );
   const [columnsPickerOpen, setColumnsPickerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("product");
+  const [tableLayout, setTableLayout] = useState<TableLayout>("summary");
   const [orders, setOrders] = useState<AmazonOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [insightOpen, setInsightOpen] = useState(false);
@@ -750,6 +762,18 @@ export default function ProductsPerformanceTable({
               ...buildRowsByMarketplace(groups),
               ...(shopifyMarketplaceRows ?? []),
             ];
+
+  const effectiveHiddenColumns =
+    tableLayout === "summary"
+      ? new Set([
+          ...hiddenColumns,
+          ...COLUMNS.slice(1).filter((column) => !SUMMARY_COLUMNS.has(column)),
+        ])
+      : hiddenColumns;
+  const identityColumnClass =
+    tableLayout === "summary"
+      ? SUMMARY_IDENTITY_COLUMN_CLASS
+      : IDENTITY_COLUMN_CLASS;
 
   const filteredRows = (() => {
     const q = search.trim().toLowerCase();
@@ -1104,6 +1128,29 @@ export default function ProductsPerformanceTable({
             </button>
           </div>
           {viewMode === "product" && (
+            <div
+              className="hidden overflow-hidden rounded-lg border border-bg-border text-xs font-medium md:inline-flex"
+              aria-label="Densità tabella prodotti"
+            >
+              <button
+                type="button"
+                aria-pressed={tableLayout === "summary"}
+                onClick={() => setTableLayout("summary")}
+                className={`px-2.5 py-1.5 transition-colors ${tableLayout === "summary" ? "bg-accent-blue/12 text-accent-blue" : "text-zinc-400 hover:bg-bg-hover"}`}
+              >
+                Sintesi
+              </button>
+              <button
+                type="button"
+                aria-pressed={tableLayout === "complete"}
+                onClick={() => setTableLayout("complete")}
+                className={`border-l border-bg-border px-2.5 py-1.5 transition-colors ${tableLayout === "complete" ? "bg-accent-blue/12 text-accent-blue" : "text-zinc-400 hover:bg-bg-hover"}`}
+              >
+                Tutte le metriche
+              </button>
+            </div>
+          )}
+          {viewMode === "product" && (
             <label className="text-xs text-zinc-400">
               <span className="mr-1.5">Raggruppa per</span>
               <select
@@ -1160,7 +1207,7 @@ export default function ProductsPerformanceTable({
           >
             <Download size={13} /> Esporta
           </button>
-          <div className="relative hidden md:block">
+          <div className={`relative hidden md:block ${tableLayout === "summary" ? "md:hidden" : ""}`}>
             <button
               onClick={() => setColumnsPickerOpen((v) => !v)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-bg-border px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:bg-bg-hover transition-colors"
@@ -1198,6 +1245,9 @@ export default function ProductsPerformanceTable({
           <span>Espandi un paese per vedere prodotti, ASIN e SKU separati.</span>
           <span className="ml-auto rounded-full border border-bg-border bg-bg-card px-2.5 py-1">
             {filteredRows.length} marketplace · {filteredRows.reduce((total, row) => total + (row.children?.length ?? 0), 0)} listing
+          </span>
+          <span className="rounded-full border border-accent-blue/20 bg-accent-blue/5 px-2.5 py-1 font-medium text-accent-blue">
+            {tableLayout === "summary" ? "Sintesi responsive" : "Vista completa"}
           </span>
         </div>
       )}
@@ -1256,18 +1306,18 @@ export default function ProductsPerformanceTable({
           <p className="px-3 pb-1 pt-3 text-[10px] text-zinc-500 md:hidden">
             Tocca un prodotto per vedere tutte le metriche e il dettaglio per canale.
           </p>
-          <table className="block w-full border-separate text-[11.5px] md:table md:w-max md:min-w-[2580px] md:border-collapse">
+          <table className={`block w-full border-separate text-[11.5px] md:table md:border-collapse ${tableLayout === "summary" ? "md:w-full md:min-w-[1060px] md:table-fixed" : "md:w-max md:min-w-[2580px]"}`}>
             <thead className="hidden md:table-header-group">
               <tr className="text-[9px] uppercase tracking-wider text-zinc-500 text-left bg-bg-hover/80 border-b border-bg-border">
                 <th
-                  className={`${IDENTITY_COLUMN_CLASS} sticky left-0 z-20 bg-bg-hover/95 px-4 py-3 text-left text-[11px] font-semibold text-zinc-500`}
+                  className={`${identityColumnClass} sticky left-0 z-20 bg-bg-hover/95 px-4 py-3 text-left text-[11px] font-semibold text-zinc-500`}
                   rowSpan={2}
                 >
                   Marketplace / Prodotto
                 </th>
                 {COLUMN_GROUPS.map(({ label, className, columns }) => {
                   const visibleCount = columns.filter(
-                    (c) => !hiddenColumns.has(c),
+                    (c) => !effectiveHiddenColumns.has(c),
                   ).length;
                   if (visibleCount === 0) return null;
                   return (
@@ -1283,7 +1333,7 @@ export default function ProductsPerformanceTable({
               </tr>
               <tr className="bg-bg-hover text-right text-zinc-500 border-b border-bg-border">
                 {COLUMNS.slice(1)
-                  .filter((c) => !hiddenColumns.has(c))
+                  .filter((c) => !effectiveHiddenColumns.has(c))
                   .map((c) => (
                     <th key={c} className={`${METRIC_COLUMN_CLASSES[c] ?? ""} border-l border-bg-border/70 px-3 py-3 text-right text-[11px] font-medium leading-tight`}>
                       {c}
@@ -1295,7 +1345,7 @@ export default function ProductsPerformanceTable({
               {filteredRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={COLUMNS.length - hiddenColumns.size}
+                    colSpan={COLUMNS.length - effectiveHiddenColumns.size}
                     className="py-14 text-center"
                   >
                     <PackageSearch
@@ -1318,7 +1368,8 @@ export default function ProductsPerformanceTable({
                       <MetricRow
                         label={parentLabel(entry, isOpen)}
                         metrics={entry.metrics}
-                        hiddenColumns={hiddenColumns}
+                        hiddenColumns={effectiveHiddenColumns}
+                        identityColumnClass={identityColumnClass}
                         mobileExpanded={isOpen}
                         tone={groupBy === "marketplace" ? "marketplace" : "default"}
                       />
@@ -1329,7 +1380,8 @@ export default function ProductsPerformanceTable({
                             label={childLabel(child)}
                             metrics={child.metrics}
                             isChild
-                            hiddenColumns={hiddenColumns}
+                            hiddenColumns={effectiveHiddenColumns}
+                            identityColumnClass={identityColumnClass}
                             mobileExpanded
                             vatEditor={
                               child.metrics.identifierId ? (

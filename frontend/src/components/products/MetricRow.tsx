@@ -14,6 +14,9 @@ export const dash = (v: number | null, fmt: (n: number) => string) => (v === nul
 export const IDENTITY_COLUMN_CLASS =
   "md:w-[480px] md:min-w-[480px] md:max-w-[480px]";
 
+export const SUMMARY_IDENTITY_COLUMN_CLASS =
+  "md:w-[300px] md:min-w-[300px] md:max-w-[300px] lg:w-[340px] lg:min-w-[340px] lg:max-w-[340px] xl:w-[360px] xl:min-w-[360px] xl:max-w-[360px]";
+
 export const METRIC_COLUMN_CLASSES: Record<string, string> = {
   "Unità": "md:w-[88px] md:min-w-[88px]",
   "Resi": "md:w-[112px] md:min-w-[112px]",
@@ -83,6 +86,9 @@ interface MetricRowProps {
   /** Gives aggregate marketplace rows a stronger visual hierarchy than their
    *  product children without changing any metric rendering. */
   tone?: "default" | "marketplace";
+  /** The compact responsive view uses a narrower identity column; the complete
+   *  analytical view keeps the full reference width. */
+  identityColumnClass?: string;
 }
 
 /**
@@ -108,6 +114,7 @@ export default function MetricRow({
   vatEditor,
   mobileExpanded = false,
   tone = "default",
+  identityColumnClass = IDENTITY_COLUMN_CLASS,
 }: MetricRowProps) {
   const estimated = isEstimated(m);
   // Distinct from "estimated": for non-Amazon channels there is no fee/COGS
@@ -239,7 +246,7 @@ export default function MetricRow({
           : "border-bg-border bg-bg-card md:border-b md:border-bg-border/60"
       }`}
     >
-      <MetricCell className={`${IDENTITY_COLUMN_CLASS} col-span-2 block border-b px-3 py-3 font-medium md:sticky md:left-0 md:z-10 md:table-cell md:border-b-0 md:border-r md:px-4 ${isChild ? "md:py-3.5" : "md:py-4"} ${tone === "marketplace" && !isChild ? "border-bg-border bg-bg-card" : "border-bg-border/70 bg-bg-card"}`}>
+      <MetricCell className={`${identityColumnClass} col-span-2 block border-b px-3 py-3 font-medium md:sticky md:left-0 md:z-10 md:table-cell md:border-b-0 md:border-r md:px-4 ${isChild ? "md:py-3.5" : "md:py-4"} ${tone === "marketplace" && !isChild ? "border-bg-border bg-bg-card" : "border-bg-border/70 bg-bg-card"}`}>
         {label}
       </MetricCell>
       {cells.map((c) => {
