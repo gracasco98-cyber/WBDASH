@@ -83,7 +83,7 @@ export async function upsertAdvertisedProductSnapshot(
 export async function findAdSpendForAsins(
   prisma: PrismaClient,
   params: { asins: string[]; marketplace?: string; dateFrom: Date; dateTo: Date }
-): Promise<Array<{ asin: string; marketplace: string; spend: number }>> {
+): Promise<Array<{ asin: string; marketplace: string; spend: number; sales: number }>> {
   if (params.asins.length === 0) return [];
   const snapshotDateFrom = toItalyDateColumnValue(params.dateFrom);
   const snapshotDateTo = toItalyDateColumnValue(params.dateTo);
@@ -95,7 +95,12 @@ export async function findAdSpendForAsins(
       snapshotDate: { gte: snapshotDateFrom, lte: snapshotDateTo },
       ...(params.marketplace && params.marketplace !== "all" ? { marketplace: params.marketplace } : {}),
     },
-    _sum: { spend: true },
+    _sum: { spend: true, sales: true },
   });
-  return rows.map((r) => ({ asin: r.asin, marketplace: r.marketplace, spend: toNum(r._sum.spend ?? 0) }));
+  return rows.map((r) => ({
+    asin: r.asin,
+    marketplace: r.marketplace,
+    spend: toNum(r._sum.spend ?? 0),
+    sales: toNum(r._sum.sales ?? 0),
+  }));
 }

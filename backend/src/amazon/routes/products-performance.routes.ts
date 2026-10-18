@@ -23,11 +23,14 @@ async function buildAdsSpendMap(
   marketplace: string,
   dateFrom: Date,
   dateTo: Date
-): Promise<Map<string, { spend: number }> | undefined> {
+): Promise<Map<string, { spend: number; sales: number }> | undefined> {
   if (asins.length === 0) return undefined;
   const rows = await findAdSpendForAsins(prisma, { asins, marketplace, dateFrom, dateTo });
   if (rows.length === 0) return undefined;
-  return new Map(rows.map((r) => [`${r.marketplace}::${r.asin}`, { spend: r.spend }]));
+  return new Map(rows.map((r) => [
+    `${r.marketplace}::${r.asin}`,
+    { spend: r.spend, sales: r.sales },
+  ]));
 }
 
 productsPerformanceRouter.get("/products/performance", async (req: Request, res: Response) => {
@@ -82,7 +85,8 @@ productsPerformanceRouter.get("/products/performance", async (req: Request, res:
         aggregate: {
           identifierId: "__ads_unallocated__", asin: "", marketplace: marketplace === "all" ? "ALL" : marketplace,
           sku: null, units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0,
-          refundPct: 0, adsSpend: unallocatedSpend, realAcos: null, amazonFees: 0,
+          refundPct: 0, adsSpend: unallocatedSpend, adSales: null, acos: null,
+          tacos: null, realAcos: null, amazonFees: 0,
           hasRealFees: true, hasRealCogs: true, cogs: 0, stock: 0, hasStockData: false,
           grossProfit: -unallocatedSpend, netProfit: -unallocatedSpend,
           estimatedPayout: -unallocatedSpend, margin: 0, roi: 0, avgSellingPrice: 0,

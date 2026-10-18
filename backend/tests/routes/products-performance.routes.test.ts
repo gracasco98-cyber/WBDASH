@@ -5,13 +5,13 @@ import { setupTestDb, truncateAll, createTestAmazonAccount, type TestDb } from "
 import { runWithAccount } from "../../src/context/account-context";
 import { createProduct, createIdentifier } from "../../src/repositories/amazon/product.repo";
 
-// findAdSpendForAsins now returns { asin, marketplace, spend } — marketplace is
+// findAdSpendForAsins returns per-ASIN spend and attributed sales — marketplace is
 // part of the shape because the route keys its ads map by `${marketplace}::${asin}`.
 vi.mock("../../src/repositories/amazon/ad-spend.repo", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/repositories/amazon/ad-spend.repo")>();
   return {
     ...actual,
-    findAdSpendForAsins: vi.fn(async (): Promise<Array<{ asin: string; marketplace: string; spend: number }>> => []),
+    findAdSpendForAsins: vi.fn(async (): Promise<Array<{ asin: string; marketplace: string; spend: number; sales: number }>> => []),
   };
 });
 
@@ -77,8 +77,8 @@ describe("GET /products/performance", () => {
     // marketplace's spend, and the aggregate must sum to 27 — not 2 × 27.
     const { findAdSpendForAsins } = await import("../../src/repositories/amazon/ad-spend.repo");
     (findAdSpendForAsins as any).mockResolvedValueOnce([
-      { asin: "B0ABC123", marketplace: "IT", spend: 20 },
-      { asin: "B0ABC123", marketplace: "DE", spend: 7 },
+      { asin: "B0ABC123", marketplace: "IT", spend: 20, sales: 80 },
+      { asin: "B0ABC123", marketplace: "DE", spend: 7, sales: 35 },
     ]);
 
     await runWithAccount(accountId, async () => {
@@ -100,6 +100,8 @@ describe("GET /products/performance", () => {
     const group = res.body.groups[0];
     expect(group.rows.find((r: any) => r.marketplace === "IT").adsSpend).toBe(20);
     expect(group.rows.find((r: any) => r.marketplace === "DE").adsSpend).toBe(7);
+    expect(group.rows.find((r: any) => r.marketplace === "IT").acos).toBeCloseTo(0.25, 4);
+    expect(group.rows.find((r: any) => r.marketplace === "IT").tacos).toBeCloseTo(0.2, 4);
     expect(group.aggregate.adsSpend).toBeCloseTo(27, 2);
   });
 });

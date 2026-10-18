@@ -255,26 +255,32 @@ describe("resolveProductPerformance", () => {
     });
   });
 
-  it("returns null adsSpend/realAcos when no adsSpendByKey map is provided", async () => {
+  it("returns null advertising metrics when no ads data is provided", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
       const groups = await resolveProductPerformance(db.prisma, {
         marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
       });
       expect(groups[0].rows[0].adsSpend).toBeNull();
+      expect(groups[0].rows[0].adSales).toBeNull();
+      expect(groups[0].rows[0].acos).toBeNull();
+      expect(groups[0].rows[0].tacos).toBeNull();
       expect(groups[0].rows[0].realAcos).toBeNull();
     });
   });
 
-  it("uses adsSpendByKey when provided, and computes realAcos", async () => {
+  it("computes ACOS from attributed sales and TACOS from total sales", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
       const groups = await resolveProductPerformance(db.prisma, {
         marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
-        adsSpendByKey: new Map([["IT::B0ABC123", { spend: 10 }]]),
+        adsSpendByKey: new Map([["IT::B0ABC123", { spend: 10, sales: 50 }]]),
       });
       const row = groups[0].rows[0];
       expect(row.adsSpend).toBe(10);
+      expect(row.adSales).toBe(50);
+      expect(row.acos).toBeCloseTo(10 / 50, 4);
+      expect(row.tacos).toBeCloseTo(10 / 200, 4);
       expect(row.realAcos).toBeCloseTo(10 / 200, 4);
     });
   });
@@ -305,8 +311,8 @@ describe("resolveProductPerformance", () => {
       const groups = await resolveProductPerformance(db.prisma, {
         marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
         adsSpendByKey: new Map([
-          ["IT::B0ABC123", { spend: 20 }],
-          ["DE::B0ABC123", { spend: 7 }],
+          ["IT::B0ABC123", { spend: 20, sales: 80 }],
+          ["DE::B0ABC123", { spend: 7, sales: 35 }],
         ]),
       });
       const group = groups.find((g) => g.product.id === product.id)!;
@@ -315,6 +321,10 @@ describe("resolveProductPerformance", () => {
 
       expect(itRow.adsSpend).toBe(20);
       expect(deRow.adsSpend).toBe(7);
+      expect(itRow.acos).toBeCloseTo(20 / 80, 4);
+      expect(deRow.acos).toBeCloseTo(7 / 35, 4);
+      expect(itRow.tacos).toBeCloseTo(20 / 200, 4);
+      expect(deRow.tacos).toBeCloseTo(7 / 100, 4);
       expect(itRow.realAcos).toBeCloseTo(20 / 200, 4);
       expect(deRow.realAcos).toBeCloseTo(7 / 100, 4);
       // Ads are a net-profit expense, not a second gross-profit deduction.
@@ -322,6 +332,9 @@ describe("resolveProductPerformance", () => {
       expect(deRow.grossProfit - deRow.netProfit).toBeCloseTo(7, 2);
       // Aggregate sums each marketplace's own spend once — 27, not 40 or 54.
       expect(group.aggregate.adsSpend).toBeCloseTo(27, 2);
+      expect(group.aggregate.adSales).toBeCloseTo(115, 2);
+      expect(group.aggregate.acos).toBeCloseTo(27 / 115, 4);
+      expect(group.aggregate.tacos).toBeCloseTo(27 / 300, 4);
       expect(group.aggregate.realAcos).toBeCloseTo(27 / 300, 4);
       expect(group.aggregate.grossProfit - group.aggregate.netProfit).toBeCloseTo(27, 2);
     });
