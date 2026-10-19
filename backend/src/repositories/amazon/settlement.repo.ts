@@ -138,7 +138,7 @@ export async function findTransactionsForOrders(
 export async function findTransactionsForAsins(
   prisma: PrismaClient,
   params: { asins: string[]; marketplace?: string; dateFrom: Date; dateTo: Date }
-): Promise<Array<{ asin: string | null; marketplace: string; amountType: string; amount: number }>> {
+): Promise<Array<{ asin: string | null; marketplace: string; transactionType: string; amountType: string; amount: number }>> {
   if (params.asins.length === 0) return [];
   const rows = await prisma.amazonSettlementTransaction.findMany({
     where: {
@@ -147,9 +147,31 @@ export async function findTransactionsForAsins(
       postedDate: { gte: params.dateFrom, lte: params.dateTo },
       ...(params.marketplace && params.marketplace !== "all" ? { marketplace: params.marketplace } : {}),
     },
-    select: { asin: true, marketplace: true, amountType: true, amount: true },
+    select: { asin: true, marketplace: true, transactionType: true, amountType: true, amount: true },
   });
   return rows.map((r) => ({ ...r, amount: toNum(r.amount) }));
+}
+
+/**
+ * Fee lines (non-Principal) of "Order" settlement transactions for the given
+ * orders, whatever their postedDate: Amazon settles an order days after the
+ * purchase, so matching by postedDate would attribute fees to the wrong period.
+ */
+export async function findOrderFeesForOrderIds(
+  prisma: PrismaClient,
+  params: { orderIds: string[] }
+): Promise<Array<{ orderId: string; asin: string | null; amount: number }>> {
+  if (params.orderIds.length === 0) return [];
+  const rows = await prisma.amazonSettlementTransaction.findMany({
+    where: {
+      amazonAccountId: { in: getCurrentAccountIds() },
+      orderId: { in: params.orderIds },
+      transactionType: "Order",
+      amountType: { not: "Principal" },
+    },
+    select: { orderId: true, asin: true, amount: true },
+  });
+  return rows.map((r) => ({ orderId: r.orderId as string, asin: r.asin, amount: toNum(r.amount) }));
 }
 
 /**

@@ -162,6 +162,62 @@ describe("resolveProductPerformance", () => {
     });
   });
 
+  async function addOrder(orderId: string, units: number, price: number, purchaseDate = "2026-08-01") {
+    await db.prisma.amazonOrder.create({
+      data: { amazonAccountId: accountId, amazonOrderId: orderId, purchaseDate: new Date(purchaseDate), lastUpdatedDate: new Date(purchaseDate), orderStatus: "Shipped", marketplace: "IT" },
+    });
+    await db.prisma.amazonOrderItem.create({
+      data: { amazonAccountId: accountId, amazonOrderId: orderId, orderItemId: `I-${orderId}`, asin: "B0ABC123", sku: "SKU-RSV-01", productTitle: "Resveratrolo 500mg", marketplace: "IT", quantityOrdered: units, quantityShipped: units, itemPrice: price, itemTax: 0, promotionDiscount: 0, purchaseDate: new Date(purchaseDate) } as any,
+    });
+  }
+
+  const orderFee = (orderId: string, amount: number, postedDate: string) => ({
+    settlementId: "S1", transactionType: "Order", orderId, asin: "B0ABC123", sku: "SKU-RSV-01", marketplace: "IT",
+    amountType: "Commission", amount, currency: "EUR", postedDate: new Date(postedDate),
+  });
+
+  it("matches order fees to the period's orders by orderId, even when Amazon posts them later", async () => {
+    await runWithAccount(accountId, async () => {
+      await seedOneProductWithSales();
+      await createSettlementTransactions(db.prisma, [orderFee("O1", -30, "2026-08-15")] as any);
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const row = groups[0].rows[0];
+      expect(row.hasRealFees).toBe(true);
+      expect(row.amazonFees).toBe(30);
+    });
+  });
+
+  it("ignores fees posted in the period for orders purchased outside it", async () => {
+    await runWithAccount(accountId, async () => {
+      await seedOneProductWithSales();
+      await addOrder("O-JULY", 3, 60, "2026-07-20");
+      await createSettlementTransactions(db.prisma, [orderFee("O-JULY", -25, "2026-08-01")] as any);
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const row = groups[0].rows[0];
+      // O1 is not settled yet, so it is estimated; O-JULY's fee belongs to July.
+      expect(row.hasRealFees).toBe(false);
+      expect(row.amazonFees).toBeCloseTo(200 * 0.15 + 10 * 3.8, 2);
+    });
+  });
+
+  it("uses real fees for settled orders and the estimate for orders not settled yet", async () => {
+    await runWithAccount(accountId, async () => {
+      await seedOneProductWithSales(); // O1: 10 units, 200 €
+      await addOrder("O2", 5, 100);
+      await createSettlementTransactions(db.prisma, [orderFee("O1", -30, "2026-08-05")] as any);
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const row = groups[0].rows[0];
+      expect(row.hasRealFees).toBe(false);
+      expect(row.amazonFees).toBeCloseTo(30 + 100 * 0.15 + 5 * 3.8, 2);
+    });
+  });
+
   it("falls back to the 15%/€3.80 fee estimate when no settlement data exists", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
