@@ -6,7 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import { getCurrentAccountIds } from "../../context/account-context";
 import { findAllProducts } from "./product.repo";
 import { findInventoryForAsins } from "./inventory.repo";
-import { findTransactionsForAsins } from "./settlement.repo";
+import { findOrderFeesForOrderIds, findTransactionsForAsins } from "./settlement.repo";
 import { findCogsForAsins } from "./cogs.repo";
 
 export interface ProductPerformanceRow {
@@ -21,6 +21,12 @@ export interface ProductPerformanceRow {
   refundsCount: number;
   refundPct: number;
   adsSpend: number | null;
+  adSales: number | null;
+  /** Advertising cost of sales: ad spend / ad-attributed sales. */
+  acos: number | null;
+  /** Total advertising cost of sales: ad spend / total product sales. */
+  tacos: number | null;
+  /** @deprecated Compatibility alias for TACOS. */
   realAcos: number | null;
   amazonFees: number;
   hasRealFees: boolean;
@@ -83,7 +89,7 @@ export async function resolveProductPerformance(
      *  per-identifier map below. An asin-only key would hand each marketplace's
      *  identifier row the combined cross-marketplace spend, which the product
      *  aggregate would then count once per marketplace. */
-    adsSpendByKey?: Map<string, { spend: number }>;
+    adsSpendByKey?: Map<string, { spend: number; sales: number }>;
   }
 ): Promise<ProductPerformanceGroup[]> {
   const products = await findAllProducts(prisma, { status: "ACTIVE" });
@@ -113,12 +119,39 @@ export async function resolveProductPerformance(
         purchaseDate: { gte: params.dateFrom, lte: params.dateTo },
         order: { orderStatus: { notIn: ["Canceled", "Cancelled"] } },
       },
-      select: { asin: true, marketplace: true, itemPrice: true, itemTax: true, promotionDiscount: true, quantityOrdered: true },
-    }) as Promise<Array<{ asin: string; marketplace: string; itemPrice: unknown; itemTax: unknown; promotionDiscount: unknown; quantityOrdered: number | null }>>,
+      select: { amazonOrderId: true, asin: true, marketplace: true, itemPrice: true, itemTax: true, promotionDiscount: true, quantityOrdered: true },
+    }) as Promise<Array<{ amazonOrderId: string; asin: string; marketplace: string; itemPrice: unknown; itemTax: unknown; promotionDiscount: unknown; quantityOrdered: number | null }>>,
     findTransactionsForAsins(prisma, { asins, dateFrom: params.dateFrom, dateTo: params.dateTo }),
     findCogsForAsins(prisma, { asins, marketplace: params.marketplace }),
     findInventoryForAsins(prisma, { asins, marketplace: params.marketplace }),
   ]);
+
+  // Order fees are matched to the period's orders by orderId (see
+  // findOrderFeesForOrderIds); keyed `${orderId}::${asin}`.
+  const orderFees = await findOrderFeesForOrderIds(prisma, {
+    orderIds: [...new Set(orderItemRows.map((r) => r.amazonOrderId))],
+  });
+  const orderFeeByOrderAsin = new Map<string, number>();
+  for (const f of orderFees) {
+    // Any fee line marks the item as settled; only charges (< 0) add to fees.
+    const k = `${f.orderId}::${f.asin}`;
+    orderFeeByOrderAsin.set(k, (orderFeeByOrderAsin.get(k) ?? 0) + (f.amount < 0 ? Math.abs(f.amount) : 0));
+  }
+
+  // Per identifier: real fees of settled order items, plus sales/units of the
+  // items Amazon has not settled yet (these get the fee estimate).
+  const orderFeesByKey = new Map<string, { settled: number; unsettledSales: number; unsettledUnits: number }>();
+  for (const r of orderItemRows) {
+    const key = `${r.marketplace}::${r.asin}`;
+    const cur = orderFeesByKey.get(key) ?? { settled: 0, unsettledSales: 0, unsettledUnits: 0 };
+    const fee = orderFeeByOrderAsin.get(`${r.amazonOrderId}::${r.asin}`);
+    if (fee !== undefined) cur.settled += fee;
+    else {
+      cur.unsettledSales += Number(r.itemPrice ?? 0);
+      cur.unsettledUnits += Number(r.quantityOrdered ?? 0);
+    }
+    orderFeesByKey.set(key, cur);
+  }
 
   const salesByKey = new Map<string, { units: number; sales: number; promo: number; vat: number }>();
   for (const r of orderItemRows) {
@@ -139,7 +172,9 @@ export async function resolveProductPerformance(
     if (t.amountType === "Principal" && t.amount < 0) {
       const cur = refundsByKey.get(key) ?? { amount: 0, count: 0 };
       refundsByKey.set(key, { amount: cur.amount + Math.abs(t.amount), count: cur.count + 1 });
-    } else if (t.amount < 0) {
+    } else if (t.amount < 0 && t.transactionType !== "Order") {
+      // Order fees come from orderFeesByKey; only refund/adjustment fees are
+      // still attributed by postedDate.
       feesByKey.set(key, (feesByKey.get(key) ?? 0) + Math.abs(t.amount));
     }
   }
@@ -171,15 +206,24 @@ export async function resolveProductPerformance(
       const key = `${ident.marketplace}::${ident.asin}`;
       const sold = salesByKey.get(key) ?? { units: 0, sales: 0, promo: 0, vat: 0 };
       const refund = refundsByKey.get(key) ?? { amount: 0, count: 0 };
-      const realFees = feesByKey.get(key);
-      const hasRealFees = realFees !== undefined;
-      const amazonFees = hasRealFees ? realFees! : sold.sales * FEE_ESTIMATE_PCT + sold.units * FEE_ESTIMATE_PER_UNIT;
+      const otherFees = feesByKey.get(key);
+      const orderFee = orderFeesByKey.get(key) ?? { settled: 0, unsettledSales: 0, unsettledUnits: 0 };
+      const hasUnsettledItems = orderFee.unsettledSales > 0 || orderFee.unsettledUnits > 0;
+      // "Real" only when every order item of the period is settled.
+      const hasRealFees = !hasUnsettledItems && (orderFeesByKey.has(key) || otherFees !== undefined);
+      const amazonFees = orderFee.settled + (otherFees ?? 0)
+        + orderFee.unsettledSales * FEE_ESTIMATE_PCT + orderFee.unsettledUnits * FEE_ESTIMATE_PER_UNIT;
       const cogsInfo = cogsByKey.get(key) ?? cogsByKey.get(`ALL::${ident.asin}`);
       const hasRealCogs = cogsInfo !== undefined;
       const cogs = cogsInfo ? (cogsInfo.cogsPerUnit + cogsInfo.shippingCost) * sold.units : 0;
       const adsInfo = params.adsSpendByKey?.get(key);
       const adsSpend = adsInfo ? adsInfo.spend : null;
-      const realAcos = adsSpend !== null && sold.sales > 0 ? adsSpend / sold.sales : null;
+      const adSales = adsInfo ? adsInfo.sales : null;
+      const acos = adsSpend !== null && adSales !== null && adSales > 0
+        ? adsSpend / adSales
+        : null;
+      const tacos = adsSpend !== null && sold.sales > 0 ? adsSpend / sold.sales : null;
+      const realAcos = tacos;
       // Amazon itemTax is not present on some imported order rows. The
       // dashboard account uses the agreed 10% operational VAT rule, so a
       // €613 turnover must show €61.30 instead of zero in the card.
@@ -208,6 +252,9 @@ export async function resolveProductPerformance(
         refundsCount: refund.count,
         refundPct: sold.sales > 0 ? refund.amount / sold.sales : 0,
         adsSpend,
+        adSales,
+        acos,
+        tacos,
         realAcos,
         amazonFees,
         hasRealFees,
@@ -236,7 +283,9 @@ export async function resolveProductPerformance(
         vatAmount: acc.vatAmount + r.vatAmount,
         vatEstimated: acc.vatEstimated || r.vatEstimated,
         adsSpend: r.adsSpend !== null ? (acc.adsSpend ?? 0) + r.adsSpend : acc.adsSpend,
+        adSales: r.adSales !== null ? (acc.adSales ?? 0) + r.adSales : acc.adSales,
         hasAnyAds: acc.hasAnyAds || r.adsSpend !== null,
+        hasAnyAdSales: acc.hasAnyAdSales || r.adSales !== null,
         // AND-logic: the aggregate only claims "real fees" when every identifier row
         // has real settlement fees — one row falling back to the estimate must not
         // make the whole aggregate look verified. `true` is the identity element for
@@ -246,7 +295,7 @@ export async function resolveProductPerformance(
         hasRealCogs: acc.hasRealCogs && r.hasRealCogs,
         hasStockData: acc.hasStockData && r.hasStockData,
       }),
-      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, vatAmount: 0, vatEstimated: false, adsSpend: null as number | null, hasAnyAds: false, hasRealFees: true, hasRealCogs: true, hasStockData: true }
+      { units: 0, sales: 0, promo: 0, refundsAmount: 0, refundsCount: 0, amazonFees: 0, cogs: 0, stock: 0, vatAmount: 0, vatEstimated: false, adsSpend: null as number | null, adSales: null as number | null, hasAnyAds: false, hasAnyAdSales: false, hasRealFees: true, hasRealCogs: true, hasStockData: true }
     );
 
     const aggDerived = deriveMetrics({
@@ -260,6 +309,11 @@ export async function resolveProductPerformance(
       refundsAmount: aggBase.refundsAmount, refundsCount: aggBase.refundsCount,
       refundPct: aggBase.sales > 0 ? aggBase.refundsAmount / aggBase.sales : 0,
       adsSpend: aggBase.hasAnyAds ? aggBase.adsSpend : null,
+      adSales: aggBase.hasAnyAdSales ? aggBase.adSales : null,
+      acos: aggBase.hasAnyAds && aggBase.adsSpend !== null && aggBase.hasAnyAdSales && aggBase.adSales !== null && aggBase.adSales > 0
+        ? aggBase.adsSpend / aggBase.adSales
+        : null,
+      tacos: aggBase.hasAnyAds && aggBase.adsSpend !== null && aggBase.sales > 0 ? aggBase.adsSpend / aggBase.sales : null,
       realAcos: aggBase.hasAnyAds && aggBase.adsSpend !== null && aggBase.sales > 0 ? aggBase.adsSpend / aggBase.sales : null,
       amazonFees: aggBase.amazonFees, hasRealFees: aggBase.hasRealFees, hasRealCogs: aggBase.hasRealCogs,
       cogs: aggBase.cogs, stock: aggBase.stock, hasStockData: aggBase.hasStockData,

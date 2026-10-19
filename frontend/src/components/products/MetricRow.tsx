@@ -23,6 +23,7 @@ export const METRIC_COLUMN_CLASSES: Record<string, string> = {
   "Incasso": "md:w-[132px] md:min-w-[132px]",
   "Promo": "md:w-[112px] md:min-w-[112px]",
   "Ads": "md:w-[112px] md:min-w-[112px]",
+  "Vendite Ads": "md:w-[132px] md:min-w-[132px]",
   "% Resi": "md:w-[96px] md:min-w-[96px]",
   "Fee marketplace": "md:w-[148px] md:min-w-[148px]",
   "COGS": "md:w-[132px] md:min-w-[132px]",
@@ -32,16 +33,38 @@ export const METRIC_COLUMN_CLASSES: Record<string, string> = {
   "Payout": "md:w-[150px] md:min-w-[150px]",
   "Margine": "md:w-[112px] md:min-w-[112px]",
   "ROI": "md:w-[104px] md:min-w-[104px]",
-  "ACOS reale": "md:w-[112px] md:min-w-[112px]",
+  "ACOS": "md:w-[104px] md:min-w-[104px]",
+  "TACOS": "md:w-[104px] md:min-w-[104px]",
   "Prezzo medio": "md:w-[132px] md:min-w-[132px]",
   "BSR": "md:w-[96px] md:min-w-[96px]",
   "Stock": "md:w-[104px] md:min-w-[104px]",
+};
+
+/** Widths used by the default decision-oriented view. They keep all essential
+ * sales, advertising and profitability KPIs visible on a normal laptop. */
+export const SUMMARY_METRIC_COLUMN_CLASSES: Record<string, string> = {
+  "Unità": "md:w-[64px] md:min-w-[64px]",
+  "Incasso": "md:w-[104px] md:min-w-[104px]",
+  "Ads": "md:w-[92px] md:min-w-[92px]",
+  "Vendite Ads": "md:w-[104px] md:min-w-[104px]",
+  "ACOS": "md:w-[76px] md:min-w-[76px]",
+  "TACOS": "md:w-[76px] md:min-w-[76px]",
+  "Margine pulito": "md:w-[116px] md:min-w-[116px]",
+  "Margine": "md:w-[76px] md:min-w-[76px]",
+  "Stock": "md:w-[70px] md:min-w-[70px]",
 };
 
 /** accent-primary (#6ee7b7) is this app's positive/success token — same one
  *  GlobalSidebar uses for active links. accent-red (#f87171) is its negative
  *  counterpart. Both are theme tokens, so the table follows the theme toggle. */
 const profitClass = (n: number) => (n < 0 ? "text-accent-red" : "text-accent-primary");
+
+const efficiencyClass = (value: number | null, healthy: number, warning: number) => {
+  if (value === null) return "text-zinc-500";
+  if (value <= healthy) return "text-accent-primary";
+  if (value <= warning) return "text-accent-amber";
+  return "text-accent-red";
+};
 
 /** grossProfit, netProfit, margin and roi are all derived from amazonFees and
  *  cogs. When either of those is an estimate rather than real settlement/COGS
@@ -89,6 +112,7 @@ interface MetricRowProps {
   /** The compact responsive view uses a narrower identity column; the complete
    *  analytical view keeps the full reference width. */
   identityColumnClass?: string;
+  metricColumnClasses?: Record<string, string>;
 }
 
 /**
@@ -98,12 +122,11 @@ interface MetricRowProps {
  */
 const NO_COST_DATA_TITLE = "Costi non tracciati per questo canale";
 const MOBILE_SUMMARY_COLUMNS = new Set([
-  "Unità",
   "Incasso",
-  "Ads",
   "Margine pulito",
   "Margine",
-  "ACOS reale",
+  "ACOS",
+  "TACOS",
 ]);
 
 export default function MetricRow({
@@ -115,6 +138,7 @@ export default function MetricRow({
   mobileExpanded = false,
   tone = "default",
   identityColumnClass = IDENTITY_COLUMN_CLASS,
+  metricColumnClasses = METRIC_COLUMN_CLASSES,
 }: MetricRowProps) {
   const estimated = isEstimated(m);
   // Distinct from "estimated": for non-Amazon channels there is no fee/COGS
@@ -122,6 +146,8 @@ export default function MetricRow({
   // a fabricated 100%-margin figure, not a real estimate.
   const hasCostData = m.costDataAvailable !== false;
   const noCost = <span title={NO_COST_DATA_TITLE}>—</span>;
+  const tacos = m.tacos ?? m.realAcos;
+  const acos = m.acos ?? null;
 
   const cells: { column: string; node: React.ReactNode }[] = [
     { column: "Unità", node: m.units },
@@ -140,8 +166,31 @@ export default function MetricRow({
     },
     { column: "Incasso", node: fmtEur(m.sales) },
     { column: "Promo", node: fmtEur(m.promo) },
-    { column: "Ads", node: dash(m.adsSpend, fmtEur) },
     { column: "% Resi", node: fmtPct(m.refundPct) },
+    { column: "Ads", node: dash(m.adsSpend, fmtEur) },
+    { column: "Vendite Ads", node: dash(m.adSales ?? null, fmtEur) },
+    {
+      column: "ACOS",
+      node: (
+        <span
+          className={`font-semibold ${efficiencyClass(acos, 0.25, 0.4)}`}
+          title="Spesa Ads ÷ vendite attribuite Ads"
+        >
+          {dash(acos, fmtPct)}
+        </span>
+      ),
+    },
+    {
+      column: "TACOS",
+      node: (
+        <span
+          className={`font-semibold ${efficiencyClass(tacos, 0.1, 0.15)}`}
+          title="Spesa Ads ÷ ricavi totali del prodotto"
+        >
+          {dash(tacos, fmtPct)}
+        </span>
+      ),
+    },
     {
       column: "Fee marketplace",
       node: hasCostData && m.feeKind !== "mixed" ? (
@@ -229,7 +278,6 @@ export default function MetricRow({
         noCost
       ),
     },
-    { column: "ACOS reale", node: dash(m.realAcos, fmtPct) },
     { column: "Prezzo medio", node: fmtEur(m.avgSellingPrice) },
     { column: "BSR", node: dash(m.bsr, (n) => String(n)) },
     // stock 0 with no inventory row means "unknown", not "zero units"
@@ -258,7 +306,7 @@ export default function MetricRow({
           <td
             key={c.column}
             data-mobile-metric={c.column}
-            className={`${visibleOnMobile ? "flex" : "hidden"} ${desktopVisibility} ${METRIC_COLUMN_CLASSES[c.column] ?? ""} min-w-0 flex-col gap-1 border-b border-bg-border/50 px-3 py-2.5 odd:border-r md:border-b-0 md:border-l md:border-bg-border/70 md:px-3 md:py-4 md:text-right md:align-middle`}
+            className={`${visibleOnMobile ? "flex" : "hidden"} ${desktopVisibility} ${metricColumnClasses[c.column] ?? ""} min-w-0 flex-col gap-1 border-b border-bg-border/50 px-3 py-2.5 odd:border-r md:border-b-0 md:border-l md:border-bg-border/70 md:px-2 md:py-4 md:text-right md:align-middle`}
           >
             <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-zinc-500 md:hidden">
               {c.column}

@@ -31,7 +31,7 @@ vi.mock("@/lib/api", () => ({
 const baseRow = {
   identifierId: "ident-1", asin: "B0ABC123", marketplace: "IT", sku: "SKU-RSV-01",
   units: 10, sales: 200, promo: 5, refundsAmount: 2, refundsCount: 1, refundPct: 0.01,
-  adsSpend: 8, realAcos: 0.04, amazonFees: 35, hasRealFees: true, hasRealCogs: true, cogs: 45, stock: 184, hasStockData: true,
+  adsSpend: 8, adSales: 32, acos: 0.25, tacos: 0.04, realAcos: 0.04, amazonFees: 35, hasRealFees: true, hasRealCogs: true, cogs: 45, stock: 184, hasStockData: true,
   grossProfit: 110, netProfit: 110, estimatedPayout: 155, margin: 0.55, roi: 2.44,
   avgSellingPrice: 20, bsr: null,
 };
@@ -84,9 +84,12 @@ describe("ProductsPerformanceTable", () => {
     const user = userEvent.setup();
     render(<ProductsPerformanceTable groups={groups} groupBy="marketplace" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: "Sintesi" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "KPI essenziali" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("columnheader", { name: "COGS" })).not.toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Margine pulito" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Vendite Ads" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "ACOS" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "TACOS" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Tutte le metriche" }));
 
@@ -100,13 +103,15 @@ describe("ProductsPerformanceTable", () => {
     const expandButton = screen.getByRole("button", { name: /espandi resveratrolo 500mg/i });
     const unitsCell = container.querySelector('[data-mobile-metric="Unità"]');
     const adsCell = container.querySelector('[data-mobile-metric="Ads"]');
-    const acosCell = container.querySelector('[data-mobile-metric="ACOS reale"]');
+    const acosCell = container.querySelector('[data-mobile-metric="ACOS"]');
+    const tacosCell = container.querySelector('[data-mobile-metric="TACOS"]');
     const cogsCell = container.querySelector('[data-mobile-metric="COGS"]');
 
     expect(expandButton).toHaveAttribute("aria-expanded", "false");
-    expect(unitsCell).toHaveClass("flex");
-    expect(adsCell).toHaveClass("flex");
+    expect(unitsCell).toHaveClass("hidden");
+    expect(adsCell).toHaveClass("hidden");
     expect(acosCell).toHaveClass("flex");
+    expect(tacosCell).toHaveClass("flex");
     expect(cogsCell).toHaveClass("hidden");
     expect(screen.getByText("Mostra tutte le metriche")).toBeInTheDocument();
 
@@ -142,11 +147,11 @@ describe("ProductsPerformanceTable", () => {
     expect(onGroupByChange).toHaveBeenCalledWith("product");
   });
 
-  it("shows '—' for null adsSpend/realAcos/bsr", () => {
-    const rowWithNulls = { ...baseRow, adsSpend: null, realAcos: null, bsr: null };
+  it("shows '—' for unavailable Ads, ACOS, TACOS and BSR", () => {
+    const rowWithNulls = { ...baseRow, adsSpend: null, adSales: null, acos: null, tacos: null, realAcos: null, bsr: null };
     render(<ProductsPerformanceTable groups={[{ ...groups[0], rows: [rowWithNulls], aggregate: rowWithNulls }]} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
     const dashes = screen.getAllByText("—");
-    expect(dashes.length).toBeGreaterThanOrEqual(3); // ads, acos, bsr
+    expect(dashes.length).toBeGreaterThanOrEqual(5); // ads, ad sales, acos, tacos, bsr
   });
 
   it("propagates the estimated-data badge to every cell derived from fee/COGS estimates", async () => {
@@ -275,25 +280,28 @@ describe("ProductsPerformanceTable", () => {
     expect(redcare.children?.[0].metrics.cogs).toBe(12);
   });
 
-  it("groups 'ACOS reale' under the 'Efficienza' header and 'BSR' under 'Inventario' (not the reverse)", () => {
+  it("groups ACOS and TACOS under Advertising and BSR under Inventario", async () => {
+    const user = userEvent.setup();
     const { container } = render(<ProductsPerformanceTable groups={groups} groupBy="product" onGroupByChange={vi.fn()} onRenamed={vi.fn()} onMoved={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Tutte le metriche" }));
+    await user.click(screen.getByRole("button", { name: "Tutte le metriche" }));
     const groupHeaderCells = Array.from(container.querySelectorAll("thead tr:first-child th")).slice(1); // drop "Identità"
     const columnLabels = Array.from(container.querySelectorAll("thead tr:nth-child(2) th")).map((th) => th.textContent);
 
     // Walk the group header row, consuming `colSpan` column labels per group,
-    // to find which group each of "ACOS reale" and "BSR" falls under.
+    // to find which group each advertising/inventory KPI falls under.
     let cursor = 0;
-    const groupOf: Record<string, string | null> = { "ACOS reale": null, BSR: null };
+    const groupOf: Record<string, string | null> = { ACOS: null, TACOS: null, BSR: null };
     for (const th of groupHeaderCells) {
       const span = Number(th.getAttribute("colSpan") ?? "1");
       const labelsInGroup = columnLabels.slice(cursor, cursor + span);
-      if (labelsInGroup.includes("ACOS reale")) groupOf["ACOS reale"] = th.textContent;
+      if (labelsInGroup.includes("ACOS")) groupOf.ACOS = th.textContent;
+      if (labelsInGroup.includes("TACOS")) groupOf.TACOS = th.textContent;
       if (labelsInGroup.includes("BSR")) groupOf.BSR = th.textContent;
       cursor += span;
     }
 
-    expect(groupOf["ACOS reale"]).toBe("Efficienza");
+    expect(groupOf.ACOS).toBe("Advertising");
+    expect(groupOf.TACOS).toBe("Advertising");
     expect(groupOf.BSR).toBe("Inventario");
   });
 

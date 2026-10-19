@@ -163,6 +163,62 @@ describe("resolveProductPerformance", () => {
     });
   });
 
+  async function addOrder(orderId: string, units: number, price: number, purchaseDate = "2026-08-01") {
+    await db.prisma.amazonOrder.create({
+      data: { amazonAccountId: accountId, amazonOrderId: orderId, purchaseDate: new Date(purchaseDate), lastUpdatedDate: new Date(purchaseDate), orderStatus: "Shipped", marketplace: "IT" },
+    });
+    await db.prisma.amazonOrderItem.create({
+      data: { amazonAccountId: accountId, amazonOrderId: orderId, orderItemId: `I-${orderId}`, asin: "B0ABC123", sku: "SKU-RSV-01", productTitle: "Resveratrolo 500mg", marketplace: "IT", quantityOrdered: units, quantityShipped: units, itemPrice: price, itemTax: 0, promotionDiscount: 0, purchaseDate: new Date(purchaseDate) } as any,
+    });
+  }
+
+  const orderFee = (orderId: string, amount: number, postedDate: string) => ({
+    settlementId: "S1", transactionType: "Order", orderId, asin: "B0ABC123", sku: "SKU-RSV-01", marketplace: "IT",
+    amountType: "Commission", amount, currency: "EUR", postedDate: new Date(postedDate),
+  });
+
+  it("matches order fees to the period's orders by orderId, even when Amazon posts them later", async () => {
+    await runWithAccount(accountId, async () => {
+      await seedOneProductWithSales();
+      await createSettlementTransactions(db.prisma, [orderFee("O1", -30, "2026-08-15")] as any);
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const row = groups[0].rows[0];
+      expect(row.hasRealFees).toBe(true);
+      expect(row.amazonFees).toBe(30);
+    });
+  });
+
+  it("ignores fees posted in the period for orders purchased outside it", async () => {
+    await runWithAccount(accountId, async () => {
+      await seedOneProductWithSales();
+      await addOrder("O-JULY", 3, 60, "2026-07-20");
+      await createSettlementTransactions(db.prisma, [orderFee("O-JULY", -25, "2026-08-01")] as any);
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const row = groups[0].rows[0];
+      // O1 is not settled yet, so it is estimated; O-JULY's fee belongs to July.
+      expect(row.hasRealFees).toBe(false);
+      expect(row.amazonFees).toBeCloseTo(200 * 0.15 + 10 * 3.8, 2);
+    });
+  });
+
+  it("uses real fees for settled orders and the estimate for orders not settled yet", async () => {
+    await runWithAccount(accountId, async () => {
+      await seedOneProductWithSales(); // O1: 10 units, 200 €
+      await addOrder("O2", 5, 100);
+      await createSettlementTransactions(db.prisma, [orderFee("O1", -30, "2026-08-05")] as any);
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const row = groups[0].rows[0];
+      expect(row.hasRealFees).toBe(false);
+      expect(row.amazonFees).toBeCloseTo(30 + 100 * 0.15 + 5 * 3.8, 2);
+    });
+  });
+
   it("falls back to the 15%/€3.80 fee estimate when no settlement data exists", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
@@ -275,26 +331,32 @@ describe("resolveProductPerformance", () => {
     });
   });
 
-  it("returns null adsSpend/realAcos when no adsSpendByKey map is provided", async () => {
+  it("returns null advertising metrics when no ads data is provided", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
       const groups = await resolveProductPerformance(db.prisma, {
         marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
       });
       expect(groups[0].rows[0].adsSpend).toBeNull();
+      expect(groups[0].rows[0].adSales).toBeNull();
+      expect(groups[0].rows[0].acos).toBeNull();
+      expect(groups[0].rows[0].tacos).toBeNull();
       expect(groups[0].rows[0].realAcos).toBeNull();
     });
   });
 
-  it("uses adsSpendByKey when provided, and computes realAcos", async () => {
+  it("computes ACOS from attributed sales and TACOS from total sales", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
       const groups = await resolveProductPerformance(db.prisma, {
         marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
-        adsSpendByKey: new Map([["IT::B0ABC123", { spend: 10 }]]),
+        adsSpendByKey: new Map([["IT::B0ABC123", { spend: 10, sales: 50 }]]),
       });
       const row = groups[0].rows[0];
       expect(row.adsSpend).toBe(10);
+      expect(row.adSales).toBe(50);
+      expect(row.acos).toBeCloseTo(10 / 50, 4);
+      expect(row.tacos).toBeCloseTo(10 / 200, 4);
       expect(row.realAcos).toBeCloseTo(10 / 200, 4);
     });
   });
@@ -325,8 +387,8 @@ describe("resolveProductPerformance", () => {
       const groups = await resolveProductPerformance(db.prisma, {
         marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
         adsSpendByKey: new Map([
-          ["IT::B0ABC123", { spend: 20 }],
-          ["DE::B0ABC123", { spend: 7 }],
+          ["IT::B0ABC123", { spend: 20, sales: 80 }],
+          ["DE::B0ABC123", { spend: 7, sales: 35 }],
         ]),
       });
       const group = groups.find((g) => g.product.id === product.id)!;
@@ -335,6 +397,10 @@ describe("resolveProductPerformance", () => {
 
       expect(itRow.adsSpend).toBe(20);
       expect(deRow.adsSpend).toBe(7);
+      expect(itRow.acos).toBeCloseTo(20 / 80, 4);
+      expect(deRow.acos).toBeCloseTo(7 / 35, 4);
+      expect(itRow.tacos).toBeCloseTo(20 / 200, 4);
+      expect(deRow.tacos).toBeCloseTo(7 / 100, 4);
       expect(itRow.realAcos).toBeCloseTo(20 / 200, 4);
       expect(deRow.realAcos).toBeCloseTo(7 / 100, 4);
       // Ads are a net-profit expense, not a second gross-profit deduction.
@@ -342,6 +408,9 @@ describe("resolveProductPerformance", () => {
       expect(deRow.grossProfit - deRow.netProfit).toBeCloseTo(7, 2);
       // Aggregate sums each marketplace's own spend once — 27, not 40 or 54.
       expect(group.aggregate.adsSpend).toBeCloseTo(27, 2);
+      expect(group.aggregate.adSales).toBeCloseTo(115, 2);
+      expect(group.aggregate.acos).toBeCloseTo(27 / 115, 4);
+      expect(group.aggregate.tacos).toBeCloseTo(27 / 300, 4);
       expect(group.aggregate.realAcos).toBeCloseTo(27 / 300, 4);
       expect(group.aggregate.grossProfit - group.aggregate.netProfit).toBeCloseTo(27, 2);
     });
