@@ -32,11 +32,21 @@ import {
   Loader2,
   RotateCcw,
   TrendingUp,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from "lucide-react";
 
 export type GroupBy = "marketplace" | "product" | "brand" | "paese";
 export type ViewMode = "product" | "orders";
 type TableLayout = "summary" | "complete";
+export type AdvertisingSortColumn = "ACOS" | "TACOS";
+export type AdvertisingSortDirection = "asc" | "desc";
+
+export interface AdvertisingSort {
+  column: AdvertisingSortColumn;
+  direction: AdvertisingSortDirection;
+}
 
 interface Props {
   groups: ProductPerformanceGroup[];
@@ -199,6 +209,41 @@ export interface RowEntry {
   label: string;
   metrics: ProductPerformanceRow;
   children?: { key: string; label: string; metrics: ProductPerformanceRow }[];
+}
+
+function advertisingMetric(
+  row: ProductPerformanceRow,
+  column: AdvertisingSortColumn,
+): number | null {
+  const value = column === "ACOS" ? row.acos : (row.tacos ?? row.realAcos);
+  return value != null && Number.isFinite(value) ? value : null;
+}
+
+/** Sorts groups and their product children by advertising efficiency.
+ * Missing metrics always stay at the bottom, in both directions. */
+export function sortRowsByAdvertisingMetric(
+  rows: RowEntry[],
+  sort: AdvertisingSort,
+): RowEntry[] {
+  const compare = (
+    left: { label: string; metrics: ProductPerformanceRow },
+    right: { label: string; metrics: ProductPerformanceRow },
+  ) => {
+    const leftValue = advertisingMetric(left.metrics, sort.column);
+    const rightValue = advertisingMetric(right.metrics, sort.column);
+    if (leftValue === null) return rightValue === null ? left.label.localeCompare(right.label, "it") : 1;
+    if (rightValue === null) return -1;
+    const difference = leftValue - rightValue;
+    if (difference === 0) return left.label.localeCompare(right.label, "it");
+    return sort.direction === "asc" ? difference : -difference;
+  };
+
+  return rows
+    .map((entry) => ({
+      ...entry,
+      children: entry.children ? [...entry.children].sort(compare) : undefined,
+    }))
+    .sort(compare);
 }
 
 const EMPTY_COST_ROW: Omit<
@@ -759,6 +804,10 @@ export default function ProductsPerformanceTable({
   const [columnsPickerOpen, setColumnsPickerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("product");
   const [tableLayout, setTableLayout] = useState<TableLayout>("summary");
+  const [advertisingSort, setAdvertisingSort] = useState<AdvertisingSort>({
+    column: "ACOS",
+    direction: "asc",
+  });
   const [orders, setOrders] = useState<AmazonOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [insightOpen, setInsightOpen] = useState(false);
@@ -813,7 +862,7 @@ export default function ProductsPerformanceTable({
       ? SUMMARY_METRIC_COLUMN_CLASSES
       : METRIC_COLUMN_CLASSES;
 
-  const filteredRows = (() => {
+  const searchedRows = (() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter(
@@ -822,6 +871,15 @@ export default function ProductsPerformanceTable({
         entry.children?.some((c) => c.label.toLowerCase().includes(q)),
     );
   })();
+  const filteredRows = sortRowsByAdvertisingMetric(searchedRows, advertisingSort);
+
+  const toggleAdvertisingSort = (column: AdvertisingSortColumn) => {
+    setAdvertisingSort((current) => ({
+      column,
+      direction:
+        current.column === column && current.direction === "asc" ? "desc" : "asc",
+    }));
+  };
 
   const buildInsightContext = () => {
     const period = dateRange ? `${dateRange.from} → ${dateRange.to}` : "periodo corrente della dashboard";
@@ -1189,6 +1247,28 @@ export default function ProductsPerformanceTable({
             </div>
           )}
           {viewMode === "product" && (
+            <label className="flex items-center gap-1.5 text-xs text-zinc-400">
+              <span>Ordina</span>
+              <select
+                aria-label="Ordina prodotti"
+                value={`${advertisingSort.column}-${advertisingSort.direction}`}
+                onChange={(event) => {
+                  const [column, direction] = event.target.value.split("-") as [
+                    AdvertisingSortColumn,
+                    AdvertisingSortDirection,
+                  ];
+                  setAdvertisingSort({ column, direction });
+                }}
+                className="h-8 rounded-lg border border-bg-border bg-bg-card px-2 text-zinc-700 shadow-sm focus:border-accent-primary focus:outline-none"
+              >
+                <option value="ACOS-asc">ACOS: più basso</option>
+                <option value="ACOS-desc">ACOS: più alto</option>
+                <option value="TACOS-asc">TACOS: più basso</option>
+                <option value="TACOS-desc">TACOS: più alto</option>
+              </select>
+            </label>
+          )}
+          {viewMode === "product" && (
             <label className="text-xs text-zinc-400">
               <span className="mr-1.5">Raggruppa per</span>
               <select
@@ -1372,11 +1452,32 @@ export default function ProductsPerformanceTable({
               <tr className="bg-bg-hover text-right text-zinc-500 border-b border-bg-border">
                 {COLUMNS.slice(1)
                   .filter((c) => !effectiveHiddenColumns.has(c))
-                  .map((c) => (
-                    <th key={c} className={`${metricColumnClasses[c] ?? ""} border-l border-bg-border/70 px-2 py-3 text-right text-[11px] font-medium leading-tight`}>
-                      {c}
-                    </th>
-                  ))}
+                  .map((c) => {
+                    const isSortable = c === "ACOS" || c === "TACOS";
+                    const isActive = isSortable && advertisingSort.column === c;
+                    return (
+                      <th
+                        key={c}
+                        aria-label={c}
+                        aria-sort={isActive ? (advertisingSort.direction === "asc" ? "ascending" : "descending") : undefined}
+                        className={`${metricColumnClasses[c] ?? ""} border-l border-bg-border/70 px-2 py-3 text-right text-[11px] font-medium leading-tight`}
+                      >
+                        {isSortable ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleAdvertisingSort(c)}
+                            title={`Ordina ${c} dal valore ${isActive && advertisingSort.direction === "asc" ? "più alto" : "più basso"}`}
+                            className={`ml-auto inline-flex items-center gap-1 rounded px-1.5 py-1 transition-colors ${isActive ? "bg-accent-purple/15 font-semibold text-accent-purple" : "text-zinc-500 hover:bg-bg-card hover:text-zinc-300"}`}
+                          >
+                            {c}
+                            {isActive ? (
+                              advertisingSort.direction === "asc" ? <ArrowUp aria-hidden="true" size={11} /> : <ArrowDown aria-hidden="true" size={11} />
+                            ) : <ArrowUpDown aria-hidden="true" size={11} />}
+                          </button>
+                        ) : c}
+                      </th>
+                    );
+                  })}
               </tr>
             </thead>
             <tbody className="block space-y-2 p-2 md:table-row-group md:space-y-0 md:p-0">
