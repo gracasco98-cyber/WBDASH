@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDateRange, italyDateString, italyDayStart } from "../../src/amazon/utils/datetime";
+import { getDateRange, italyDateString, italyDateToUtc, italyDayStart, italyOffsetHours } from "../../src/amazon/utils/datetime";
 
 describe("getDateRange — Italy timezone boundaries", () => {
   beforeEach(() => {
@@ -59,6 +59,36 @@ describe("italyDayStart", () => {
     const evening = italyDayStart(new Date("2026-08-26T20:00:00Z"));
     expect(morning).toEqual(evening);
     expect(morning).toEqual(new Date("2026-08-25T22:00:00.000Z"));
+  });
+});
+
+describe("italyDayStart — Italy calendar day, not UTC calendar day", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("between 00:00 and 02:00 Italy returns today's Italy midnight, not yesterday's", () => {
+    // 2026-08-25T22:30Z = 00:30 of 26/08 in Italy, while UTC is still on 25/08.
+    expect(italyDayStart(new Date("2026-08-25T22:30:00Z"))).toEqual(new Date("2026-08-25T22:00:00.000Z"));
+  });
+
+  it("'today' at 00:30 Italy starts at that night's Italy midnight", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-25T22:30:00Z"));
+    expect(getDateRange("today").gte).toEqual(new Date("2026-08-25T22:00:00.000Z"));
+  });
+
+  it("uses CET (+1) after DST ends on the last Sunday of October", () => {
+    // DST ends 2026-10-25: from then on Italy midnight is 23:00 UTC.
+    expect(italyDayStart(new Date("2026-10-27T10:00:00Z"))).toEqual(new Date("2026-10-26T23:00:00.000Z"));
+    expect(italyDateToUtc("2026-10-27")).toEqual(new Date("2026-10-26T23:00:00.000Z"));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-27T10:00:00Z"));
+    expect(italyOffsetHours()).toBe(1);
+  });
+
+  it("uses CET (+1) at the midnight of the day DST starts (last Sunday of March)", () => {
+    // DST starts 2026-03-29 at 02:00: that day's midnight is still CET.
+    expect(italyDayStart(new Date("2026-03-29T12:00:00Z"))).toEqual(new Date("2026-03-28T23:00:00.000Z"));
+    expect(italyDayStart(new Date("2026-03-30T12:00:00Z"))).toEqual(new Date("2026-03-29T22:00:00.000Z"));
   });
 });
 

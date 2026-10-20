@@ -1,35 +1,49 @@
 // amazon/utils/datetime.ts — Shared Italy timezone helpers
 // Pure functions extracted from amazon/routes.ts (no semantic changes).
 
-// ─── Italy timezone offset (UTC+2 CEST Apr-Oct, UTC+1 CET Nov-Mar) ───────────
+// ─── Italy timezone offset (Europe/Rome rules: CEST +2 / CET +1, DST via Intl) ───────────
+/** Italy's UTC offset (ms) at a given instant, from the real Europe/Rome rules (DST included). */
+function italyOffsetMsAt(date: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Rome", hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(date);
+  const v = Object.fromEntries(parts.map((p) => [p.type, Number(p.value)]));
+  const wallClockAsUtc = Date.UTC(v.year, v.month - 1, v.day, v.hour, v.minute, v.second);
+  return wallClockAsUtc - Math.floor(date.getTime() / 1000) * 1000;
+}
+/** UTC instant of Italy midnight for an Italian calendar date (month 1-12). */
+function italyMidnightUtc(year: number, month: number, day: number): Date {
+  const utcMidnight = Date.UTC(year, month - 1, day);
+  // The offset at Italy midnight can differ from the one at UTC midnight on DST days.
+  const firstGuess = utcMidnight - italyOffsetMsAt(new Date(utcMidnight));
+  return new Date(utcMidnight - italyOffsetMsAt(new Date(firstGuess)));
+}
+/** Italy's current UTC offset in hours (1 in winter, 2 in summer). */
 export function italyOffsetHours(): number {
-  const m = new Date().getMonth() + 1; // 1-12
-  return m >= 3 && m <= 10 ? 2 : 1;
+  return italyOffsetMsAt(new Date()) / 3600000;
 }
 export function italyOffsetMs(): number {
   return italyOffsetHours() * 3600000;
 }
-/** Returns a Date representing Italy midnight for a given Date object */
+/**
+ * Returns the UTC instant of Italy midnight of the Italian calendar day that
+ * contains `date`. Independent of the server timezone: between 00:00 and 02:00
+ * Italy the UTC calendar day is still the previous one, so it must not be used.
+ */
 export function italyDayStart(date: Date): Date {
-  const d = new Date(date);
-  const offsetH = italyOffsetHours();
-  d.setHours(0 - offsetH, 0, 0, 0);
-  return d;
+  const [y, m, d] = italyDateString(date).split("-").map(Number);
+  return italyMidnightUtc(y, m, d);
 }
 /**
  * Convert a "YYYY-MM-DD" string (from <input type="date">) to a UTC Date
- * anchored to Italy local midnight (start) or 23:59:59 (end).
+ * anchored to Italy local midnight (start) or 23:59:59.999 (end).
  */
 export function italyDateToUtc(dateStr: string, endOfDay = false): Date {
-  const offset = italyOffsetHours();
   const [y, mo, d] = dateStr.split("-").map(Number);
-  if (endOfDay) {
-    // Italy 23:59:59 → UTC: subtract offset hours
-    return new Date(Date.UTC(y, mo - 1, d, 23 - offset, 59, 59, 999));
-  } else {
-    // Italy 00:00:00 → UTC: -offset hours (may become previous day in UTC)
-    return new Date(Date.UTC(y, mo - 1, d, -offset, 0, 0, 0));
-  }
+  if (!endOfDay) return italyMidnightUtc(y, mo, d);
+  const next = new Date(Date.UTC(y, mo - 1, d + 1));
+  return new Date(italyMidnightUtc(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate()).getTime() - 1);
 }
 
 /** Format an instant as an Italian civil-calendar date (YYYY-MM-DD). */
