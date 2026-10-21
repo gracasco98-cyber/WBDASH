@@ -89,6 +89,16 @@ describe("PeriodTiles", () => {
     expect(mockGet).toHaveBeenCalledTimes(5);
   });
 
+  it("clicking the Margine pulito box explains the calculation without changing the period", async () => {
+    render(<PeriodTiles />);
+    await vi.waitFor(() => expect(screen.getAllByText("€ 95,00")).toHaveLength(5));
+    fireEvent.click(screen.getAllByRole("button", { name: /come è calcolato: margine pulito/i })[0]);
+    const dialog = screen.getByRole("dialog", { name: "Margine pulito" });
+    expect(dialog).toHaveTextContent("Fee Amazon");
+    expect(dialog).toHaveTextContent("Merce (COGS)");
+    expect(setPreset).not.toHaveBeenCalled();
+  });
+
   it("clicking a tile sets the global period preset", async () => {
     const user = userEvent.setup();
     render(<PeriodTiles />);
