@@ -20,7 +20,7 @@ export const SUMMARY_IDENTITY_COLUMN_CLASS =
 export const METRIC_COLUMN_CLASSES: Record<string, string> = {
   "Unità": "md:w-[88px] md:min-w-[88px]",
   "Resi": "md:w-[112px] md:min-w-[112px]",
-  "Ricavi": "md:w-[132px] md:min-w-[132px]",
+  "Incasso": "md:w-[132px] md:min-w-[132px]",
   "Promo": "md:w-[112px] md:min-w-[112px]",
   "Ads": "md:w-[112px] md:min-w-[112px]",
   "Vendite Ads": "md:w-[132px] md:min-w-[132px]",
@@ -29,8 +29,8 @@ export const METRIC_COLUMN_CLASSES: Record<string, string> = {
   "COGS": "md:w-[132px] md:min-w-[132px]",
   "IVA": "md:w-[120px] md:min-w-[120px]",
   "Profitto lordo": "md:w-[150px] md:min-w-[150px]",
-  "Profitto netto": "md:w-[150px] md:min-w-[150px]",
-  "Payout stimato": "md:w-[150px] md:min-w-[150px]",
+  "Margine pulito": "md:w-[150px] md:min-w-[150px]",
+  "Payout": "md:w-[150px] md:min-w-[150px]",
   "Margine": "md:w-[112px] md:min-w-[112px]",
   "ROI": "md:w-[104px] md:min-w-[104px]",
   "ACOS": "md:w-[104px] md:min-w-[104px]",
@@ -44,12 +44,12 @@ export const METRIC_COLUMN_CLASSES: Record<string, string> = {
  * sales, advertising and profitability KPIs visible on a normal laptop. */
 export const SUMMARY_METRIC_COLUMN_CLASSES: Record<string, string> = {
   "Unità": "md:w-[64px] md:min-w-[64px]",
-  "Ricavi": "md:w-[104px] md:min-w-[104px]",
+  "Incasso": "md:w-[104px] md:min-w-[104px]",
   "Ads": "md:w-[92px] md:min-w-[92px]",
   "Vendite Ads": "md:w-[104px] md:min-w-[104px]",
   "ACOS": "md:w-[76px] md:min-w-[76px]",
   "TACOS": "md:w-[76px] md:min-w-[76px]",
-  "Profitto netto": "md:w-[116px] md:min-w-[116px]",
+  "Margine pulito": "md:w-[116px] md:min-w-[116px]",
   "Margine": "md:w-[76px] md:min-w-[76px]",
   "Stock": "md:w-[70px] md:min-w-[70px]",
 };
@@ -122,8 +122,8 @@ interface MetricRowProps {
  */
 const NO_COST_DATA_TITLE = "Costi non tracciati per questo canale";
 const MOBILE_SUMMARY_COLUMNS = new Set([
-  "Ricavi",
-  "Profitto netto",
+  "Incasso",
+  "Margine pulito",
   "Margine",
   "ACOS",
   "TACOS",
@@ -164,7 +164,7 @@ export default function MetricRow({
         </span>
       ),
     },
-    { column: "Ricavi", node: fmtEur(m.sales) },
+    { column: "Incasso", node: fmtEur(m.sales) },
     { column: "Promo", node: fmtEur(m.promo) },
     { column: "% Resi", node: fmtPct(m.refundPct) },
     { column: "Ads", node: dash(m.adsSpend, fmtEur) },
@@ -236,7 +236,7 @@ export default function MetricRow({
       ),
     },
     {
-      column: "Profitto netto",
+      column: "Margine pulito",
       node: hasCostData ? (
         <>
           <span className={`font-semibold ${profitClass(m.netProfit)}`}>
@@ -249,7 +249,7 @@ export default function MetricRow({
       ),
     },
     {
-      column: "Payout stimato",
+      column: "Payout",
       node: hasCostData ? fmtEur(m.estimatedPayout) : noCost,
     },
     {

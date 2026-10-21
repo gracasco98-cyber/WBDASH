@@ -86,7 +86,7 @@ describe("ProductsPerformanceTable", () => {
 
     expect(screen.getByRole("button", { name: "KPI essenziali" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("columnheader", { name: "COGS" })).not.toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Profitto netto" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Margine pulito" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Vendite Ads" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "ACOS" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "TACOS" })).toBeInTheDocument();
@@ -312,6 +312,9 @@ describe("ProductsPerformanceTable", () => {
     expect(redcare.metrics.grossProfit).toBe(63); // 100 - 10 IVA - 15 fee - 12 COGS
     expect(redcare.metrics.netProfit).toBe(58); // gross profit - 5 ads
     expect(redcare.metrics.roi).toBeCloseTo(58 / 12, 6);
+    // Payout is the cash the marketplace pays out: VAT is still inside it.
+    expect(redcare.metrics.estimatedPayout).toBe(80); // 100 - 15 fee - 5 ads
+    expect(redcare.metrics.netProfit).toBe(redcare.metrics.estimatedPayout - 10 - 12);
     expect(redcare.children?.[0].metrics.cogs).toBe(12);
   });
 
@@ -675,7 +678,8 @@ describe("buildProductsCsv", () => {
       { key: "p1", label: "Resveratrolo 500mg", metrics: baseRow },
     ]);
     const lines = csv.split("\n");
-    expect(lines[0]).toContain("Ricavi");
+    expect(lines[0]).toContain("Incasso");
+    expect(lines[0]).toContain("Margine pulito");
     expect(lines[1]).toContain("Resveratrolo 500mg");
     expect(lines[1]).toContain("200.00");
   });
