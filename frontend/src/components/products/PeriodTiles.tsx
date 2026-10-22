@@ -11,6 +11,7 @@ import type { PeriodPreset } from "@/context/PeriodContext";
 import { api } from "@/lib/api";
 import type { ProductPerformanceRow } from "@/lib/api";
 import { formatDateToIso } from "@/lib/periodUtils";
+import { reconcileWithLiveSummary } from "@/lib/periodTileReconcile";
 import { getComparePeriod, calculateVariation } from "@/lib/compareUtils";
 import { fmtEur, fmtEurNoWrap, dash } from "./MetricRow";
 import AdspayCell from "./AdspayCell";
@@ -488,29 +489,15 @@ export default function PeriodTiles() {
                   }).catch(() => null)
                 : Promise.resolve(null),
             ]);
-            const aggregate = sumAggregate(performance.groups.map((g) => g.aggregate));
+            const rowsAggregate = sumAggregate(performance.groups.map((g) => g.aggregate));
             // Product rows depend on the asynchronous orders report, while the
             // summary replaces today's stale report slice with Amazon's live
-            // Sales API total. Use that authoritative aggregate for the card's
-            // revenue and units; product-attributed costs/profit remain on the
-            // report-backed rows until Amazon delivers their ASIN detail.
-            // Refunds are financial events and may likewise not be attached to
-            // an active ASIN/product row yet.
-            if (aggregate && financial) {
-              aggregate.sales = financial.totalRevenue;
-              aggregate.units = financial.unitsSold;
-              aggregate.refundsAmount = Math.max(aggregate.refundsAmount, financial.refunds ?? 0);
-              aggregate.refundsCount = Math.max(aggregate.refundsCount, financial.refundCount ?? 0);
-              aggregate.avgSellingPrice = aggregate.units > 0
-                ? aggregate.sales / aggregate.units
-                : 0;
-              aggregate.realAcos = aggregate.adsSpend !== null && aggregate.sales > 0
-                ? aggregate.adsSpend / aggregate.sales
-                : null;
-              aggregate.margin = aggregate.sales > 0
-                ? aggregate.netProfit / aggregate.sales
-                : 0;
-            }
+            // Sales API total. Use that authoritative total for the card's
+            // revenue, units and refunds, and carry the difference into VAT,
+            // fees, COGS and the margin so the card's items still add up.
+            const aggregate = rowsAggregate && financial
+              ? reconcileWithLiveSummary(rowsAggregate, financial)
+              : rowsAggregate;
             return [id, aggregate] as const;
           }),
         );

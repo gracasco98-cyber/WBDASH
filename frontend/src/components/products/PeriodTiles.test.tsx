@@ -524,6 +524,12 @@ describe("PeriodTiles", () => {
         if (params.from === "2026-09-09" && params.to === "2026-09-09") return groupsWith(100); // Ieri
         return { groups: [] };
       });
+      // Live summary agrees with each period's rows, so the comparison is
+      // driven by the rows themselves.
+      mockAmazonSummary.mockImplementation(async (params: any) => {
+        const sales = params.from === "2026-09-10" ? 150 : params.from === "2026-09-09" ? 100 : 0;
+        return { totalRevenue: sales, netRevenue: sales, orderCount: 4, unitsSold: 5, refunds: 0, refundCount: 0, adSpend: 5, acos: 5, estimatedPayout: sales, byMarketplace: {} };
+      });
 
       render(<PeriodTiles />);
       fireEvent.click(screen.getByRole("button", { name: /mensile/i }));
