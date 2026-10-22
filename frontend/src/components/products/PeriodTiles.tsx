@@ -15,6 +15,8 @@ import { reconcileWithLiveSummary } from "@/lib/periodTileReconcile";
 import { getComparePeriod, calculateVariation } from "@/lib/compareUtils";
 import { fmtEur, fmtEurNoWrap, dash } from "./MetricRow";
 import AdspayCell from "./AdspayCell";
+import CalcExplainPopover from "./CalcExplainPopover";
+import { buildIncassoExplain, buildMarginExplain, type TileFigures } from "@/lib/periodTileExplain";
 import { usePpcBillingCycle } from "@/hooks/usePpcBillingCycle";
 import {
   CalendarDays,
@@ -824,6 +826,21 @@ export default function PeriodTiles() {
             (shopifyRow?.redcareFee ?? 0) +
             (shopifyRow?.redcareShippingCost ?? 0) +
             (shopifyRow?.redcareCogs ?? 0);
+          const tileFigures: TileFigures = {
+            amazon: totalRow ? {
+              sales: totalRow.sales, units: totalRow.units,
+              refunds: totalRow.refundsAmount, refundsCount: totalRow.refundsCount,
+              vat: totalRow.vatAmount ?? 0, fees: totalRow.amazonFees, feesEstimated: !totalRow.hasRealFees,
+              cogs: totalRow.cogs, ads: totalRow.adsSpend ?? 0,
+            } : undefined,
+            other: shopifyRow ? {
+              sales: shopifyRow.sales, units: shopifyRow.units,
+              refunds: shopifyRow.refunds, refundCount: shopifyRow.refundCount,
+              vat: shopifyRow.vatAmount, fee: shopifyRow.redcareFee, shipping: shopifyRow.redcareShippingCost,
+              cogs: shopifyRow.redcareCogs, ads: shopifyRow.adSpend,
+            } : undefined,
+            netProfit: combinedNetProfit,
+          };
           const active = state.preset === preset;
           const showAdspay = id === "today" && !globalMarketplace.startsWith("REDCARE_");
           // Amazon-only on both sides (no Shopify comparison fetch, to keep
@@ -867,6 +884,7 @@ export default function PeriodTiles() {
                 </div>
               </div>
               <div className="flex w-full flex-none flex-col gap-2 px-2.5 py-2.5">
+                <CalcExplainPopover explain={buildIncassoExplain(tileFigures)}>
                 <div className="rounded-[9px] border border-bg-border/70 bg-accent-blue/10 px-2.5 py-2.5">
                   <div
                     className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.1em]"
@@ -887,6 +905,8 @@ export default function PeriodTiles() {
                   </div>
                   {sparklines[id] && <div className="mt-1.5"><Sparkline values={sparklines[id]} color={accent} /></div>}
                 </div>
+                </CalcExplainPopover>
+                <CalcExplainPopover explain={buildMarginExplain(tileFigures)}>
                 <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2.5">
                   <div className="flex items-center justify-between text-zinc-500 text-[10px] uppercase tracking-[0.08em]">
                     <span>Margine pulito</span>
@@ -898,6 +918,7 @@ export default function PeriodTiles() {
                     {hasAny ? fmtEurNoWrap(combinedNetProfit) : "—"}
                   </div>
                 </div>
+                </CalcExplainPopover>
                 {/* auto-fit: Costi | IVA side by side only when the tile has room, stacked otherwise. */}
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(4.25rem,1fr))] gap-2">
                   <div className="rounded-[9px] border border-bg-border/70 bg-bg-hover/30 px-2.5 py-2">
@@ -1033,7 +1054,7 @@ export default function PeriodTiles() {
               <button type="button" aria-label="Chiudi dettaglio" onClick={() => setBreakdown(null)} className="rounded-full p-2 text-zinc-500 hover:bg-bg-hover hover:text-zinc-900 dark:hover:text-white"><X size={18} /></button>
             </div>
             <div className="max-h-[78vh] overflow-y-auto p-4 sm:p-6">
-              <div className="rounded-xl border border-accent-primary/20 bg-accent-blue/10 px-4 py-4 sm:px-5"><div className="flex flex-wrap items-end justify-between gap-3"><div><div className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-primary">Ricavi netti</div><div className="mt-1 text-3xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">{fmtEur(breakdown.sales)}</div></div><div className="text-right"><div className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Profitto netto</div><div className={`mt-1 text-xl font-bold tabular-nums ${breakdown.profit < 0 ? "text-accent-red" : "text-accent-primary"}`}>{fmtEur(breakdown.profit)}</div></div></div><div className="mt-3 text-xs text-zinc-500">{breakdown.units.toLocaleString("it-IT")} unità · dati separati per marketplace</div></div>
+              <div className="rounded-xl border border-accent-primary/20 bg-accent-blue/10 px-4 py-4 sm:px-5"><div className="flex flex-wrap items-end justify-between gap-3"><div><div className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-primary">Incasso (IVA incl.)</div><div className="mt-1 text-3xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">{fmtEur(breakdown.sales)}</div></div><div className="text-right"><div className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Margine pulito</div><div className={`mt-1 text-xl font-bold tabular-nums ${breakdown.profit < 0 ? "text-accent-red" : "text-accent-primary"}`}>{fmtEur(breakdown.profit)}</div></div></div><div className="mt-3 text-xs text-zinc-500">{breakdown.units.toLocaleString("it-IT")} unità · dati separati per marketplace</div></div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <BreakdownItem label="Advertising" value={breakdown.ads} />
                 <BreakdownItem label="Spedizioni Redcare" value={breakdown.redcareShippingCost} />
