@@ -59,6 +59,8 @@ export interface ProductPerformanceGroup {
 
 const FEE_ESTIMATE_PCT = 0.15;
 const FEE_ESTIMATE_PER_UNIT = 3.80;
+/** Unsettled orders are estimated at the real fee per unit of this many days of settled orders. */
+const FEE_RATE_LOOKBACK_DAYS = 60;
 
 function deriveMetrics(base: {
   sales: number; refundsAmount: number; amazonFees: number; cogs: number; adsSpend: number | null; units: number; vatAmount: number;
@@ -136,11 +138,23 @@ export async function resolveProductPerformance(
   const resolveAsin = (t: { asin: string | null; sku: string | null; marketplace: string }) =>
     t.asin ?? (t.sku ? asinBySku.get(`${t.marketplace}::${t.sku}`) ?? null : null);
 
-  // Order fees are matched to the period's orders by orderId (see
-  // findOrderFeesForOrderIds); keyed `${orderId}::${asin}` or, for SKU-only
-  // lines, `${orderId}::sku:${sku}`.
+  // Recent order items, used only to learn each identifier's real fee per
+  // unit from the orders Amazon has already settled.
+  const lookbackFrom = new Date(params.dateTo.getTime() - FEE_RATE_LOOKBACK_DAYS * 86_400_000);
+  const lookbackItems = await (prisma.amazonOrderItem.findMany as any)({
+    where: {
+      amazonAccountId: { in: getCurrentAccountIds() },
+      asin: { in: asins },
+      purchaseDate: { gte: lookbackFrom, lte: params.dateTo },
+      order: { orderStatus: { notIn: ["Canceled", "Cancelled"] } },
+    },
+    select: { amazonOrderId: true, asin: true, sku: true, marketplace: true, quantityOrdered: true },
+  }) as Array<{ amazonOrderId: string; asin: string; sku: string | null; marketplace: string; quantityOrdered: number | null }>;
+
+  // Order fees are matched to orders by orderId (see findOrderFeesForOrderIds);
+  // keyed `${orderId}::${asin}` or, for SKU-only lines, `${orderId}::sku:${sku}`.
   const orderFees = await findOrderFeesForOrderIds(prisma, {
-    orderIds: [...new Set(orderItemRows.map((r) => r.amazonOrderId))],
+    orderIds: [...new Set([...orderItemRows, ...lookbackItems].map((r) => r.amazonOrderId))],
   });
   const orderFeeByOrderItem = new Map<string, number>();
   for (const f of orderFees) {
@@ -149,15 +163,37 @@ export async function resolveProductPerformance(
     orderFeeByOrderItem.set(k, (orderFeeByOrderItem.get(k) ?? 0) + (f.amount < 0 ? Math.abs(f.amount) : 0));
   }
 
+  const feeOfItem = (r: { amazonOrderId: string; asin: string; sku: string | null }) => {
+    const byAsin = orderFeeByOrderItem.get(`${r.amazonOrderId}::${r.asin}`);
+    const bySku = r.sku ? orderFeeByOrderItem.get(`${r.amazonOrderId}::sku:${r.sku}`) : undefined;
+    return byAsin === undefined && bySku === undefined ? undefined : (byAsin ?? 0) + (bySku ?? 0);
+  };
+
+  // Real fee per unit of each identifier's recently settled items.
+  const feeRateByKey = new Map<string, { fees: number; units: number }>();
+  for (const r of lookbackItems) {
+    const fee = feeOfItem(r);
+    const units = Number(r.quantityOrdered ?? 0);
+    if (fee === undefined || units <= 0) continue;
+    const key = `${r.marketplace}::${r.asin}`;
+    const cur = feeRateByKey.get(key) ?? { fees: 0, units: 0 };
+    feeRateByKey.set(key, { fees: cur.fees + fee, units: cur.units + units });
+  }
+  const estimateFees = (key: string, sales: number, units: number) => {
+    const rate = feeRateByKey.get(key);
+    return rate && rate.units > 0
+      ? units * (rate.fees / rate.units)
+      : sales * FEE_ESTIMATE_PCT + units * FEE_ESTIMATE_PER_UNIT;
+  };
+
   // Per identifier: real fees of settled order items, plus sales/units of the
   // items Amazon has not settled yet (these get the fee estimate).
   const orderFeesByKey = new Map<string, { settled: number; unsettledSales: number; unsettledUnits: number }>();
   for (const r of orderItemRows) {
     const key = `${r.marketplace}::${r.asin}`;
     const cur = orderFeesByKey.get(key) ?? { settled: 0, unsettledSales: 0, unsettledUnits: 0 };
-    const byAsin = orderFeeByOrderItem.get(`${r.amazonOrderId}::${r.asin}`);
-    const bySku = r.sku ? orderFeeByOrderItem.get(`${r.amazonOrderId}::sku:${r.sku}`) : undefined;
-    if (byAsin !== undefined || bySku !== undefined) cur.settled += (byAsin ?? 0) + (bySku ?? 0);
+    const fee = feeOfItem(r);
+    if (fee !== undefined) cur.settled += fee;
     else {
       cur.unsettledSales += Number(r.itemPrice ?? 0);
       cur.unsettledUnits += Number(r.quantityOrdered ?? 0);
@@ -230,7 +266,7 @@ export async function resolveProductPerformance(
       // "Real" only when every order item of the period is settled.
       const hasRealFees = !hasUnsettledItems && (orderFeesByKey.has(key) || otherFees !== undefined);
       const amazonFees = orderFee.settled + (otherFees ?? 0)
-        + orderFee.unsettledSales * FEE_ESTIMATE_PCT + orderFee.unsettledUnits * FEE_ESTIMATE_PER_UNIT;
+        + estimateFees(key, orderFee.unsettledSales, orderFee.unsettledUnits);
       const cogsInfo = cogsByKey.get(key) ?? cogsByKey.get(`ALL::${ident.asin}`);
       const hasRealCogs = cogsInfo !== undefined;
       const cogs = cogsInfo ? (cogsInfo.cogsPerUnit + cogsInfo.shippingCost) * sold.units : 0;
