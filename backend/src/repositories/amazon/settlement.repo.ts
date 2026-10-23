@@ -137,17 +137,18 @@ export async function findTransactionsForOrders(
  */
 export async function findTransactionsForAsins(
   prisma: PrismaClient,
-  params: { asins: string[]; marketplace?: string; dateFrom: Date; dateTo: Date }
-): Promise<Array<{ asin: string | null; marketplace: string; transactionType: string; amountType: string; amount: number }>> {
+  params: { asins: string[]; skus?: string[]; marketplace?: string; dateFrom: Date; dateTo: Date }
+): Promise<Array<{ asin: string | null; sku: string | null; marketplace: string; transactionType: string; amountType: string; amount: number }>> {
   if (params.asins.length === 0) return [];
   const rows = await prisma.amazonSettlementTransaction.findMany({
     where: {
       amazonAccountId: { in: getCurrentAccountIds() },
-      asin: { in: params.asins },
+      // Amazon's settlement flat file has no ASIN column: most lines carry only the SKU.
+      OR: [{ asin: { in: params.asins } }, ...(params.skus?.length ? [{ sku: { in: params.skus } }] : [])],
       postedDate: { gte: params.dateFrom, lte: params.dateTo },
       ...(params.marketplace && params.marketplace !== "all" ? { marketplace: params.marketplace } : {}),
     },
-    select: { asin: true, marketplace: true, transactionType: true, amountType: true, amount: true },
+    select: { asin: true, sku: true, marketplace: true, transactionType: true, amountType: true, amount: true },
   });
   return rows.map((r) => ({ ...r, amount: toNum(r.amount) }));
 }
@@ -160,7 +161,7 @@ export async function findTransactionsForAsins(
 export async function findOrderFeesForOrderIds(
   prisma: PrismaClient,
   params: { orderIds: string[] }
-): Promise<Array<{ orderId: string; asin: string | null; amount: number }>> {
+): Promise<Array<{ orderId: string; asin: string | null; sku: string | null; amount: number }>> {
   if (params.orderIds.length === 0) return [];
   const rows = await prisma.amazonSettlementTransaction.findMany({
     where: {
@@ -169,9 +170,9 @@ export async function findOrderFeesForOrderIds(
       transactionType: "Order",
       amountType: { not: "Principal" },
     },
-    select: { orderId: true, asin: true, amount: true },
+    select: { orderId: true, asin: true, sku: true, amount: true },
   });
-  return rows.map((r) => ({ orderId: r.orderId as string, asin: r.asin, amount: toNum(r.amount) }));
+  return rows.map((r) => ({ orderId: r.orderId as string, asin: r.asin, sku: r.sku, amount: toNum(r.amount) }));
 }
 
 /**
