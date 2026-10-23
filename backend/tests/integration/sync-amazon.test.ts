@@ -110,6 +110,7 @@ function makeSettlementRows(opts: {
     amount: string;
     orderId?: string;
     asin?: string;
+    sku?: string;
   }>;
 } = {}): Record<string, string>[] {
   const sid  = opts.settlementId ?? 'SETT-001';
@@ -149,7 +150,7 @@ function makeSettlementRows(opts: {
       'transaction-type':      tx.transactionType,
       'order-id':              tx.orderId ?? '',
       asin:                    tx.asin   ?? '',
-      sku:                     '',
+      sku:                     tx.sku    ?? '',
       'quantity-purchased':    '1',
       'price-type':            tx.amountType === 'Principal' ? tx.amountType : '',
       'price-amount':          tx.amountType === 'Principal' ? tx.amount : '',
@@ -450,6 +451,25 @@ describe('Amazon Sync — integration (PR 9)', () => {
         where: { settlementId: 'SETT-IT-001' },
       });
       expect(txCount).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // ── 7b. Real flat file: no ASIN column, two SKUs in one order ─────────────
+  it('settlement: keeps each SKU of a multi-item order separate when the report has no ASIN', async () => {
+    await runWithAccount(accountId, async () => {
+      const rows = makeSettlementRows({
+        settlementId: 'SETT-MULTI',
+        transactions: [
+          { transactionType: 'Order', amountType: 'Commission', amount: '-0.74', orderId: '408-MULTI-1', sku: 'BIOGENX' },
+          { transactionType: 'Order', amountType: 'Commission', amount: '-0.71', orderId: '408-MULTI-1', sku: 'VENAVIL' },
+        ],
+      });
+      await ingestSettlementRows(rows, 'SETT-MULTI');
+      const tx = await db.prisma.amazonSettlementTransaction.findMany({
+        where: { settlementId: 'SETT-MULTI', amountType: 'Commission' },
+        orderBy: { sku: 'asc' },
+      });
+      expect(tx.map((t) => [t.sku, Number(t.amount)])).toEqual([['BIOGENX', -0.74], ['VENAVIL', -0.71]]);
     });
   });
 
