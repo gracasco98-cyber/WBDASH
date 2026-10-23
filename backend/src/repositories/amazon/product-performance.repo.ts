@@ -104,6 +104,7 @@ export async function resolveProductPerformance(
       .map((i) => ({ ...i, productId: p.id }))
   );
   const asins = [...new Set(amazonIdentifiers.map((i) => i.asin as string))];
+  const skus = [...new Set(amazonIdentifiers.map((i) => i.sku).filter((s): s is string => !!s))];
 
   if (asins.length === 0) return [];
 
@@ -119,23 +120,33 @@ export async function resolveProductPerformance(
         purchaseDate: { gte: params.dateFrom, lte: params.dateTo },
         order: { orderStatus: { notIn: ["Canceled", "Cancelled"] } },
       },
-      select: { amazonOrderId: true, asin: true, marketplace: true, itemPrice: true, itemTax: true, promotionDiscount: true, quantityOrdered: true },
-    }) as Promise<Array<{ amazonOrderId: string; asin: string; marketplace: string; itemPrice: unknown; itemTax: unknown; promotionDiscount: unknown; quantityOrdered: number | null }>>,
-    findTransactionsForAsins(prisma, { asins, dateFrom: params.dateFrom, dateTo: params.dateTo }),
+      select: { amazonOrderId: true, asin: true, sku: true, marketplace: true, itemPrice: true, itemTax: true, promotionDiscount: true, quantityOrdered: true },
+    }) as Promise<Array<{ amazonOrderId: string; asin: string; sku: string | null; marketplace: string; itemPrice: unknown; itemTax: unknown; promotionDiscount: unknown; quantityOrdered: number | null }>>,
+    findTransactionsForAsins(prisma, { asins, skus, dateFrom: params.dateFrom, dateTo: params.dateTo }),
     findCogsForAsins(prisma, { asins, marketplace: params.marketplace }),
     findInventoryForAsins(prisma, { asins, marketplace: params.marketplace }),
   ]);
 
+  // Settlement lines usually carry only the SKU (the flat file has no ASIN
+  // column), so resolve them to an ASIN through the identifiers and the
+  // period's order items before keying them like the sales.
+  const asinBySku = new Map<string, string>();
+  for (const i of amazonIdentifiers) if (i.sku) asinBySku.set(`${i.marketplace}::${i.sku}`, i.asin as string);
+  for (const r of orderItemRows) if (r.sku) asinBySku.set(`${r.marketplace}::${r.sku}`, r.asin);
+  const resolveAsin = (t: { asin: string | null; sku: string | null; marketplace: string }) =>
+    t.asin ?? (t.sku ? asinBySku.get(`${t.marketplace}::${t.sku}`) ?? null : null);
+
   // Order fees are matched to the period's orders by orderId (see
-  // findOrderFeesForOrderIds); keyed `${orderId}::${asin}`.
+  // findOrderFeesForOrderIds); keyed `${orderId}::${asin}` or, for SKU-only
+  // lines, `${orderId}::sku:${sku}`.
   const orderFees = await findOrderFeesForOrderIds(prisma, {
     orderIds: [...new Set(orderItemRows.map((r) => r.amazonOrderId))],
   });
-  const orderFeeByOrderAsin = new Map<string, number>();
+  const orderFeeByOrderItem = new Map<string, number>();
   for (const f of orderFees) {
     // Any fee line marks the item as settled; only charges (< 0) add to fees.
-    const k = `${f.orderId}::${f.asin}`;
-    orderFeeByOrderAsin.set(k, (orderFeeByOrderAsin.get(k) ?? 0) + (f.amount < 0 ? Math.abs(f.amount) : 0));
+    const k = f.asin ? `${f.orderId}::${f.asin}` : `${f.orderId}::sku:${f.sku}`;
+    orderFeeByOrderItem.set(k, (orderFeeByOrderItem.get(k) ?? 0) + (f.amount < 0 ? Math.abs(f.amount) : 0));
   }
 
   // Per identifier: real fees of settled order items, plus sales/units of the
@@ -144,8 +155,9 @@ export async function resolveProductPerformance(
   for (const r of orderItemRows) {
     const key = `${r.marketplace}::${r.asin}`;
     const cur = orderFeesByKey.get(key) ?? { settled: 0, unsettledSales: 0, unsettledUnits: 0 };
-    const fee = orderFeeByOrderAsin.get(`${r.amazonOrderId}::${r.asin}`);
-    if (fee !== undefined) cur.settled += fee;
+    const byAsin = orderFeeByOrderItem.get(`${r.amazonOrderId}::${r.asin}`);
+    const bySku = r.sku ? orderFeeByOrderItem.get(`${r.amazonOrderId}::sku:${r.sku}`) : undefined;
+    if (byAsin !== undefined || bySku !== undefined) cur.settled += (byAsin ?? 0) + (bySku ?? 0);
     else {
       cur.unsettledSales += Number(r.itemPrice ?? 0);
       cur.unsettledUnits += Number(r.quantityOrdered ?? 0);
@@ -168,10 +180,16 @@ export async function resolveProductPerformance(
   const feesByKey = new Map<string, number>();
   const refundsByKey = new Map<string, { amount: number; count: number }>();
   for (const t of transactions) {
-    const key = `${t.marketplace}::${t.asin}`;
+    const asin = resolveAsin(t);
+    if (!asin) continue;
+    const key = `${t.marketplace}::${asin}`;
     if (t.amountType === "Principal" && t.amount < 0) {
       const cur = refundsByKey.get(key) ?? { amount: 0, count: 0 };
       refundsByKey.set(key, { amount: cur.amount + Math.abs(t.amount), count: cur.count + 1 });
+    } else if (t.transactionType === "Refund" && t.amountType === "Tax" && t.amount < 0) {
+      // Turnover is VAT-inclusive: the refunded VAT belongs to the refund, not to fees.
+      const cur = refundsByKey.get(key) ?? { amount: 0, count: 0 };
+      refundsByKey.set(key, { amount: cur.amount + Math.abs(t.amount), count: cur.count });
     } else if (t.amount < 0 && t.transactionType !== "Order") {
       // Order fees come from orderFeesByKey; only refund/adjustment fees are
       // still attributed by postedDate.

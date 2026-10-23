@@ -219,6 +219,27 @@ describe("resolveProductPerformance", () => {
     });
   });
 
+  it("matches settlement lines by SKU when Amazon's report has no ASIN (real flat-file shape)", async () => {
+    await runWithAccount(accountId, async () => {
+      await seedOneProductWithSales(); // O1: 10 units, 200 €, SKU-RSV-01
+      await createSettlementTransactions(db.prisma, [
+        { ...orderFee("O1", -7.4, "2026-08-05"), asin: null },
+        { ...orderFee("O1", -34.5, "2026-08-05"), asin: null, amountType: "FBAPerUnitFulfillmentFee" },
+        { settlementId: "S1", transactionType: "Refund", orderId: "O0", asin: null, sku: "SKU-RSV-01", marketplace: "IT", amountType: "Principal", amount: -10.82, currency: "EUR", postedDate: new Date("2026-08-01") },
+        { settlementId: "S1", transactionType: "Refund", orderId: "O0", asin: null, sku: "SKU-RSV-01", marketplace: "IT", amountType: "Tax", amount: -1.08, currency: "EUR", postedDate: new Date("2026-08-01") },
+      ] as any);
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const row = groups[0].rows[0];
+      expect(row.hasRealFees).toBe(true);
+      expect(row.amazonFees).toBeCloseTo(41.9, 2);
+      // Turnover is VAT-inclusive, so the refunded amount includes its VAT line.
+      expect(row.refundsAmount).toBeCloseTo(11.9, 2);
+      expect(row.refundsCount).toBe(1);
+    });
+  });
+
   it("falls back to the 15%/€3.80 fee estimate when no settlement data exists", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
