@@ -193,7 +193,7 @@ describe("resolveProductPerformance", () => {
   it("ignores fees posted in the period for orders purchased outside it", async () => {
     await runWithAccount(accountId, async () => {
       await seedOneProductWithSales();
-      await addOrder("O-JULY", 3, 60, "2026-07-20");
+      await addOrder("O-JULY", 3, 60, "2026-05-20"); // outside the 60-day fee-rate lookback
       await createSettlementTransactions(db.prisma, [orderFee("O-JULY", -25, "2026-08-01")] as any);
       const groups = await resolveProductPerformance(db.prisma, {
         marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
@@ -215,7 +215,23 @@ describe("resolveProductPerformance", () => {
       });
       const row = groups[0].rows[0];
       expect(row.hasRealFees).toBe(false);
-      expect(row.amazonFees).toBeCloseTo(30 + 100 * 0.15 + 5 * 3.8, 2);
+      // O2 is estimated at O1's real fee per unit (30 € / 10 units), not the generic 15% + €3.80.
+      expect(row.amazonFees).toBeCloseTo(30 + 5 * 3, 2);
+    });
+  });
+
+  it("estimates unsettled orders at the real fee per unit of the last 60 days", async () => {
+    await runWithAccount(accountId, async () => {
+      await seedOneProductWithSales(); // O1: 10 units, 200 €, not settled yet
+      await addOrder("O-OLD", 10, 119, "2026-07-10"); // settled, inside the 60-day lookback
+      await createSettlementTransactions(db.prisma, [{ ...orderFee("O-OLD", -41.9, "2026-07-20"), asin: null }] as any);
+      const groups = await resolveProductPerformance(db.prisma, {
+        marketplace: "all", dateFrom: new Date("2026-08-01"), dateTo: new Date("2026-08-02"),
+      });
+      const row = groups[0].rows[0];
+      expect(row.hasRealFees).toBe(false);
+      expect(row.units).toBe(10); // O-OLD is outside the period: only used for the rate
+      expect(row.amazonFees).toBeCloseTo(10 * 4.19, 2);
     });
   });
 
