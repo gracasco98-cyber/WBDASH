@@ -182,7 +182,9 @@ export async function ingestSettlementRows(
   const settlementId = headerSettlementId;
 
   // Map key → aggregated entry
-  // Key = "orderId|asin|amountType|transactionType|marketplace"
+  // Key = "orderId|asin|sku|amountType|transactionType|marketplace". The flat
+  // file has no ASIN column, so without the SKU every item of a multi-item
+  // order would be merged into its first SKU.
   const agg = new Map<string, {
     settlementId: string; transactionType: string;
     orderId: string | null; asin: string | null; sku: string | null;
@@ -267,7 +269,7 @@ export async function ingestSettlementRows(
     if (entries.length === 0) { skipped++; continue; }
 
     for (const entry of entries) {
-      const k = `${orderId ?? ""}|${asin ?? ""}|${entry.amountType}|${transactionType}|${marketplace}`;
+      const k = `${orderId ?? ""}|${asin ?? ""}|${sku ?? ""}|${entry.amountType}|${transactionType}|${marketplace}`;
       const existing = agg.get(k);
       if (existing) {
         existing.amount += entry.amount;
