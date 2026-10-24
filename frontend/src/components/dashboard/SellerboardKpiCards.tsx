@@ -364,7 +364,7 @@ function KpiCard({
         <div>
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="text-xs uppercase tracking-[.12em] text-zinc-500">
-              Ricavi netti
+              Incasso (IVA incl.)
             </span>
           </div>
           {loading ? (
@@ -446,11 +446,15 @@ function KpiCard({
           </div>
         )}
 
-        {/* Net profit */}
+        {/* Payout: Amazon payout + Shopify net. Not a profit — COGS and sales
+            VAT are not subtracted (the dashboard's "Margine pulito" does that). */}
         <div className="pt-1 border-t border-white/[0.06]">
           <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="text-xs uppercase tracking-[.12em] text-zinc-500">
-              Profitto netto
+            <span
+              className="text-xs uppercase tracking-[.12em] text-zinc-500"
+              title="Quanto incassi dai marketplace dopo fee e Ads. Non sottrae merce (COGS) né IVA: per il margine vero vedi Margine pulito nella Dashboard."
+            >
+              Payout netto
             </span>
             {!loading && kpi && <PctBadge pct={kpi.pctChange} />}
           </div>
@@ -468,7 +472,7 @@ function KpiCard({
           <div className="pt-1 border-t border-white/[0.06] flex flex-col gap-2">
             {/* Margin % */}
             <div>
-              <p className="text-xs text-zinc-500 mb-0.5">Margin %</p>
+              <p className="text-xs text-zinc-500 mb-0.5">Payout % dell'incasso</p>
               {loading ? (
                 <Skeleton w="w-16" />
               ) : (
