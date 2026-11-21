@@ -24,6 +24,7 @@ const AMAZON_TABS = [
 export default function AmazonLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const activeTabRef = useRef<HTMLAnchorElement>(null);
+  const isMarketingWorkspace = pathname.startsWith("/amazon/marketing");
 
   // Scroll active tab into view on navigation (e.g. direct link to /amazon/analytics)
   useEffect(() => {
@@ -37,17 +38,17 @@ export default function AmazonLayout({ children }: { children: React.ReactNode }
   return (
     <div className="min-h-screen bg-bg-base">
       {/* Shared header — Amazon accent */}
-      <AppHeader
+      {!isMarketingWorkspace && <AppHeader
         accentColor="amber"
         rightExtras={
           <>
             <div className="hidden sm:block"><SyncStatus /></div>
           </>
         }
-      />
+      />}
 
-      {/* Amazon sub-nav tabs */}
-      <div className="relative border-b border-bg-border bg-bg-base">
+      {/* The product workspace has its own product rail and section navigation. */}
+      {!isMarketingWorkspace && <div className="relative border-b border-bg-border bg-bg-base">
         <nav
           className="flex items-center gap-0.5 sm:gap-1 py-2 overflow-x-auto px-3 sm:px-4 scrollbar-hide"
           style={{ WebkitOverflowScrolling: "touch" }}
@@ -75,16 +76,22 @@ export default function AmazonLayout({ children }: { children: React.ReactNode }
         </nav>
         {/* Fade hint — indicates the tab bar is scrollable on mobile */}
         <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-bg-base to-transparent" />
-      </div>
+      </div>}
 
-      <div className="flex">
-        <GlobalSidebar />
-        <div className="flex-1 min-w-0">
-          <main className="max-w-[1600px] px-4 md:px-6 py-4 md:py-6 overflow-x-hidden">
-            <AmazonAccountGuard>{children}</AmazonAccountGuard>
-          </main>
+      {isMarketingWorkspace ? (
+        <main className="min-h-screen overflow-hidden bg-[#f3f6fb]">
+          <AmazonAccountGuard>{children}</AmazonAccountGuard>
+        </main>
+      ) : (
+        <div className="flex">
+          <GlobalSidebar />
+          <div className="flex-1 min-w-0">
+            <main className="max-w-[1600px] px-4 md:px-6 py-4 md:py-6 overflow-x-hidden">
+              <AmazonAccountGuard>{children}</AmazonAccountGuard>
+            </main>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
