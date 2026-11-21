@@ -36,7 +36,7 @@ describe("fetchSPAdvertisedProductReport", () => {
         const payload = JSON.stringify([{
           campaignId: "111", adGroupId: "222",
           advertisedAsin: "B0ABC123", advertisedSku: "SKU-RSV-01",
-          impressions: 100, clicks: 5, cost: 12.5, sales30d: 60, purchases30d: 3,
+          impressions: 100, clicks: 5, cost: 12.5, sales30d: 60, purchases30d: 3, unitsSoldClicks30d: 4,
         }]);
         return new Response(gzipSync(Buffer.from(payload)), { status: 200 });
       }
@@ -51,7 +51,7 @@ describe("fetchSPAdvertisedProductReport", () => {
     expect(rows).toEqual([{
       campaignId: "111", adGroupId: "222",
       advertisedAsin: "B0ABC123", advertisedSku: "SKU-RSV-01",
-      impressions: 100, clicks: 5, spend: 12.5, sales: 60, orders: 3,
+      impressions: 100, clicks: 5, spend: 12.5, sales: 60, orders: 3, units: 4,
     }]);
     expect(capturedHeaders?.["Amazon-Advertising-API-ClientId"]).toBe("fake-client-id");
   });

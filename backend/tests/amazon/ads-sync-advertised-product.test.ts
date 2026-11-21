@@ -5,7 +5,7 @@ vi.mock("../../src/amazon/ads-api.service", () => ({
   isAdsConfigured: vi.fn(async () => true),
   getConfiguredProfiles: vi.fn(async () => [{ profileId: "p1", marketplace: "IT", countryCode: "IT", currency: "EUR" }]),
   fetchSPAdvertisedProductReport: vi.fn(async () => [
-    { campaignId: "C1", adGroupId: "AG1", advertisedAsin: "B0ABC123", advertisedSku: "SKU-1", impressions: 100, clicks: 5, spend: 12.5, sales: 60, orders: 3 },
+    { campaignId: "C1", adGroupId: "AG1", advertisedAsin: "B0ABC123", advertisedSku: "SKU-1", impressions: 100, clicks: 5, spend: 12.5, sales: 60, orders: 3, units: 4 },
   ]),
 }));
 
@@ -32,7 +32,7 @@ describe("syncAdvertisedProductDaily", () => {
     expect(upsertMock).toHaveBeenCalledWith(
       {},
       expect.objectContaining({
-        marketplace: "IT", asin: "B0ABC123", campaignId: "C1", spend: 12.5, sales: 60, impressions: 100, clicks: 5, orders: 3,
+        marketplace: "IT", asin: "B0ABC123", campaignId: "C1", spend: 12.5, sales: 60, impressions: 100, clicks: 5, orders: 3, units: 4,
       })
     );
   });

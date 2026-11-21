@@ -18,6 +18,7 @@ const AMAZON_TABS = [
   { href: "/amazon/payments",   emoji: "💳", label: "Pagamenti"    },
   { href: "/amazon/sync",       emoji: "⚙️", label: "Sync"         },
   { href: "/amazon/analytics",  emoji: "🧠", label: "Analytics"    },
+  { href: "/amazon/marketing",  emoji: "🎯", label: "Marketing"    },
 ];
 
 export default function AmazonLayout({ children }: { children: React.ReactNode }) {

@@ -33,7 +33,7 @@ function regionTokenFn(region: SpRegion): () => Promise<string> {
 }
 
 /** Make an authenticated SP-API request with automatic 429 backoff */
-async function spRequest(method: string, path: string, body?: any, retries = 3, region: SpRegion = "EU"): Promise<any> {
+export async function spRequest(method: string, path: string, body?: any, retries = 3, region: SpRegion = "EU"): Promise<any> {
   const endpoint  = regionEndpoint(region);
   const getToken  = regionTokenFn(region);
 

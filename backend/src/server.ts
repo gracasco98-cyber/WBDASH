@@ -44,6 +44,7 @@ import launchesRouter from "./routes/launches.routes";
 import strategiesRouter from "./routes/strategies.routes";
 import { startRedcareKeywordTrackingSchedule } from "./jobs/redcareKeywordTracking.job";
 import { addSSEClient, sseClientCount } from "./sse/sse";
+import { startMarketingWorkspaceDailySchedule } from "./amazon/marketing-workspace.service";
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -225,6 +226,7 @@ async function bootstrap() {
     startAmazonLiveOrdersPolling();
     startAmazonPolling();
     startAmazonSnapshotPolling();
+    startMarketingWorkspaceDailySchedule();
 
     // bootstrapCalibration/runDailyCalibration read the current AmazonAccount
     // via getCurrentAccountId() — like the sync jobs in amazon/sync.job.ts,

@@ -34,7 +34,7 @@ describe("syncAdsIntraday", () => {
       { profileId: "p-de", marketplace: "DE", countryCode: "DE", currency: "EUR" },
     ]);
     productReportMock.mockResolvedValue([
-      { campaignId: "C1", advertisedAsin: "B0ABC123", impressions: 100, clicks: 5, spend: 12.5, sales: 60, orders: 3 },
+      { campaignId: "C1", advertisedAsin: "B0ABC123", impressions: 100, clicks: 5, spend: 12.5, sales: 60, orders: 3, units: 4 },
     ]);
   });
 

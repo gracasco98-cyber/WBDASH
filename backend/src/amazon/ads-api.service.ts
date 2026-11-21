@@ -298,6 +298,7 @@ export interface AdvertisedProductReport {
   spend: number;
   sales: number;
   orders: number;
+  units: number;
 }
 
 /**
@@ -335,7 +336,7 @@ export async function fetchSPAdvertisedProductReport(
       adProduct:    "SPONSORED_PRODUCTS",
       groupBy:      ["advertiser"],
       columns:      ["campaignId", "adGroupId", "advertisedAsin", "advertisedSku",
-                     "impressions", "clicks", "cost", "purchases30d", "sales30d"],
+                     "impressions", "clicks", "cost", "purchases30d", "unitsSoldClicks30d", "sales30d"],
       reportTypeId: "spAdvertisedProduct",
       timeUnit:     "SUMMARY",
       format:       "GZIP_JSON",
@@ -361,6 +362,7 @@ export async function fetchSPAdvertisedProductReport(
     spend:          Number(r.cost ?? r.spend ?? 0),
     sales:          Number(r.sales30d ?? r.sales ?? 0),
     orders:         Number(r.purchases30d ?? r.orders ?? 0),
+    units:          Number(r.unitsSoldClicks30d ?? r.unitsSold ?? 0),
   }));
 }
 

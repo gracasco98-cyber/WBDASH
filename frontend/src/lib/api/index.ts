@@ -70,6 +70,7 @@ export type { BoardWidget } from "./board";
 export type { SupplierInvoice, SupplierInvoiceSource, CreateSupplierInvoiceInput } from "./supplier-invoices";
 export type { ChatMessage, ChatResponse } from "./chat";
 export type { Launch, LaunchCatalogProduct, LaunchDay, LaunchKeywordDay, LaunchDayInput, LaunchKeywordInput } from "./launches";
+export type { MarketingWorkspaceResponse, WorkspaceMetric, TrafficMetric, WorkbookDocument, WorkbookRow, WorkspaceSectionData } from "./product-workspace";
 
 // Import domain modules
 import { shopify } from "./shopify";
@@ -88,6 +89,7 @@ import { supplierInvoices } from "./supplier-invoices";
 import { chat } from "./chat";
 import { launches } from "./launches";
 import { strategies } from "./strategies";
+import { productWorkspace } from "./product-workspace";
 
 // Compose the `api` object that all callers use via `import { api } from "@/lib/api"`
 export const api = {
@@ -138,4 +140,5 @@ export const api = {
   chat,
   launches,
   strategies,
+  productWorkspace,
 };
