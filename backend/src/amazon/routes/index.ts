@@ -15,6 +15,7 @@ import { inventoryRouter } from "./inventory.routes";
 import { forecastRouter } from "./forecast.routes";
 import { syncRouter } from "./sync.routes";
 import { accountsRouter } from "./accounts.routes";
+import { marketingWorkspaceRouter } from "./marketing-workspace.routes";
 
 // Re-export runSearchTermSync so sync.job.ts dynamic import("./routes") still works
 export { runSearchTermSync };
@@ -62,6 +63,9 @@ amazonRouter.use("/", syncRouter);
 
 // Account management: /accounts (list/create AmazonAccount)
 amazonRouter.use("/", accountsRouter);
+
+// Product-centred Marketing workspace: content, launch workbook, PED and assets.
+amazonRouter.use("/", marketingWorkspaceRouter);
 
 // Export default for backwards compatibility with server.ts import style
 export default amazonRouter;

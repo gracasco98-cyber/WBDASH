@@ -31,6 +31,7 @@ export async function upsertAdvertisedProductSnapshot(
     impressions: number;
     clicks: number;
     orders: number;
+    units?: number;
   }
 ): Promise<void> {
   const amazonAccountId = getCurrentAccountId();
@@ -55,6 +56,7 @@ export async function upsertAdvertisedProductSnapshot(
       impressions: params.impressions,
       clicks: params.clicks,
       orders: params.orders,
+      units: params.units ?? 0,
     },
     update: {
       spend: params.spend,
@@ -62,6 +64,7 @@ export async function upsertAdvertisedProductSnapshot(
       impressions: params.impressions,
       clicks: params.clicks,
       orders: params.orders,
+      units: params.units ?? 0,
     },
   });
 }

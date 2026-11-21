@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.superdesign/tmp/
 .pnp
 .pnp.js
 

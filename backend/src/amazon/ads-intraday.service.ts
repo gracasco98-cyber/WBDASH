@@ -60,6 +60,7 @@ export async function syncAdvertisedProductIntraday(now = new Date()): Promise<v
           impressions: row.impressions,
           clicks: row.clicks,
           orders: row.orders,
+          units: row.units,
         });
       }
       console.log(`[Ads Sync] ${profile.marketplace} advertised-product intraday — saved ${rows.length} rows`);

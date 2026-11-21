@@ -252,6 +252,7 @@ export async function syncAdvertisedProductDaily(): Promise<void> {
           impressions: row.impressions,
           clicks: row.clicks,
           orders: row.orders,
+          units: row.units,
         });
       }
       console.log(`[Ads Sync] ${profile.marketplace} advertised-product — saved ${rows.length} rows`);

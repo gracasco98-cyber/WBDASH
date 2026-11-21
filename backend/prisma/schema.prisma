@@ -202,6 +202,7 @@ model AmazonAccount {
   adKeywords                 AmazonAdKeyword[]
   forecastCalibrations       AmazonForecastCalibration[]
   forecastSnapshots          AmazonForecastSnapshot[]
+  marketingWorkspaces        AmazonMarketingWorkspace[]
 
   @@index([isActive])
 }
@@ -511,6 +512,7 @@ model AmazonAdvertisedProductSnapshot {
   impressions     Int           @default(0)
   clicks          Int           @default(0)
   orders          Int           @default(0)
+  units           Int           @default(0)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -803,6 +805,7 @@ model Product {
   identifiers        ProductIdentifier[]
   supplierProducts   SupplierProduct[]
   purchaseOrderLines PurchaseOrderLine[]
+  marketingWorkspaces AmazonMarketingWorkspace[]
 
   @@index([status])
 }
@@ -1417,6 +1420,33 @@ model LaunchKeywordDay {
 
   @@unique([launchDayId, keyword])
   @@index([keyword])
+}
+
+// Product-centred Amazon Marketing workspace. Flexible sections stay as JSON
+// because the workbook, PED and asset library are user-configurable documents;
+// tenant/product ownership and sync health remain relational and queryable.
+model AmazonMarketingWorkspace {
+  id              String        @id @default(cuid())
+  amazonAccountId String
+  amazonAccount   AmazonAccount @relation(fields: [amazonAccountId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  marketplace     String        @default("IT")
+  overview        Json?
+  communication   Json?
+  ped             Json?
+  workbook        Json?
+  assets          Json?
+  trafficData     Json?
+  lastSyncAt      DateTime?
+  lastSyncStatus  String?
+  lastSyncError   String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([amazonAccountId, productId, marketplace])
+  @@index([amazonAccountId])
+  @@index([productId])
 }
 
 // ─── Bacheca / Task Manager module ─────────────────────────────────────────
