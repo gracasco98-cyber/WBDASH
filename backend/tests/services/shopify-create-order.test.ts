@@ -128,6 +128,12 @@ describe("shopify.service — findVariantIdBySku / createOrder", () => {
     expect(capturedBody.variables.order.shippingLines).toEqual([
       { title: "Spedizione", priceSet: { shopMoney: { amount: "4.99", currencyCode: "EUR" } } },
     ]);
+
+    // Mirakl has already confirmed the paid sale, and can have shipped it,
+    // before this import runs. Shopify must record it even when local stock is
+    // zero and the variant policy is DENY; otherwise orderCreate is rejected
+    // with "Unable to reserve inventory" and the sale never appears.
+    expect(capturedBody.variables.options.inventoryBehaviour).toBe("DECREMENT_IGNORING_POLICY");
   });
 
   it("createOrder omits shippingLines when the shipping amount is zero", async () => {

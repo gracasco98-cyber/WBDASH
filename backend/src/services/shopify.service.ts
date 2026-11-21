@@ -354,7 +354,12 @@ export async function createOrder(
       ],
     },
     options: {
-      inventoryBehaviour: "DECREMENT_OBEYING_POLICY",
+      // Mirakl orders are already paid and may already be shipped by the
+      // external fulfillment flow when they reach Shopify.  A Shopify stock
+      // level of zero must therefore not make the sale disappear from the
+      // order history: still claim the inventory and let Shopify expose the
+      // shortage as negative stock instead of rejecting orderCreate.
+      inventoryBehaviour: "DECREMENT_IGNORING_POLICY",
     },
   });
 
